@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Дайджест окремою headless-сесією Claude Code.
-# Вимикаємо САМЕ telegram-плагін (status/digest-settings.json), а не весь MCP:
-# інакше друга сесія перехоплює getUpdates і основна втрачає вхідні (17.10.2026).
-# Решта конекторів claude.ai лишається — завдяки їм дайджест бачить Gmail і Календар.
+# Digest produced by a separate headless Claude Code session.
+# Disable ONLY the telegram plugin (status/digest-settings.json), not MCP as a whole:
+# otherwise the second session hijacks getUpdates and the main one loses incoming
+# messages (2026-10-17). The claude.ai connectors stay, and that is how the digest
+# sees Gmail and Calendar.
 set -uo pipefail
 cd "$HOME/claude-home"
 part="${1:-ранковий}"

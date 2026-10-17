@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
-"""PostToolUse-хук: пише в changelog/YYYY-MM-DD.jsonl лише ті виклики, що щось змінюють.
+"""PostToolUse hook: records only the calls that change something.
 
-Читає JSON хука зі stdin: {session_id, cwd, tool_name, tool_input, tool_response}.
-Читання (cat, grep, ls, sed -n…) не логується — журнал про зміни, не про перегляди.
-Хук мусить бути безшумним: будь-яка помилка гаситься, exit 0.
+Reads the hook JSON from stdin: {session_id, cwd, tool_name, tool_input, tool_response}
+and appends a line to changelog/YYYY-MM-DD.jsonl. Reads (cat, grep, ls, sed -n…) are
+not logged — this is a log of changes, not of lookups. The hook must stay silent: any
+error is swallowed and the exit code is 0.
 """
 import json, os, re, sys
 from datetime import datetime
+from pathlib import Path
 
-LOG_DIR = os.path.expanduser("~/claude-home/changelog")
-MAX_DETAIL = 400
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from noosconf import conf, path
 
-# команди, що залишають слід у системі
+LOG_DIR = str(path("changelog.dir"))
+MAX_DETAIL = conf("changelog.max_detail_chars", 400)
+
+# commands that leave a trace in the system
 MUTATING = re.compile(
     r"(^|[;&|]\s*)(rm|rmdir|mv|cp|mkdir|touch|ln|chmod|chown|truncate|dd|tee|install|patch"
     r"|systemctl|loginctl|crontab|timedatectl|apt|apt-get|dpkg|snap|pip|pip3|npm|pnpm|yarn|cargo|go"
@@ -20,7 +25,7 @@ MUTATING = re.compile(
     r"|>>?\s*[^&\s]"
     r"|\bpython\S*\s.*\b(ingest|facts|write|add|rm)\b"
 )
-# явно нешкідливе, навіть якщо збіглося вище
+# clearly harmless, even if it matched above
 READONLY = re.compile(
     r"^\s*(cat|less|head|tail|ls|stat|wc|grep|rg|find|file|df|du|ps|free|uptime|date|which|whoami|env|pwd)\b"
     r"|^\s*git\s+(status|log|diff|show|branch|remote|rev-parse)\b"
@@ -31,7 +36,7 @@ READONLY = re.compile(
 
 
 def classify(payload):
-    """-> (kind, target, detail) або None, якщо подію не логуємо."""
+    """-> (kind, target, detail), or None when the call is not worth logging."""
     tool = payload.get("tool_name") or ""
     inp = payload.get("tool_input") or {}
     if tool in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
@@ -48,8 +53,8 @@ def classify(payload):
         m = MUTATING.search(cmd)
         if READONLY.search(cmd) or not m:
             return None
-        # ярлик події — саме та дія, через яку команда вважається змінною,
-        # а не перший токен (бо він часто `cd` перед heredoc)
+        # label the event with the verb that made the command count as mutating,
+        # not with the first token (often `cd` before a heredoc)
         verb = next((g for g in m.groups()[1:] if g), None) or m.group(0).strip()
         verb = verb.strip(" ;&|")
         if verb.startswith(">"):

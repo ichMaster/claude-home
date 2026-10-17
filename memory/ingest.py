@@ -1,21 +1,24 @@
 #!/usr/bin/env python
-"""Індексація транскриптів сесій у SQLite: повнотекстовий пошук + ембедінги.
+"""Index session transcripts into SQLite: full-text search plus embeddings.
 
-  memory/ingest.py            — доіндексувати нове
-  memory/ingest.py --rebuild  — перебудувати з нуля
+  memory/ingest.py            — index what is new
+  memory/ingest.py --rebuild  — rebuild from scratch
 
-Інкрементально: пам'ятає, скільки байтів файлу вже прочитано.
+Incremental: remembers how many bytes of each file have already been read.
 """
 import json, os, sqlite3, sys, hashlib
 from pathlib import Path
 
-ROOT = Path.home() / ".claude" / "projects"
-DB = Path.home() / "claude-home" / "memory" / "sessions.db"
-MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from noosconf import conf, path
+
+ROOT = path("paths.transcripts")
+DB = path("memory.db")
+MODEL = conf("memory.model")
 CHUNK, OVERLAP = 1400, 200
 
 def text_of(rec):
-    """Витягти читабельний текст із запису транскрипту."""
+    """Extract readable text from one transcript record."""
     m = rec.get("message")
     if not isinstance(m, dict):
         return None
@@ -94,7 +97,7 @@ def main():
                                     rec.get("type"), ch))
         db.execute("INSERT INTO files(path,bytes) VALUES(?,?) "
                    "ON CONFLICT(path) DO UPDATE SET bytes=excluded.bytes", (str(f), size))
-    # факти індексуються завжди заново — їх мало, а правки часті
+    # facts are always reindexed from scratch: few of them, edited often
     facts_dir = Path.home() / "claude-home" / "memory" / "facts"
     if facts_dir.exists():
         db.execute("DELETE FROM fts WHERE rowid IN (SELECT id FROM chunks WHERE project='факти')")
@@ -104,7 +107,7 @@ def main():
             if body:
                 pending.append(("факти", ff.stem, "", "fact", body))
 
-    # імпортовані екстракти з інших агентів — теж заново, їх мало
+    # imported extracts from other agents: same, small and rarely changed
     imp_dir = Path.home() / "claude-home" / "memory" / "import"
     for src in sorted(imp_dir.glob("*/")) if imp_dir.exists() else []:
         proj = src.name

@@ -1,28 +1,35 @@
 #!/usr/bin/env python
-"""Факти, які треба пам'ятати між сесіями.
+"""Facts worth remembering between sessions.
 
-  memory/facts.py add "текст" [--pin 1|2|0] [--tag ім'я ...]
+  memory/facts.py add "text" [--pin 1|2|0] [--tag name ...]
   memory/facts.py list [--all]
-  memory/facts.py prompt          # блок для системної підказки
+  memory/facts.py prompt          # the block injected into the system prompt
   memory/facts.py rm <id>
   memory/facts.py pin <id> <0|1|2>
 
-Кожен факт — окремий файл у memory/facts/. Рівень важливості:
-  1 — критичне, завжди в підказці
-  2 — важливе, потрапляє якщо лишилось місце
-  0 — лише в пошуку
+Every fact is a separate file in the facts directory. Importance levels:
+  1 — critical, always in the prompt
+  2 — important, included if room is left
+  0 — search only
+
+Limits and the directory come from config.json (section `memory`).
 """
-import sys, re, json, datetime
+import sys, re, datetime
 from pathlib import Path
 
-DIR = Path.home() / "claude-home" / "memory" / "facts"
-MAX_FACTS = 100        # скільки взагалі тримаємо
-MAX_IN_PROMPT = 25     # скільки потрапляє в підказку
-MAX_LEN = 240          # обрізання факту в підказці, ~3 рядки
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from noosconf import conf, path
+
+DIR = path("memory.facts_dir")
+MAX_FACTS = conf("memory.max_facts", 100)
+MAX_IN_PROMPT = conf("memory.max_facts_in_prompt", 25)
+MAX_LEN = conf("memory.max_fact_chars", 240)
+
 
 def slug(text):
     s = re.sub(r"[^\w\s-]", "", text.lower())[:40]
     return re.sub(r"\s+", "-", s.strip()) or "fact"
+
 
 def load():
     out = []
@@ -39,6 +46,7 @@ def load():
                     "text": body.strip()})
     return out
 
+
 def add(text, pin, tags):
     DIR.mkdir(parents=True, exist_ok=True)
     facts = load()
@@ -54,7 +62,9 @@ def add(text, pin, tags):
         encoding="utf-8")
     print(name)
 
+
 def prompt():
+    """The pinned block: most important first, trimmed to the prompt budget."""
     facts = sorted([f for f in load() if f["pin"] > 0],
                    key=lambda f: (f["pin"], f["added"]))[:MAX_IN_PROMPT]
     if not facts:
@@ -65,8 +75,9 @@ def prompt():
         if len(t) > MAX_LEN:
             t = t[:MAX_LEN - 1].rstrip() + "…"
         lines.append(f"- {t}")
-    lines += ["", f"(решта фактів і весь архів розмов — через ./memory/search.sh)"]
+    lines += ["", "(решта фактів і весь архів розмов — через ./memory/search.sh)"]
     return "\n".join(lines)
+
 
 cmd = sys.argv[1] if len(sys.argv) > 1 else "list"
 if cmd == "add":
@@ -86,7 +97,8 @@ elif cmd == "rm":
 elif cmd == "pin":
     p = DIR / f"{sys.argv[2]}.md"
     s = p.read_text(encoding="utf-8")
-    p.write_text(re.sub(r"^pin: \d+", f"pin: {sys.argv[3]}", s, count=1, flags=re.M), encoding="utf-8")
+    p.write_text(re.sub(r"^pin: \d+", f"pin: {sys.argv[3]}", s, count=1, flags=re.M),
+                 encoding="utf-8")
     print(f"{sys.argv[2]} → pin {sys.argv[3]}")
 else:
     facts = load()

@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
-# Пошук по минулих сесіях: memory/search.sh "запит" [скільки]
+# Search past sessions: memory/search.sh "query" [count]
 exec "$HOME/claude-home/.venv-voice/bin/python" "$HOME/claude-home/memory/search.py" "$@"

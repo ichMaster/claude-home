@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Коротке самарі змін за день у Telegram. Без кешу run.sh — завжди свіжий зріз.
+# Short daily change summary to Telegram. Bypasses the run.sh cache, always fresh.
 #   status/changes-send.sh [YYYY-MM-DD]
 set -uo pipefail
 cd "$HOME/claude-home"

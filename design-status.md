@@ -1,92 +1,94 @@
-# Статуси, операції, розклади — пропозиція архітектури
+# Status, operations, schedules — the architecture proposal
 
-## Що міняю в твоїй схемі
+## What this changes in the original sketch
 
-Твої чотири категорії змішують дві різні осі:
-- **звідки дані** — локальна система / зовнішній сервіс / веб;
-- **що це за річ** — спостереження чи дія.
+The original four categories mixed two different axes:
+- **where the data comes from** — local system / external service / web;
+- **what the thing is** — an observation or an action.
 
-«Операції» — не категорія статусів, у них інша природа: побічні ефекти, потрібен
-дозвіл, потрібен журнал. Тому примітивів не чотири, а три:
+"Operations" is not a category of statuses; it has a different nature: side effects,
+permission, an audit trail. So there are three primitives, not four:
 
-| Примітив | Суть | Властивість |
+| Primitive | Essence | Property |
 |---|---|---|
-| **Пробник** (`status/probes/*`) | повертає факт | без побічних ефектів, можна запускати будь-коли |
-| **Операція** (`ops/*`) | змінює стан | потребує дозволу, пишеться в журнал |
-| **Розклад** (`schedules/*`) | коли, що зібрати, куди надіслати | нічого не знає про внутрішню кухню |
+| **Probe** (`status/probes/*`) | returns a fact | no side effects, safe to run any time |
+| **Operation** (`ops/*`) | changes state | needs permission, is written to a log |
+| **Schedule** (`schedules/*`) | when, what to collect, where to send | knows nothing about the internals |
 
-Категорія («системне / світ / сервіс») лишається — але як **тег у метаданих**,
-а не як дерево тек. Дерево закостеніє на першому ж пробнику, що є і локальним,
-і сервісним (приклад: графік відключень — зовнішній API, але про твій дім).
+The category ("system / world / service") stays — but as a **tag in metadata**, not as
+a directory tree. A tree ossifies on the first probe that is both local and
+service-backed (example: the outage schedule — an external API, but about your home).
 
-## Єдиний контракт
+## One contract
 
-Кожен пробник друкує один JSON:
+Every probe prints a single JSON object:
 
 ```json
 {"id":"loe","ok":true,"severity":"info","value":{"cherga":"4.1","off":[["18:00","22:00"]]},
  "text":"Черга 4.1: без світла 18:00–22:00","ts":"2026-10-17T18:40:00+03:00","ttl":900}
 ```
 
-- `text` — готовий рядок для дайджесту, щоб розклад не займався форматуванням;
-- `value` — машинні дані, щоб можна було порівнювати зі вчорашнім;
-- `severity` — `info | warn | alert`, керує тим, чи взагалі слати;
-- `ttl` — скільки секунд відповідь вважається свіжою.
+- `text` — a ready-made line for the digest, so the schedule does no formatting;
+- `value` — machine-readable data, so today can be compared with yesterday;
+- `severity` — `info | warn | alert`, decides whether to send at all;
+- `ttl` — how many seconds the answer stays fresh.
 
-## Три оптимізації, які реально важать
+## Three optimizations that actually matter
 
-**1. Кеш із TTL.** Два розклади о 08:00 і 08:05 не мають двічі бити в той самий API.
-Особливо для платних (Deepgram, ElevenLabs) і для LOE, який не любить частих запитів.
+**1. A TTL cache.** Two schedules at 08:00 and 08:05 must not hit the same API twice.
+This matters most for paid APIs (Deepgram, ElevenLabs) and for the outage source, which
+dislikes frequent requests.
 
-**2. Надсилати за зміною, а не за розкладом.** Головний ризик цієї системи — не
-складність, а шум: якщо щоранку приходить однакове «диск 50%, сервіси живі», ти
-перестанеш це читати за тиждень. Тому в розкладі має бути умова:
-`коли: завжди | якщо змінилось | якщо severity>=warn`.
-Для графіка відключень «якщо змінилось» — точно правильний режим: сьогодні його
-оновили о 16:21, і саме це була новина, а не сам факт графіка.
+**2. Send on change, not on schedule.** The main risk here is not complexity but noise:
+if every morning brings the same "disk 50%, services alive", it stops being read within
+a week. So a schedule carries a condition:
+`when: always | if changed | if severity>=warn`.
+For the outage schedule, "if changed" is clearly the right mode: on the day this was
+written the schedule was updated at 16:21, and *that* was the news, not the existence of
+a schedule.
 
-**3. Рівні доставки.** `info` — тихе повідомлення текстом; `warn` — текст із позначкою;
-`alert` — текст + голос. Один канал, три гучності.
+**3. Delivery levels.** `info` — a quiet text message; `warn` — text with a marker;
+`alert` — text plus voice. One channel, three volumes.
 
-## Операції окремо
+## Operations kept separate
 
-`ops/` — те, що щось робить: перезапустити контейнер, звільнити місце, оновити
-індекс, перезібрати модель. Правила інші:
-- за розкладом виконується лише те, що має явний прапорець `auto: true`;
-- усе інше — лише з моєї ініціативи або на твоє прохання, з підтвердженням;
-- кожен запуск — рядок у журналі `ops/log.jsonl`.
+`ops/` is for things that do something: restart a container, free disk space, refresh an
+index, rebuild a model. Different rules apply:
+- only entries with an explicit `auto: true` flag run on a schedule;
+- everything else runs on the assistant's initiative or on request, with confirmation;
+- every run appends a line to `ops/log.jsonl`.
 
-## З чого почати (а не будувати все одразу)
+## Where to start (instead of building everything)
 
-Чотири пробники, які вже мають дані й сьогодні довели користь:
+Four probes that already have data and proved useful on day one:
 
-| id | тег | що показує |
+| id | tag | what it shows |
 |---|---|---|
-| `loe` | сервіс, дім | черга 4.1 + графік на сьогодні, «якщо змінилось» |
-| `host` | система | диск, пам'ять, аптайм, температура |
-| `services` | система, мережа | tmux-сесія, systemd-юніти, контейнери matrix-agora, порти |
-| `weather` | сервіс | погода у Львові на день |
+| `loe` | service, home | grid queue plus today's outage schedule, "if changed" |
+| `host` | system | disk, memory, uptime, temperature |
+| `services` | system, network | tmux session, systemd units, matrix-agora containers, ports |
+| `weather` | service | the day's weather |
 
-Далі — за потребою: тривоги, пошта, календар, новини за темою.
+Then, as needed: air alerts, mail, calendar, news by topic.
 
-## Файлова розкладка
+## File layout
 
 ```
 status/
-  probes/loe.sh        # друкує JSON
+  probes/loe.py        # prints JSON
   probes/host.sh
   probes/services.sh
-  probes/weather.sh
+  probes/weather.py
   meta/loe.json        # {"tags":["сервіс","дім"],"ttl":900}
-  run.sh loe host      # запускає, кешує, віддає масив JSON
+  run.sh loe host      # runs, caches, returns a JSON array
   cache/
 ops/
   log.jsonl
 schedules/
   morning.json         # {"cron":"3 8 * * *","probes":["loe","weather"],"коли":"завжди"}
   evening-check.json   # {"cron":"33 16 * * *","probes":["loe"],"коли":"якщо змінилось"}
-notify.sh              # вже є: доставка в Telegram без участі сесії
+notify.sh              # already exists: Telegram delivery with no session involved
 ```
 
-Розклад виконує `systemd`-таймер, який кличе `status/run.sh` і `notify.sh`.
-Сесія для цього не потрібна — отже працює і при перезапуску, і після ребуту.
+A systemd timer runs the schedule by calling `status/run.sh` and `notify.sh`. No session
+is needed for that, so it survives restarts and reboots.

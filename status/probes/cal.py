@@ -1,17 +1,17 @@
 #!/usr/bin/env python
-"""Пробник: що в календарі від зараз до кінця наступного дня.
+"""Probe: what the calendar holds from now until the end of the next day.
 
-Файл називається cal.py, а не calendar.py, навмисно: інакше він перекриває
-стандартний модуль calendar і ламає імпорт urllib.
+The file is called cal.py rather than calendar.py on purpose: the latter shadows the
+stdlib calendar module and breaks the urllib import.
 
-Джерело — «секретна адреса в формaті iCal» з налаштувань Google Календаря
-(Налаштування календаря → Інтеграція → Секретна адреса в формaті iCal).
-Кладеться в `~/claude-home/.env.calendar`, по рядку на календар:
+The source is the "secret address in iCal format" from Google Calendar settings
+(Calendar settings -> Integrate calendar -> Secret address in iCal format), kept in
+`~/claude-home/.env.calendar`, one line per calendar:
     CAL_особистий=https://calendar.google.com/calendar/ical/.../basic.ics
     CAL_сімейні=https://calendar.google.com/calendar/ical/.../basic.ics
 
-Жодного OAuth: звичайний HTTPS-запит, тому працює і в headless-сесіях.
-Повторювані події розкриваються через RRULE (python-dateutil).
+No OAuth: a plain HTTPS request, so it works in headless sessions too. Recurring
+events are expanded through RRULE (python-dateutil).
 """
 import json, re, sys
 from urllib.request import urlopen
@@ -21,7 +21,10 @@ from zoneinfo import ZoneInfo
 
 from dateutil.rrule import rrulestr
 
-HOME = Path.home() / "claude-home"
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from noosconf import conf, path
+
+HOME = path("paths.home")
 ENV = HOME / ".env.calendar"
 TZ = ZoneInfo("Europe/Kyiv")
 HORIZON_DAYS = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else 1
@@ -46,12 +49,12 @@ def env():
 
 
 def unfold(text):
-    """У iCal довгі рядки переносяться пробілом на початку наступного."""
+    """In iCal long lines are folded with a leading space on the next line."""
     return re.sub(r"\r?\n[ \t]", "", text)
 
 
 def parse_dt(value, params):
-    """DTSTART/DTEND -> (datetime у Києві, чи це цілий день)."""
+    """DTSTART/DTEND -> (datetime in the local zone, whether it is all-day)."""
     if "VALUE=DATE" in params or re.fullmatch(r"\d{8}", value):
         d = datetime.strptime(value, "%Y%m%d").replace(tzinfo=TZ)
         return d, True
@@ -70,7 +73,7 @@ def parse_dt(value, params):
 
 
 def events(ics, lo, hi):
-    """Події, що перетинаються з [lo, hi): звичайні і розкриті повторювані."""
+    """Events overlapping [lo, hi): plain ones plus expanded recurrences."""
     res = []
     for block in re.findall(r"BEGIN:VEVENT(.*?)END:VEVENT", unfold(ics), re.S):
         fields = {}

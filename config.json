@@ -1,0 +1,112 @@
+{
+  "_": "Shared configuration. Neutral defaults live here and are committed; machine- and person-specific values go to config.local.json, which is git-ignored and merged on top.",
+  "paths": {
+    "home": "~/claude-home",
+    "python": "~/claude-home/.venv-voice/bin/python",
+    "transcripts": "~/.claude/projects"
+  },
+  "memory": {
+    "db": "memory/sessions.db",
+    "facts_dir": "memory/facts",
+    "model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    "max_facts": 100,
+    "max_facts_in_prompt": 25,
+    "max_fact_chars": 240,
+    "rrf_k": 60
+  },
+  "user": {
+    "name": "користувача",
+    "city": "його міста",
+    "vocative": ""
+  },
+  "locale": {
+    "timezone": "Europe/Kyiv",
+    "speech_language": "uk"
+  },
+  "probes": {
+    "loe": {
+      "url": "https://alerts.energy/lvivska-oblast",
+      "queue": "4.1",
+      "ttl": 900
+    },
+    "alarm": {
+      "url": "https://vadimklimenko.com/map/statuses.json",
+      "region": "Львівська область",
+      "district": "Львівський район",
+      "ttl": 60
+    },
+    "weather": {
+      "city": "Lviv",
+      "ttl": 1800,
+      "display_name": "Львів"
+    },
+    "cal": {
+      "horizon_days": 1,
+      "ttl": 900
+    },
+    "mail": {
+      "imap_host": "imap.gmail.com",
+      "imap_port": 993,
+      "lookback_days": 2,
+      "max_messages": 60,
+      "ttl": 600
+    },
+    "news": {
+      "ttl": 3600
+    },
+    "host": {
+      "ttl": 300
+    },
+    "services": {
+      "ttl": 120
+    },
+    "tasks": {
+      "ttl": 120
+    },
+    "changes": {
+      "ttl": 300
+    }
+  },
+  "digest": {
+    "items_per_topic": 2,
+    "items_total": 4,
+    "model": "claude-opus-5"
+  },
+  "changelog": {
+    "dir": "changelog",
+    "max_detail_chars": 400
+  },
+  "tasks": {
+    "store": "tasks/tasks.jsonl",
+    "view": "tasks/open.md",
+    "default_estimate_min": 60,
+    "calendar": {
+      "name": "Noos",
+      "id": ""
+    },
+    "sleep": {
+      "from": "00:00",
+      "to": "08:00"
+    },
+    "planning": {
+      "window": "08:00-24:00",
+      "avoid_outages": true,
+      "max_deep_hours": 4,
+      "min_block_min": 30
+    },
+    "mirror": {
+      "all_day_events": true,
+      "marks": {
+        "open": "☐",
+        "done": "☑"
+      },
+      "rule": "a task with a date or period but no time block becomes an all-day event with availability=FREE; backlog items and Noos's own technical tasks stay out of the calendar"
+    }
+  },
+  "watch": {
+    "remind_after_sec": 10800
+  },
+  "voice": {
+    "sample_rate": 48000
+  }
+}

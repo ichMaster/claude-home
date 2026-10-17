@@ -1,14 +1,18 @@
 #!/usr/bin/env python
-"""Пробник: самарі змін із changelog/ за день.
+"""Probe: summary of the day's changes from changelog/.
 
-changelog/YYYY-MM-DD.jsonl наповнює PostToolUse-хук (changelog/hook.py).
-Аргумент — дата YYYY-MM-DD, за замовчуванням сьогодні.
+changelog/YYYY-MM-DD.jsonl is filled by the PostToolUse hook (changelog/hook.py).
+The argument is a YYYY-MM-DD date, today by default.
 """
 import json, os, sys
 from collections import Counter
 from datetime import datetime
+from pathlib import Path
 
-DIR = os.path.expanduser("~/claude-home/changelog")
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from noosconf import conf, path
+
+DIR = str(path("changelog.dir"))
 day = sys.argv[1] if len(sys.argv) > 1 else datetime.now().strftime("%Y-%m-%d")
 path = os.path.join(DIR, f"{day}.jsonl")
 

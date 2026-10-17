@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# Реєструє меню команд бота (Bot API setMyCommands). Ідемпотентно — перезапис повного списку.
-#   telegram/commands.sh          — поставити набір нижче
-#   telegram/commands.sh --зняти  — прибрати меню
-# Імена команд лише [a-z0-9_]; опис — українською, його видно в меню.
+# Register the bot command menu (Bot API setMyCommands). Idempotent: the whole list
+# is replaced.
+#   telegram/commands.sh          — install the set below
+#   telegram/commands.sh --remove  — remove the menu
+# Command names are [a-z0-9_] only; descriptions are Ukrainian — the user sees them.
 set -euo pipefail
 cd "$HOME/claude-home"
 set -a; . "$HOME/claude-home/.env.telegram"; set +a
 API="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}"
 
-if [ "${1:-}" = "--зняти" ]; then
+if [ "${1:-}" = "--remove" ]; then
   curl -sS -m 20 -X POST "$API/deleteMyCommands" | head -c 200; echo; exit 0
 fi
 
@@ -32,17 +33,17 @@ read -r -d '' COMMANDS <<'JSON' || true
 ]
 JSON
 
-# глобально (усі приватні чати)
+# globally (all private chats)
 curl -sS -m 20 -X POST "$API/setMyCommands" \
   -H "Content-Type: application/json" \
   -d "{\"commands\": $COMMANDS}" | head -c 200; echo
 
-# ще й точково для свого чату — клієнт підхоплює такий список швидше за кеш
+# and for this chat specifically — clients pick that list up faster than the cache
 curl -sS -m 20 -X POST "$API/setMyCommands" \
   -H "Content-Type: application/json" \
   -d "{\"commands\": $COMMANDS, \"scope\": {\"type\": \"chat\", \"chat_id\": ${TELEGRAM_CHAT_ID}}}" | head -c 200; echo
 
-# кнопка меню замість вкладки веб-застосунку
+# menu button instead of the web-app tab
 curl -sS -m 20 -X POST "$API/setChatMenuButton" \
   -H "Content-Type: application/json" \
   -d "{\"chat_id\": ${TELEGRAM_CHAT_ID}, \"menu_button\": {\"type\": \"commands\"}}" | head -c 200; echo

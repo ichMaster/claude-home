@@ -36,3 +36,6 @@ __pycache__/
 *.tmp
 # конфіг із реальним id календаря
 tasks/config.json
+
+# локальні значення конфігу (ім’я, id календаря)
+config.local.json

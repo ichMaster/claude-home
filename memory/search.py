@@ -1,23 +1,26 @@
 #!/usr/bin/env python
-"""Пошук по всіх минулих сесіях: гібрид повнотекстового і смислового.
+"""Search across all past sessions: hybrid full-text and semantic.
 
-  memory/search.py "запит" [скільки]
+  memory/search.py "query" [count]
 
-Два списки (BM25 і косинус по ембедінгах) зливаються ранговим злиттям,
-тому знаходиться і дослівний збіг, і переказ іншими словами.
+Two ranked lists (BM25 and cosine over embeddings) are merged with reciprocal rank
+fusion, so both a literal match and a paraphrase are found.
 """
 import sys, sqlite3, numpy as np
 from pathlib import Path
 
-DB = Path.home() / "claude-home" / "memory" / "sessions.db"
-MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-K = 60  # константа рангового злиття
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from noosconf import conf, path
+
+DB = path("memory.db")
+MODEL = conf("memory.model")
+K = conf("memory.rrf_k", 60)  # reciprocal rank fusion constant
 
 q = sys.argv[1]
 top = int(sys.argv[2]) if len(sys.argv) > 2 else 8
 db = sqlite3.connect(DB)
 
-# 1. повнотекстовий: беремо слова довші за 2 символи, зшиваємо через OR
+# 1. full-text: words longer than 2 characters, joined with OR
 words = [w for w in "".join(c if c.isalnum() else " " for c in q).split() if len(w) > 2]
 bm = []
 if words:
@@ -28,7 +31,7 @@ if words:
     except sqlite3.OperationalError:
         bm = []
 
-# 2. смисловий: косинус по ембедінгах
+# 2. semantic: cosine over embeddings
 from fastembed import TextEmbedding
 qv = np.asarray(list(TextEmbedding(model_name=MODEL, cache_dir=str(Path.home() / "claude-home" / "memory" / "models")).embed([q]))[0], dtype="float32")
 ids, mat = [], []
@@ -40,7 +43,7 @@ if mat:
     sims = M @ qv / (np.linalg.norm(M, axis=1) * np.linalg.norm(qv) + 1e-9)
     sem = [ids[j] for j in np.argsort(-sims)[:50]]
 
-# 3. рангове злиття
+# 3. reciprocal rank fusion
 score = {}
 for rank, i in enumerate(bm):
     score[i] = score.get(i, 0) + 1 / (K + rank)

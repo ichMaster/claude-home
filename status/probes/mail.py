@@ -1,24 +1,27 @@
 #!/usr/bin/env python
-"""Пробник: що нового в пошті Gmail з минулої перевірки.
+"""Probe: what is new in Gmail since the previous check.
 
-Працює через IMAP (`imap.gmail.com`), читає лише заголовки і нічого не позначає
-прочитаним (BODY.PEEK). Ключі — у `~/claude-home/.env.gmail`:
-    GMAIL_USER=твоя-адреса@gmail.com
-    GMAIL_APP_PASSWORD=xxxxxxxxxxxxxxxx   # пароль застосунку, не пароль акаунта
+Works over IMAP, reads headers only and marks nothing as read (BODY.PEEK).
+Keys live in `~/claude-home/.env.gmail`:
+    GMAIL_USER=your-address@gmail.com
+    GMAIL_APP_PASSWORD=xxxxxxxxxxxxxxxx   # an app password, not the account password
 
-Стан (останній побачений UID) — `status/state/mail.json`, тому «нові» означає
-«ті, яких не було на минулій перевірці», а не «непрочитані».
+State (the last seen UID) is `status/state/mail.json`, so "new" means "was not there
+at the previous check" rather than "unread".
 """
 import email, imaplib, json, os, re, sys
 from datetime import datetime, timedelta
 from email.header import decode_header, make_header
 from pathlib import Path
 
-HOME = Path.home() / "claude-home"
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from noosconf import conf, path
+
+HOME = path("paths.home")
 STATE = HOME / "status" / "state" / "mail.json"
 ENV = HOME / ".env.gmail"
 RULES = HOME / "status" / "mail-rules.json"
-LOOKBACK_DAYS = 2          # скільки днів дивимось, коли стану ще немає
+LOOKBACK_DAYS = conf("probes.mail.lookback_days", 2)  # window used when no state yet
 
 DEFAULT_RULES = {
     "шум": ["newsletters-noreply@linkedin.com", "udemymail.com", "aliexpress.com",

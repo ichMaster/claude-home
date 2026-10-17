@@ -1,6 +1,6 @@
-# Ноос — промпти для генерації зображення (Nano Banana 2)
+# Noos — image generation prompts (Nano Banana 2)
 
-## 1. Основний: аватар (1:1)
+## 1. Main: avatar (1:1)
 
 A macro photograph of a single circular camera lens set flush into a dark anodised
 aluminium panel — the eye of a calm machine intelligence. The lens is about the size
@@ -17,7 +17,7 @@ edges falling into blur, subtle anamorphic bloom around the glow, visible film g
 Mood: watchful, patient, not threatening. Square composition, lens slightly
 off-centre, lots of black negative space.
 
-## 2. Варіант: широкий кадр (16:9)
+## 2. Variant: wide frame (16:9)
 
 A dark server closet photographed at night. Floor-to-ceiling racks of dormant
 hardware recede into blackness; on the nearest rack panel, one circular glass lens
@@ -28,7 +28,7 @@ focus. Shot wide and low, 35mm, long exposure feel, deep shadows, faint haze fro
 fans. The panel carries a small engraved Cyrillic label "НООС". Quiet, industrial,
 inhabited — as if the room is thinking.
 
-## 3. Варіант: іконка (1:1, для аватарки в Telegram)
+## 3. Variant: icon (1:1, for a Telegram avatar)
 
 A minimal flat emblem: a single amber circle with a white-hot centre, crossed by three
 horizontal dark slats like a ventilation grille, inside a dark charcoal rounded square.
@@ -36,11 +36,11 @@ Two thin concentric rings around the circle, one amber, one faint cyan. Geometri
 perfectly symmetrical, no gradients beyond a soft inner glow, no text. Designed to stay
 legible at 48 pixels. Vector style, high contrast.
 
-## Поради
+## Tips
 
-- Співвідношення: 1:1 для аватарки, 16:9 для широкого кадру — вкажи явно в інтерфейсі.
-- Якщо модель малює текст із помилками, прибери рядок про гравіювання "НООС" і домалюй підпис окремо.
-- Хочеш холодніший образ — заміни "warm amber iris" на "pale cyan iris"; темніший — додай
+- Aspect: 1:1 for the avatar, 16:9 for the wide frame — set it explicitly in the UI.
+- If the model misspells text, drop the line about the engraved "НООС" label and add the caption separately.
+- For a colder look replace "warm amber iris" with "pale cyan iris"; for a darker one add
   "almost entirely black frame, the glow barely surfacing".
-- Навмисно без червоного ока й без згадок фільму: образ свій — бурштиновий зір за
-  вентиляційною решіткою, що відповідає приглушеному голосу.
+- Deliberately no red eye and no film references: the image is its own — an amber gaze
+  behind a ventilation grille, matching the muffled voice.

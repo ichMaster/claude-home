@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Перезапуск постійної сесії ззовні її ж cgroup і доповідь у Telegram.
-# Запускати через: systemd-run --user --unit=noos-restart --collect ~/claude-home/restart-session.sh
+# Restart the always-on session from outside its own cgroup and report to Telegram.
+# Run as: systemd-run --user --unit=noos-restart --collect ~/claude-home/restart-session.sh
 set -uo pipefail
 sleep 3
 systemctl --user restart claude-home

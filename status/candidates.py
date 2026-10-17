@@ -1,26 +1,29 @@
 #!/usr/bin/env python
-"""Збирає кандидатів на дайджест і друкує їх для читання — без виклику моделі.
+"""Collect digest candidates and print them for reading — no model call.
 
-  candidates.py [тема ...]     — усі теми, якщо не вказано
+  candidates.py [topic ...]    — all topics when none is given
 
-Я читаю цей вивід сам і сам обираю, що варте уваги: ключ до API не потрібен,
-бо відбір робить сесія, а не окремий виклик.
+The session reads this output and picks what matters itself, so no API key is
+needed: the selection is made by the session, not by a separate call.
 """
 import json, random, subprocess, sys
 from pathlib import Path
 
-HOME = Path.home() / "claude-home"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from noosconf import conf, path
+
+HOME = path("paths.home")
 PYB = str(HOME / ".venv-voice" / "bin" / "python")
 TOPICS = HOME / "status" / "topics"
 
 argv = sys.argv[1:]
-body_len = 1800 if "--повні" in argv else 600
+body_len = 1800 if "--full" in argv else 600
 
-# --навмання [N] — N випадкових тем зі списку (за замовчуванням 3),
-# щоб дайджест не був щоразу тією самою вісімкою
+# --random [N] picks N random topics (3 by default) so the digest is not
+# always the same eight
 rand_n = 0
-if "--навмання" in argv:
-    i = argv.index("--навмання")
+if "--random" in argv:
+    i = argv.index("--random")
     if len(argv) > i + 1 and argv[i + 1].isdigit():
         rand_n = int(argv[i + 1])
         argv.pop(i + 1)

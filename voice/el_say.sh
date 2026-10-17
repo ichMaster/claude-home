@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Озвучка через ElevenLabs: voice/el_say.sh <out.mp3> "текст"
-# Голос і темп можна перекрити через env: ELEVENLABS_VOICE_ID, ELEVENLABS_SPEED (0.7–1.2), ELEVENLABS_STABILITY
+# Synthesis via ElevenLabs: voice/el_say.sh <out.mp3> "text"
+# Voice and pace are overridable: ELEVENLABS_VOICE_ID, ELEVENLABS_SPEED (0.7-1.2), ELEVENLABS_STABILITY
 set -euo pipefail
 ov="${ELEVENLABS_VOICE_ID:-}"; osp="${ELEVENLABS_SPEED:-}"; ost="${ELEVENLABS_STABILITY:-}"
 cfg="$HOME/claude-home/.env.voice"

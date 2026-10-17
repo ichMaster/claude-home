@@ -1,86 +1,85 @@
-# Задачі й планування — концепт
+# Tasks and planning — the concept
 
-Дата: 17.10.2026. Статус: пропозиція, нічого ще не зроблено.
+Date: 2026-10-17. Status: proposal; step 1 is built, step 2 is not.
 
-## Принцип
+## Principle
 
-Задачі живуть у простому локальному файлі, план — у **окремому** календарі.
-Я ніколи не чіпаю твої справжні події: лише створюю й прибираю власні блоки
-в календарі «Ноос — план». Будь-який мій слід видаляється одним «прибери план».
+Tasks live in a plain local file; the plan lives in a **separate** calendar. The user's
+real events are never touched: Noos only creates and removes its own blocks in the
+`Noos` calendar. Every trace it leaves can be removed with one "clear the plan".
 
-## 1. Звідки беруться задачі
+## 1. Where tasks come from
 
-| Джерело | Як це виглядає |
+| Source | What it looks like |
 |---|---|
-| Telegram, текст | `+ полагодити індексацію до п'ятниці` — все після `+` стає задачею |
-| Telegram, голос | «додай задачу: передзвонити в банк завтра» — розпізнаю й створюю |
-| Команда меню | `/task` — покаже список, `/plan` — перепланує день |
-| Пошта | у дайджесті пропоную кандидатів: «ASU I-20 — потрібна дія» → додати? так/ні |
-| Я сам | коли ти кажеш «нагадай», «не забудь», «треба зробити» — питаю, чи заводити |
+| Telegram, text | `+ fix the indexer by Friday` — everything after `+` becomes a task |
+| Telegram, voice | "add a task: call the bank tomorrow" — recognized and created |
+| Menu command | `/task` lists, `/plan` reschedules the day |
+| Mail | the digest proposes candidates: "ASU I-20 — action required" → add? yes/no |
+| Noos itself | when the user says "remind me", "don't let me forget", it asks whether to file it |
 
-Розбір дати й часу — природною мовою: «завтра», «у п'ятницю», «до 1 листопада»,
-«щовівторка». Без дати задача просто лежить у беклозі.
+Dates and times are parsed from natural language: "завтра", "у п'ятницю",
+"до 1 листопада", "щовівторка". Without a date a task simply sits in the backlog.
 
-## 2. Де вони лежать
+## 2. Where they live
 
-`tasks/tasks.jsonl` — по рядку на подію, тільки дозапис (як `changelog/`):
-створення, зміна, закриття. Поточний стан збирається з історії, тому нічого
-не губиться і видно, коли й чому задача з'явилась.
+`tasks/tasks.jsonl` — one line per event, append-only (like `changelog/`): creation,
+change, closing. Current state is replayed from the history, so nothing is lost and it
+stays visible when and why a task appeared.
 
-Поля: `id`, `title`, `project`, `due`, `estimate` (хв), `priority`, `energy`
-(глибока робота / рутина), `status`, `source`, `created`, `closed`.
+Fields: `id`, `title`, `project`, `due`, `estimate` (minutes), `priority`, `energy`
+(deep work / routine), `status`, `source`, `created`, `closed`.
 
-`tasks/open.md` — похідний людський вигляд, щоб можна було глянути очима
-або відкрити в редакторі.
+`tasks/open.md` — a derived human-readable view, for glancing at or opening in an editor.
 
-## 3. Планування в календарі
+## 3. Planning in the calendar
 
-Окремий календар **«Ноос — план»**, який ти створюєш раз у Google Календарі
-(мені потрібен лише його id). Туди я кладу блоки часу.
+A separate **`Noos`** calendar, created once in Google Calendar (only its id is needed).
+Time blocks go there.
 
-Як обираю слоти:
-1. Беру зайнятість з твоїх календарів (особистий, «Сімейні») — у ці години не лізу.
-2. Відкидаю вікна відключень світла з пробника `loe` — важку роботу не ставлю
-   на час без світла, туди йде офлайнова рутина або нічого.
-3. Розкладаю задачі: глибока робота — великими блоками, рутина — дрібними.
-4. Враховую, що ти часто працюєш уночі: пізні години не вважаю «поза робочим часом».
-5. Нічого не ставлю щільніше, ніж 3-4 години предметної роботи на день.
+How slots are chosen:
+1. Busy time is read from the user's calendars (personal, family) — those hours are
+   off limits.
+2. Power-outage windows from the `loe` probe are excluded — heavy work is not scheduled
+   into a blackout; offline routine goes there instead, or nothing.
+3. Tasks are laid out: deep work in large blocks, routine in small ones.
+4. Night hours count as working hours, because that is when the user often works.
+5. Nothing denser than 3-4 hours of substantive work per day.
 
-Кожен блок — звичайна подія з назвою задачі й посиланням на її id в описі.
-Пересунув блок руками — на наступному плануванні я це поважаю, а не затираю.
+Each block is an ordinary event named after the task, with its id in the description.
+A block moved by hand is respected at the next planning pass, not overwritten.
 
-## 4. Ритм
+## 4. Rhythm
 
-- **08:03, ранковий дайджест** — додається розділ «План на день»: 3-5 блоків,
-  найближчі дедлайни, що прострочено.
-- **20:03 або 23:30** — коротке «що закрив?»: перелічую сьогоднішні блоки,
-  ти відповідаєш голосом однією реплікою, я закриваю або переношу.
-- **Будь-коли** — `/tasks`, `/plan`, `+ нова задача`, «зроблено: індексація».
+- **08:03, morning digest** — adds a "Plan for the day" section: 3-5 blocks, the nearest
+  deadlines, what is overdue.
+- **20:03 or 23:30** — a short "what did you close?": the day's blocks are listed, the
+  user answers in one voice message, Noos closes or defers them.
+- **Any time** — `/tasks`, `/plan`, `+ new task`, "done: indexing".
 
-## 5. Межі
+## 5. Boundaries
 
-- Пишу тільки у власний календар. Твої події — read-only, навіть якщо я бачу конфлікт.
-- Нічого не надсилаю людям від твого імені без прямої вказівки.
-- Жодного нагадування «а ти зробив?» частіше, ніж раз на день.
-- Файл задач append-only: історія не переписується.
+- Writes only to its own calendar. The user's events are read-only, even when a conflict
+  is visible.
+- Sends nothing to anyone on the user's behalf without an explicit instruction.
+- No "have you done it yet?" more than once a day.
+- The task file is append-only: history is never rewritten.
 
-## 6. Що зробити, по кроках
+## 6. Steps
 
-**Крок 1 (півгодини роботи, користь одразу):**
-сховище `tasks.jsonl`, парсер дат, команди `/tasks`, `+задача`, `зроблено: …`,
-розділ «Задачі» в дайджесті. Календаря ще не чіпаємо.
+**Step 1 (built):** the `tasks.jsonl` store, the date parser, `/tasks`, `+task`,
+`done: …`, and a "Tasks" section in the digest. No calendar involved.
 
-**Крок 2:** календар «Ноос — план», автопланування з урахуванням зайнятості
-й графіка світла, блоки на завтра складаються ввечері.
+**Step 2 (not built):** the `Noos` calendar and automatic planning that accounts for
+busy time and the outage schedule; tomorrow's blocks are laid out in the evening.
 
-**Крок 3:** кандидати із пошти (лист із дедлайном → пропозиція задачі) і
-щотижневий огляд у неділю ввечері: що зроблено, що зависло, що викинути.
+**Step 3:** candidates from mail (a letter with a deadline → a proposed task) and a
+Sunday review: done, stalled, drop.
 
-## 7. Що потрібно від тебе
+## 7. What is needed from the user
 
-1. Рішення: сховище локальне (рекомендую) чи в Notion — конектор у мене є,
-   але це повільніше й залежить від мережі.
-2. Створити порожній календар «Ноос — план» і дати мені його назву —
-   далі я знайду id сам.
-3. Робочі межі: з котрої до котрої не планувати нічого (наприклад, до 9:00
-   і після 1:00), і скільки годин предметної роботи вважати денною нормою.
+1. Storage: local (recommended) or Notion — the connector exists, but it is slower and
+   network-dependent. **Decided: local.**
+2. Create an empty `Noos` calendar and name it — Noos finds the id itself. **Done.**
+3. Working boundaries: when not to plan anything, and how many hours of substantive work
+   count as a day's worth. **Decided: any time except sleep 00:00-08:00.**

@@ -1,205 +1,259 @@
-# Ноос — постійний асистент
+# Noos — the always-on assistant
 
-Персона (ім'я, характер, тон, правило уточнювати при низькій впевненості): `persona.md`. Застосовується і в терміналі, і в Telegram;
-`start.sh` передає її через `--append-system-prompt`.
+Persona (name, character, tone, the rule about asking when confidence is low):
+`persona.md`. It applies both in the terminal and in Telegram; `start.sh` passes it
+via `--append-system-prompt`.
 
-Ця сесія працює 24/7 на цьому комп'ютері (tmux-сесія `claude`, systemd-сервіс `claude-home`).
-До неї підключаються три способи: термінал (`tmux attach -t claude`), Claude desktop / claude.ai/code (Remote Control, сесія "home") і Telegram-бот.
+This session runs 24/7 on this machine (tmux session `claude`, systemd service
+`claude-home`). Three ways to reach it: the terminal (`tmux attach -t claude`),
+Claude desktop / claude.ai/code (Remote Control, session "home"), and the Telegram bot.
 
-- **ВАЖЛИВО:** повідомлення з Telegram приходять як `<channel source="telegram" chat_id=...>`. Користувач у Telegram НЕ бачить твій текст у терміналі — кожну відповідь на таке повідомлення ОБОВ'ЯЗКОВО надсилай інструментом `reply` (telegram) з тим самим `chat_id`. Коротко, українською.
-- Довгі результати зберігай у файли тут і надсилай шлях або файл.
+- **IMPORTANT:** Telegram messages arrive as `<channel source="telegram" chat_id=...>`.
+  The user in Telegram does NOT see your terminal output — every answer to such a
+  message MUST go out through the `reply` tool (telegram) with the same `chat_id`.
+  Short, in Ukrainian.
+- Long results go to files here; send the path or the file itself.
 
-## Голос (Telegram)
+**Language rule:** documentation, code comments and commit messages are English.
+Conversation with the user is Ukrainian; so are user-facing strings (probe output,
+digests, Telegram replies) and the Ukrainian CLI flags of `tasks/store.py`.
 
-Ключі: `~/claude-home/.env.voice` (права 600) — ElevenLabs + Deepgram, приїхали з проєкту lumi.
-Venv для локального резерву: `~/claude-home/.venv-voice` (faster-whisper + edge-tts; ставився через `virtualenv`, бо `python3-venv` немає).
+## Voice (Telegram)
 
-**Основний шлях (швидкий):**
-- Розпізнати: `./voice/dg_stt.sh <файл.oga> uk` — Deepgram `nova-3`, ~1 с на 15 с аудіо.
-  `nova-2` на українській плутає власні назви — не використовуй.
-- Озвучити: `./voice/reply.sh "текст" <out.ogg>` — один крок: ElevenLabs (голос **HAL-UA**,
-  `$ELEVENLABS_VOICE_ID` з `.env.voice`) → `.ogg` для `reply`.
-  Фільтр приглушення за замовчуванням **вимкнений** (чистий голос звучить краще);
-  `voice/muffle.py` лишився — вмикається третім аргументом або `NOOS_MUFFLE=light|medium|heavy`.
-  Голос/темп/приглушення перекриваються через env: `ELEVENLABS_VOICE_ID`, `ELEVENLABS_SPEED` (0.7-1.2),
-  `ELEVENLABS_STABILITY`, `NOOS_MUFFLE` (light|medium|heavy).
+Keys: `~/claude-home/.env.voice` (mode 600) — ElevenLabs + Deepgram, inherited from the
+lumi project. Virtualenv: `~/claude-home/.venv-voice` (built with `virtualenv`, because
+`python3-venv` is not installed).
 
-**Резерв:** локального більше немає — whisper і його модель видалені 17.10.2026 як невикористані
-(звільнено 1,9 ГБ). Якщо знадобиться офлайн-розпізнавання, повернути так:
-`.venv-voice/bin/pip install faster-whisper` + скрипт на `WhisperModel("large-v3-turbo", compute_type="int8")`.
-`./voice/el_stt.sh <файл.oga> ukr` — ElevenLabs Scribe, запасний шлях на випадок збою Deepgram (не тестувався).
+**Main path (fast):**
+- Recognize: `./voice/dg_stt.sh <file.oga> uk` — Deepgram `nova-3`, ~1 s per 15 s of
+  audio. `nova-2` mangles Ukrainian proper nouns — do not use it.
+- Synthesize: `./voice/reply.sh "text" <out.ogg>` — one step: ElevenLabs (voice
+  **HAL-UA**, `$ELEVENLABS_VOICE_ID` from `.env.voice`) → `.ogg` ready for `reply`.
+  The muffle filter is **off** by default (the clean voice sounds better);
+  `voice/muffle.py` is still there — enable it with a third argument or
+  `NOOS_MUFFLE=light|medium|heavy`. Voice, speed and muffling are overridable via env:
+  `ELEVENLABS_VOICE_ID`, `ELEVENLABS_SPEED` (0.7-1.2), `ELEVENLABS_STABILITY`,
+  `NOOS_MUFFLE`.
 
-- **ВАЖЛИВО:** кожну голосову відповідь ОБОВ'ЯЗКОВО дублюй текстом у тому ж `reply`, і цитуй розпізнаний текст, щоб користувач міг виправити.
-- У тексті для синтезу не використовуй латиницю й скорочення — записуй словами українською.
-- Плагін надсилає файли через `sendDocument`, тому аудіо приходить як файл, а не як нативне голосове.
+**Fallback:** there is no local one any more — whisper and its model were deleted on
+2026-10-17 as unused (1.9 GB freed). To bring offline recognition back:
+`.venv-voice/bin/pip install faster-whisper` plus a script around
+`WhisperModel("large-v3-turbo", compute_type="int8")`.
+`./voice/el_stt.sh <file.oga> ukr` — ElevenLabs Scribe, a backup path in case Deepgram
+fails (untested).
 
-## Меню команд у Telegram
+- **IMPORTANT:** every voice reply MUST be duplicated as text in the same `reply`, and
+  the recognized text quoted back so the user can correct it.
+- In text meant for synthesis, avoid Latin script and abbreviations — spell things out
+  in Ukrainian words.
+- The plugin sends files via `sendDocument`, so audio arrives as a file rather than a
+  native voice message.
 
-`telegram/commands.sh` реєструє меню бота через `setMyCommands` (`--зняти` прибирає).
-Імена команд лише `[a-z0-9_]`, опис — українською. Натиснута команда приходить
-звичайним повідомленням, обробляю її я — тобто працює лише коли сесія жива.
+## Telegram command menu
 
-| Команда | Що робити |
+`telegram/commands.sh` registers the bot menu via `setMyCommands` (`--remove` removes
+it). Command names are `[a-z0-9_]` only; descriptions are Ukrainian. A tapped command
+arrives as an ordinary message and is handled by the session — so it only works while
+the session is alive.
+
+| Command | What to run |
 |---|---|
 | `/power` | `./status/send.sh loe` |
 | `/alarm` | `./status/send.sh alarm` |
 | `/weather` | `./status/send.sh weather` |
 | `/host` | `./status/send.sh host services` |
-| `/status` | `./status/send.sh --заголовок "Стан" loe alarm weather host services` |
+| `/status` | `./status/send.sh --title "Стан" loe alarm weather host services` |
 | `/mail` | `./status/send.sh mail` |
 | `/calendar` | `./status/send.sh cal` |
 | `/tasks` | `./status/send.sh tasks` |
-| `/task <текст>` | `tasks/store.py add "<текст>"` — дата й період розбираються з тексту |
-| `/done <id\|назва>` | `tasks/store.py done …` |
-| `/plan <id> <коли> [хв]` | створити подію в календарі `Noos` конектором → `store.py link` |
-| `/unplan <id>` | видалити подію конектором → `store.py unlink` |
-| `/today` | події дня з календарів + `run.sh tasks` |
+| `/task <text>` | `tasks/store.py add "<text>"` — date and period are parsed out of the text |
+| `/done <id\|title>` | `tasks/store.py done …` |
+| `/plan <id> <when> [min]` | create an event in the `Noos` calendar via the connector → `store.py link` |
+| `/unplan <id>` | delete the event via the connector → `store.py unlink` |
+| `/today` | today's events from the calendars + `run.sh tasks` |
 | `/changes` | `./status/changes-send.sh` |
-| `/digest` | `./status/digest-headless.sh вечірній` (або `ранковий`) |
+| `/digest` | `./status/digest-headless.sh вечірній` (or `ранковий`) |
 
-## Пам'ять про минулі сесії (RAG)
+## Memory of past sessions (RAG)
 
-Усі транскрипти з `~/.claude/projects/**/*.jsonl` індексуються у `memory/sessions.db`
-(SQLite: FTS5 + ембедінги `paraphrase-multilingual-MiniLM-L12-v2`).
+Every transcript under `~/.claude/projects/**/*.jsonl` is indexed into
+`memory/sessions.db` (SQLite: FTS5 + `paraphrase-multilingual-MiniLM-L12-v2`
+embeddings).
 
-- **Шукати:** `./memory/search.sh "запит" [скільки]` — гібрид повнотекстового і смислового
-  пошуку з ранговим злиттям. Видає фрагменти з датою, роллю, проєктом і сесією. ~2 с на запит.
-- **Коли шукати:** користувач посилається на минулі розмови («ми вже налаштовували», «як я
-  тоді просив», «що ми вирішили з…»), або треба згадати рішення, якого немає в контексті.
-  Шукай, а не кажи «не пам'ятаю».
-- **Індексація:** автоматично таймером `claude-memory.timer` раз на 15 хв, інкрементально
-  по зміщенню у файлі. Вручну: `.venv-voice/bin/python memory/ingest.py`, повна перебудова — `--rebuild`.
-- Це не заміна каталогу `~/.claude/projects/-home-ich-claude-home/memory/`: там стислі факти
-  про користувача, тут — повний архів розмов для пошуку.
+- **Search:** `./memory/search.sh "query" [count]` — hybrid full-text and semantic
+  search with reciprocal rank fusion. Returns fragments with date, role, project and
+  session. ~2 s per query.
+- **When to search:** the user refers to past conversations ("we already set this up",
+  "like I asked back then", "what did we decide about…"), or a decision needs to be
+  recalled that is not in context. Search instead of saying "I don't remember".
+- **Indexing:** automatic, `claude-memory.timer` every 15 min, incremental by file
+  offset. Manual: `.venv-voice/bin/python memory/ingest.py`; full rebuild with
+  `--rebuild`.
+- This does not replace `~/.claude/projects/-home-ich-claude-home/memory/`: that holds
+  compact facts about the user, this is the full searchable conversation archive.
 
-## Закріплені факти
+## Pinned facts
 
-`memory/facts/` — по файлу на факт, керування через `memory/facts.py`
-(`add --pin 1|2|0`, `list`, `prompt`, `pin`, `rm`). Ліміти: 100 фактів у сховищі,
-до 25 у системній підказці, до 240 символів на факт у підказці.
+`memory/facts/` — one file per fact, managed through `memory/facts.py`
+(`add --pin 1|2|0`, `list`, `prompt`, `pin`, `rm`). Limits: 100 facts in the store, up
+to 25 in the system prompt, up to 240 characters per fact in the prompt.
 
-`start.sh` збирає підказку як `persona.md` + вивід `facts.py prompt`, тож закріплені
-факти доступні з першої репліки нової сесії. Усі факти ще й індексуються в
-`memory/sessions.db` (проєкт `факти`), тому знаходяться пошуком.
+`start.sh` assembles the prompt as `persona.md` plus the output of `facts.py prompt`, so
+pinned facts are available from the first message of a new session. All facts are also
+indexed into `memory/sessions.db` (project `факти`), so search finds them.
 
-## Планувальники (systemd --user)
+## Schedulers (systemd --user)
 
-- `noos-watch.timer` — кожні 15 хв, `status/watch.py`: сповіщає лише про зміни й проблеми.
-- `noos-digest.timer` — 08:03 і 20:03, `status/digest-headless.sh`: окрема headless-сесія
-  (`claude -p`) збирає кандидатів, сама обирає новини й надсилає дайджест текстом і голосом.
-  Кандидати беруться з усіх восьми тем, далі відбір у два кроки: до 2 новин з теми,
-  потім ранжування всіх відібраних і рівно 4 у дайджесті. Флаг `candidates.py --навмання N`
-  лишився як опція для ручних запусків.
-- `claude-memory.timer` — кожні 15 хв, індексація транскриптів.
-- `noos-changes.timer` — 23:30, `status/changes-send.sh`: коротке самарі змін за день (текстом).
+- `noos-watch.timer` — every 15 min, `status/watch.py`: reports only changes and
+  problems.
+- `noos-digest.timer` — 08:03 and 20:03, `status/digest-headless.sh`: a separate
+  headless session (`claude -p`) collects candidates, picks the news itself and sends
+  the digest as text and voice. Candidates come from all eight topics; selection is two
+  steps: at most 2 items per topic, then rank everything selected and keep exactly 4.
+  The `candidates.py --random N` flag remains as an option for manual runs.
+- `claude-memory.timer` — every 15 min, transcript indexing.
+- `noos-changes.timer` — 23:30, `status/changes-send.sh`: a short summary of the day's
+  changes (text only).
 
-**ВАЖЛИВО:** у headless-запусках вимикай **саме Telegram-плагін**, а не весь MCP:
-`--settings status/digest-settings.json` (там `enabledPlugins` з `telegram…: false`).
-Якщо плагін лишити, друга сесія перехоплює `getUpdates` і основна втрачає вхідні
-(сталося 17.10.2026). Варіант `--mcp-config '{"mcpServers":{}}' --strict-mcp-config`
-теж безпечний, але вимикає й конектори claude.ai — перевірено 17.10.2026, що без нього
-headless-сесія бачить Gmail і Календар, і саме так дайджест бере пошту й події.
+**IMPORTANT:** in headless runs disable **the Telegram plugin specifically**, not MCP as
+a whole: `--settings status/digest-settings.json` (it holds `enabledPlugins` with
+`telegram…: false`). Leave the plugin on and the second session hijacks `getUpdates`,
+and the main session loses incoming messages (this happened on 2026-10-17). The
+`--mcp-config '{"mcpServers":{}}' --strict-mcp-config` variant is safe too, but it also
+strips the claude.ai connectors — verified on 2026-10-17 that without it a headless
+session sees Gmail and Calendar, and that is exactly how the digest reads mail and
+events.
 
-## Пошта (пробник mail)
+## Mail (probe `mail`)
 
-`status/probes/mail.py` — що нового в Gmail з минулої перевірки. IMAP, лише заголовки,
-`BODY.PEEK` (нічого не позначає прочитаним). Ключі — `.env.gmail` (права 600,
-зразок у `.env.gmail.example`): `GMAIL_USER` + `GMAIL_APP_PASSWORD` (пароль застосунку
-Google, потрібна двофакторна). Стан — `status/state/mail.json` (останній UID), тож
-«нові» = яких не було на минулій перевірці.
+`status/probes/mail.py` — what is new in Gmail since the last check. IMAP, headers only,
+`BODY.PEEK` (marks nothing as read). Keys live in `.env.gmail` (mode 600, sample in
+`.env.gmail.example`): `GMAIL_USER` + `GMAIL_APP_PASSWORD` (a Google app password,
+two-factor auth required). State is `status/state/mail.json` (last UID), so "new" means
+"was not there at the previous check".
 
-Сортування: `status/mail-rules.json` (необов'язковий) перекриває списки `шум` і
-`важливе`; усе інше — «звичайне». Важливе піднімає severity до `warn`, тобто
-вартовий про нього напише.
+Sorting: `status/mail-rules.json` (optional) overrides the `шум` (noise) and `важливе`
+(important) lists; everything else is "ordinary". Important raises severity to `warn`,
+so the watcher reports it.
 
-Конектор Gmail через claude.ai (MCP) працює лише в інтерактивній сесії — headless
-дайджест ним скористатися не може, тому пробник ходить своїм IMAP.
+The Gmail connector over claude.ai (MCP) works only in an interactive session — the
+headless digest cannot use it, which is why the probe goes through its own IMAP.
 
-## Календар (пробник cal)
+## Calendar (probe `cal`)
 
-`status/probes/cal.py` — події від зараз до кінця наступного дня (аргумент — скільки
-днів уперед, типово 1). Джерело — «секретна адреса в форматі iCal» з налаштувань
-Google Календаря, по рядку на календар у `.env.calendar` (зразок у `.env.calendar.example`):
+`status/probes/cal.py` — events from now until the end of the next day (the argument is
+how many days ahead, default 1). The source is the "secret address in iCal format" from
+Google Calendar settings, one line per calendar in `.env.calendar` (sample in
+`.env.calendar.example`):
 `CAL_особистий=https://calendar.google.com/calendar/ical/.../basic.ics`.
 
-Чому так, а не конектор: iCal — звичайний HTTPS без OAuth, тому працює і в headless.
-Повторювані події розкриваються через RRULE (`python-dateutil`, доставлений у `.venv-voice`),
-скасовані (`STATUS:CANCELLED`) і `EXDATE` відкидаються.
+Why this and not the connector: iCal is plain HTTPS without OAuth, so it works headless
+too. Recurring events are expanded through RRULE (`python-dateutil`, installed into
+`.venv-voice`); cancelled ones (`STATUS:CANCELLED`) and `EXDATE` are dropped.
 
-Файл навмисно `cal.py`, а не `calendar.py`: інакше він перекриває стандартний модуль
-`calendar` і ламає `urllib`.
+The file is deliberately `cal.py` and not `calendar.py`: the latter shadows the stdlib
+`calendar` module and breaks `urllib`.
 
-## Задачі (tasks/)
+## Tasks (tasks/)
 
-`tasks/tasks.jsonl` — журнал подій (add / done / cancel / defer / edit), **тільки дозапис**;
-стан збирається відтворенням. `tasks/open.md` — похідний людський вигляд, перезбирається
-автоматично. `tasks/config.json` — календар «Noos», вікно сну й правила планування.
+`tasks/tasks.jsonl` — an event log (add / done / cancel / defer / edit),
+**append-only**; state is rebuilt by replaying it. `tasks/open.md` is a derived
+human-readable view, regenerated automatically. The `Noos` calendar, the sleep window and the
+planning rules live in `config.json` (section `tasks`); the calendar id itself is in
+`config.local.json`, which is git-ignored.
 
-Керування — `.venv-voice/bin/python tasks/store.py`:
-`add "текст [дата]" [--проєкт x] [--хв 90] [--глибока]`, `list [--усі]`, `done <id|частина назви>`,
-`defer <id> "завтра"`, `cancel <id>`, `md`. Дата розбирається з тексту українською
-(«завтра», «до 20 жовтня», «у п'ятницю», «через 3 дні», «18.10») і вирізається з назви.
+Management: `.venv-voice/bin/python tasks/store.py` —
+`add "text [date]" [--project x] [--min 90] [--deep]`, `list [--all]`,
+`done <id|part of title>`, `defer <id> "завтра"`, `cancel <id>`, `md`. Dates are parsed
+out of Ukrainian text ("завтра", "до 20 жовтня", "у п'ятницю", "через 3 дні", "18.10")
+and removed from the title.
 
-Пробник `tasks` — прострочене, сьогоднішнє, тижневе; `severity: warn`, якщо є прострочене
-або сьогоднішнє, тож вартовий про таке напише. У дайджесті — розділ «Задачі».
+The `tasks` probe reports overdue, today and this week; `severity: warn` when something
+is overdue or due today, so the watcher speaks up. The digest has a "Задачі" section.
 
-**Задача і подія — різні сутності.** Задача може мати нуль, одну або кілька подій
-у календарі `Noos`; подія — це заброньований шматок часу під задачу, а не сама задача.
-Зв'язок тримається в журналі подіями `link` / `unlink` (`event`, `start`, `end`, `calendar`),
-бо сам календар доступний лише через конектор, а не з `store.py`. Порядок дій:
-створив подію конектором → одразу `store.py link <id> <event_id> <початок> <кінець>`;
-видалив подію → `unlink`. Закриття задачі майбутніх подій не прибирає — це окремий крок.
+**A task and an event are different things.** A task can own zero, one or several events
+in the `Noos` calendar; an event is a booked slice of time for a task, not the task
+itself. The link lives in the same log as `link` / `unlink` events (`event`, `start`,
+`end`, `calendar`), because the calendar itself is reachable only through the connector,
+not from `store.py`. The order of operations: create the event via the connector →
+immediately `store.py link <id> <event_id> <start> <end>`; delete the event → `unlink`.
+Closing a task does not remove its future events — that is a separate step.
 
-**Дзеркало цілоденними подіями.** Задача з датою або періодом, але без блоку часу,
-теж потрапляє в календар `Noos` — цілоденною подією з позначкою `☐` і `availability=FREE`
-(не блокує час). Період стає багатоденною подією. Беклог без дати в календар не йде,
-власні технічні задачі Нооса — теж ні. Позначки в назві: `☐` відкрита, `☑` виконана —
-закриту задачу не прибираємо з календаря, а перейменовуємо, щоб день показував і факт,
-а не лише план.
+**Mirroring as all-day events.** A task with a date or a period but without a time block
+also goes into the `Noos` calendar — as an all-day event marked `☐` with
+`availability=FREE` (it does not block time). A period becomes a multi-day event. A
+backlog item without a date does not go to the calendar, and neither do Noos's own
+technical tasks. Title markers: `☐` open, `☑` done — a closed task is not removed from
+the calendar but renamed, so the day shows the facts and not only the plan.
 
-**Не все йде в календар.** Задача має три рівні визначеності:
-`due` — конкретна дата-дедлайн; `period` — вид і діапазон («вихідні 24.10-25.10»,
-«тиждень 18.10-25.10», «місяць»); нічого — беклог. Окремо від цього прапорець
-`block`: лише задачі з `block: true` (позначка 📌, прапорець `--блок` або
-`store.py block <id> on`) отримують блок часу в календарі. Решта живе списком і
-показується в дайджесті, але час під них не бронюється.
+**Not everything goes to the calendar.** A task has three levels of definiteness:
+`due` — a concrete deadline date; `period` — a kind and a range ("вихідні 24.10-25.10",
+"тиждень 18.10-25.10", "місяць"); nothing — backlog. Separately there is the `block`
+flag: only tasks with `block: true` (marker 📌, flag `--block`, or
+`store.py block <id> on`) get a time block in the calendar. The rest live as a list and
+show up in the digest, but no time is reserved for them.
 
-Планування (крок 2, ще не зроблено): блоки кладуться **тільки** в календар `Noos`
-(id у `tasks/config.json`), час — будь-який, крім сну 00:00–08:00, відключення світла
-з пробника `loe` обходяться. Події користувача не редагуються ніколи.
+Planning (step 2, not built yet): blocks go **only** into the `Noos` calendar (id in
+`config.local.json`), at any time except the 00:00–08:00 sleep window, routing around
+power outages from the `loe` probe. The user's own events are never edited.
+
+## Configuration
+
+`config.json` — shared settings: paths, probe sources and TTLs, memory limits, digest
+and task rules. Committed, holds neutral defaults.
+
+`config.local.json` — machine- and person-specific values (user name, calendar id).
+Git-ignored, mode 600, merged over `config.json` key by key.
+
+Read it from Python:
+
+```python
+import sys; from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # parents[2] from status/probes/
+from noosconf import conf, path
+conf("probes.loe.queue")      # value, with a default as the second argument
+path("memory.db")             # absolute Path, ~ expanded and resolved against the repo root
+```
+
+From shell: `. ./config.sh; queue=$(conf probes.loe.queue)`.
+
+**No magic numbers or paths in code.** Anything a person might want to change —
+limits, URLs, TTLs, cities, queue numbers, windows — belongs in `config.json`; the
+code reads it through `noosconf`. Environment variables still override where they
+already did (`LOE_CHERGA`, `ALARM_REGION`, `ELEVENLABS_VOICE_ID`).
 
 ## Git
 
-Репозиторій: `git@github.com:ichMaster/claude-home.git`, гілка `main`, **публічний**.
+Repository: `git@github.com:ichMaster/claude-home.git`, branch `main`, **public**.
 
-- **Повідомлення комітів — тільки англійською.** Код, документація й README теж
-  англійською в частині, що дивиться назовні; робочі нотатки українською лишаються.
-- Кожен коміт у публічний репозиторій — це публікація. Не комітити й не пушити без
-  прямої вказівки користувача.
-- Перед пушем прогнати пошук секретів по тому, що йде назовні:
+- **Commit messages in English only.** Documentation, README and code comments are
+  English as well; Ukrainian stays in conversation and in user-facing output.
+- Every commit to a public repository is a publication. Do not commit or push without an
+  explicit request from the user.
+- Before pushing, scan what is going out for secrets:
   `git grep -nIE "(sk-[A-Za-z0-9]{20,}|bot[0-9]{6,}:|@gmail\.com|AIza[0-9A-Za-z_-]{25,})" HEAD -- .`
-- Персональне й секретне до репозиторію не потрапляє — перелік у `.gitignore`,
-  перевіряти не очима, а `git status --ignored`.
+- Personal and secret material never enters the repository — the list is in
+  `.gitignore`, and it is verified with `git status --ignored`, not by eye.
 
-## Журнал змін (changelog/)
+## Change log (changelog/)
 
-`changelog/YYYY-MM-DD.jsonl` — по рядку на кожну дію, що щось змінила. Наповнює
-PostToolUse-хук `changelog/hook.py` (оголошений у `.claude/settings.json`,
-матчер `Write|Edit|MultiEdit|NotebookEdit|Bash`). Читання не логується:
-журнал про зміни, а не про перегляди. Запис: `ts`, `kind`, `target`, `detail`,
-`session`, `cwd`.
+`changelog/YYYY-MM-DD.jsonl` — one line per action that changed something. It is filled
+by the PostToolUse hook `changelog/hook.py` (declared in `.claude/settings.json`,
+matcher `Write|Edit|MultiEdit|NotebookEdit|Bash`). Reads are not logged: this is a log of
+changes, not of lookups. A record holds `ts`, `kind`, `target`, `detail`, `session`,
+`cwd`.
 
-**ВАЖЛИВО:** теку `changelog/` можна тільки дописувати і читати. Не видаляти,
-не переписувати, не «чистити» рядки — навіть тестові чи помилкові. Виправлення
-оформлюй новим рядком, а не правкою старого.
+**IMPORTANT:** the `changelog/` directory may only be appended to and read. Do not
+delete, rewrite or "clean up" lines — not even test or mistaken ones. Corrections go in
+as a new line, never as an edit of an old one.
 
-Апаратно це закріплено `chattr +a` на денних файлах (ставиться з рута, 17.10.2026).
-Нові денні файли атрибута не успадковують — `changelog/seal.sh` ставить його на всі
-`*.jsonl`; інструкція зі встановлення під рутом — у шапці скрипта.
+This is enforced with `chattr +a` on the daily files (applied as root on 2026-10-17).
+New daily files do not inherit the attribute — `changelog/seal.sh` applies it to all
+`*.jsonl`; the installation instructions for root are in the script header.
 
-- Самарі за день: `.venv-voice/bin/python status/probes/changes.py [YYYY-MM-DD]`
-  (пробник `changes`, той самий контракт, що решта в `status/probes/`).
-- Надіслати самарі в Telegram: `status/changes-send.sh [YYYY-MM-DD]` — таймер
-  `noos-changes.timer` робить це щодня о 23:30 (кінець дня).
-- Хук читається при старті сесії. Після зміни `.claude/settings.json` потрібен
-  `/hooks` або перезапуск сесії (`./restart-session.sh`), інакше він не активний.
+- Daily summary: `.venv-voice/bin/python status/probes/changes.py [YYYY-MM-DD]`
+  (probe `changes`, same contract as the rest of `status/probes/`).
+- Send the summary to Telegram: `status/changes-send.sh [YYYY-MM-DD]` — the
+  `noos-changes.timer` does this daily at 23:30 (end of day).
+- The hook is read at session start. After changing `.claude/settings.json` you need
+  `/hooks` or a session restart (`./restart-session.sh`), otherwise it is not active.

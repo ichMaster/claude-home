@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Пробник: сесія, таймери, контейнери
+# Probe: session, timers, containers
 set -euo pipefail
 tmux_ok=$(tmux has-session -t claude 2>/dev/null && echo 1 || echo 0)
 home_ok=$(systemctl --user is-active claude-home 2>/dev/null | grep -qE 'active' && echo 1 || echo 0)

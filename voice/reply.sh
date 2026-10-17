@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Голосова відповідь Нооса: voice/reply.sh "текст" [вихід.ogg] [off|light|medium|heavy]
-# За замовчуванням фільтр вимкнений — чистий голос. Приглушення вмикається
-# третім аргументом або змінною NOOS_MUFFLE.
+# Noos voice reply: voice/reply.sh "text" [out.ogg] [off|light|medium|heavy]
+# The filter is off by default — clean voice. Muffling is enabled by the third
+# argument or the NOOS_MUFFLE variable.
 set -euo pipefail
 cd "$HOME/claude-home"
 text="$1"

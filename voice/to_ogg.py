@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""mp3 -> ogg/opus (формат голосових Telegram): voice/to_ogg.py <вхід> <вихід.ogg>"""
+"""mp3 -> ogg/opus (the Telegram voice format): voice/to_ogg.py <in> <out.ogg>"""
 import sys, av
 
 src, dst = sys.argv[1], sys.argv[2]

@@ -1,6 +1,6 @@
-# Ноос — іконка у стилі чорно-білої манги + кіберпанк (Nano Banana 2)
+# Noos — icon in black-and-white manga plus cyberpunk style (Nano Banana 2)
 
-## Основний промпт
+## Main prompt
 
 A high-contrast pure black-and-white vector illustration in the style of 1980s manga
 ink art: no greys, no gradients, no halftone — only solid black masses and bare white
@@ -20,7 +20,7 @@ traces run across the black panel like scratches. Composition is bold and symmet
 enough to read as an icon at small size, heavy black silhouette, generous white space,
 sticker-like with a clean edge. No text, no colour, no shading — ink only.
 
-## Альтернатива: вужчий кадр, більше корабля
+## Alternative: tighter frame, more of the ship
 
 Same ink style, pure black and white. A square icon: an androgynous face emerging from
 the front panel of a starship computer as if the panel were a mask — the upper half of
@@ -30,18 +30,18 @@ closed, calm. Ventilation slats run horizontally across the cheek. Cables descen
 the jaw into the darkness below. Behind, a ring of console lamps forms a halo of white
 circles on black. Heavy contrast, no greys, no text.
 
-## Регулятори
+## Knobs
 
-- **Більше кіберпанку:** додати "a thin scanline pattern of white lines across the black
+- **More cyberpunk:** add "a thin scanline pattern of white lines across the black
   panel, and a small barcode-like block of ink slabs near the temple".
-- **Ближче до референсу (м'якше, менше машин):** прибрати рядок про другий механічний зір
-  і про кабелі з волосся, лишити тільки роз'єми на потилиці.
-- **Жорсткіше/агресивніше:** "sharper angular shapes, the white highlights broken into
+- **Closer to the reference (softer, less machinery):** drop the line about the second
+  mechanical eye and the cables in the hair, keep only the ports at the nape.
+- **Harder, more aggressive:** "sharper angular shapes, the white highlights broken into
   jagged shards, deeper black mass".
-- **Якщо виходить сіре або з градієнтами:** додати "strictly two tones: 100% black and
+- **If it comes out grey or gradient-ridden:** add "strictly two tones: 100% black and
   pure white, no anti-aliased grey, no screentone, like a cut vinyl sticker".
 
-## Технічне
+## Practical notes
 
-- 1:1, велике поле білого навколо — іконка ріжеться в коло в Telegram.
-- Якщо модель домальовує текст чи логотипи — додати "no text anywhere in the image".
+- 1:1 with a generous white margin — Telegram crops the icon into a circle.
+- If the model adds text or logos, append "no text anywhere in the image".

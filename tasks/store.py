@@ -1,25 +1,28 @@
 #!/usr/bin/env python
-"""Задачі Нооса: журнал подій у tasks/tasks.jsonl, стан збирається відтворенням.
+"""Noos tasks: an event log in tasks/tasks.jsonl, state rebuilt by replaying it.
 
-  store.py add "полагодити індексацію до п'ятниці" [--проєкт noos] [--хв 90] [--глибока] [--блок]
+  store.py add "полагодити індексацію до п'ятниці" [--project noos] [--min 90] [--deep] [--block]
   store.py add "перебрати акваріум на вихідних"     — період, без блоку в календарі
   store.py block <id> on|off        — чи ставити цю задачу блоком у календар Noos
   store.py link <id> <event_id> <початок> <кінець>   — прив'язати створену подію
   store.py unlink <id> <event_id>   — відв'язати (після видалення події)
   store.py events [<id>]            — показати події задач
-  store.py list [--усі]
+  store.py list [--all]
   store.py done <id|частина назви>
   store.py defer <id|частина назви> "завтра"
   store.py cancel <id|частина назви>
   store.py md                       — перезібрати tasks/open.md
 
-Файл лише дозаписується: виправлення — новою подією, не правкою старої.
+The file is append-only: a correction is a new event, never an edit of an old one.
 """
 import json, re, sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-HOME = Path.home() / "claude-home"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from noosconf import conf, path
+
+HOME = path("paths.home")
 LOG = HOME / "tasks" / "tasks.jsonl"
 VIEW = HOME / "tasks" / "open.md"
 
@@ -31,7 +34,7 @@ MONTHS = {"січня": 1, "лютого": 2, "березня": 3, "квітня
 
 
 def parse_period(text):
-    """-> (період або None, текст без фрази). Період: (вид, початок, кінець)."""
+    """-> (period or None, text without the phrase). Period: (kind, start, end)."""
     low, t = text.lower(), text
     today = date.today()
 
@@ -61,7 +64,7 @@ def parse_period(text):
 
 
 def parse_due(text):
-    """-> (дата або None, текст без часової фрази). Розбирає українські формулювання."""
+    """-> (date or None, text without the time phrase). Parses Ukrainian wordings."""
     t = text
     low = t.lower()
     today = date.today()
@@ -71,7 +74,7 @@ def parse_due(text):
         t = re.sub(pattern, " ", t, count=1, flags=re.I).strip(" ,.-")
 
     def cut_span(match):
-        """Вирізати саме знайдену фразу, а не перший збіг шаблону деінде."""
+        """Cut exactly the matched phrase, not the first match of the pattern elsewhere."""
         nonlocal t
         a, b = match.span()
         t = (t[:a] + " " + t[b:]).strip(" ,.-")
@@ -117,7 +120,7 @@ def append(rec):
 
 
 def state():
-    """Відтворити поточний стан із журналу подій."""
+    """Replay the event log into current state."""
     tasks = {}
     if not LOG.exists():
         return tasks
@@ -177,8 +180,8 @@ def fmt(t, tid):
     due = t.get("due")
     mark = ""
     if t.get("status") in ("done", "cancelled"):
-        # для закритих дедлайн уже не новина — показуємо, коли саме закрито
-        # коли задачу зробили, а не коли я встиг її записати
+        # for closed tasks the deadline is no longer news — show when it was done
+        # the day the task was actually done, not when it got recorded
         closed = (t.get("due") or t.get("closed") or "")[:10]
         day = {date.today().isoformat(): "сьогодні",
                (date.today() - timedelta(days=1)).isoformat(): "вчора"}.get(closed, closed)
@@ -228,17 +231,17 @@ def main():
         i = 0
         while i < len(rest):
             a = rest[i]
-            if a == "--проєкт" and i + 1 < len(rest):
+            if a == "--project" and i + 1 < len(rest):
                 flags["project"] = rest[i + 1]; i += 2; continue
-            if a == "--хв" and i + 1 < len(rest):
+            if a == "--min" and i + 1 < len(rest):
                 flags["estimate"] = int(rest[i + 1]); i += 2; continue
-            if a == "--глибока":
+            if a == "--deep":
                 flags["energy"] = "deep"; i += 1; continue
-            if a == "--блок":
+            if a == "--block":
                 flags["block"] = True; i += 1; continue
-            if a == "--період" and i + 1 < len(rest):
+            if a == "--period" and i + 1 < len(rest):
                 flags["period_word"] = rest[i + 1]; i += 2; continue
-            if a == "--джерело" and i + 1 < len(rest):
+            if a == "--source" and i + 1 < len(rest):
                 flags["source"] = rest[i + 1]; i += 2; continue
             text_parts.append(a); i += 1
         raw = " ".join(text_parts)
@@ -304,7 +307,7 @@ def main():
                 print(f"    🗓 {e['start']} → {e['end']}  [{e['calendar']}]  {e['event']}")
 
     elif cmd == "list":
-        show_all = "--усі" in rest
+        show_all = "--all" in rest
         rows = [(k, v) for k, v in tasks.items() if show_all or v["status"] == "open"]
         rows.sort(key=lambda kv: (kv[1].get("due") or "9999", kv[0]))
         if not rows:

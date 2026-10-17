@@ -82,15 +82,17 @@ git clone <this repo> ~/claude-home
 cd ~/claude-home
 virtualenv .venv-voice && .venv-voice/bin/pip install python-dateutil
 
-cp .env.gmail.example .env.gmail         # optional: mail probe
-cp .env.calendar.example .env.calendar   # optional: calendar probe
-cp tasks/config.example.json tasks/config.json
-chmod 600 .env.* tasks/config.json
+cp .env.gmail.example .env.gmail          # optional: mail probe
+cp .env.calendar.example .env.calendar    # optional: calendar probe
+cp config.local.example.json config.local.json   # name, calendar id, local overrides
+chmod 600 .env.* config.local.json
 
 ./start.sh                                # or run it under systemd/tmux
 ```
 
-Keys live in `.env.*` files with mode `600` and are never committed. Personal data
+Settings live in `config.json` (committed, neutral defaults) and `config.local.json`
+(git-ignored, merged on top). Keys live in `.env.*` files with mode `600` and are never
+committed. Personal data
 — the conversation index, pinned facts, tasks, the change log, probe caches — is
 git-ignored by design; see `.gitignore` for the full list.
 

@@ -1,15 +1,18 @@
 #!/usr/bin/env python
-"""Дайджест: структурований текст і озвучена версія з розділами.
+"""Digest: structured text plus a speakable version, section by section.
 
-  status/digest.py            — зібрати й надіслати
-  status/digest.py --показати — лише надрукувати, нічого не слати
+  status/digest.py            — build and send
+  status/digest.py --show — print only, send nothing
 """
 import json, re, subprocess, sys, datetime
 from pathlib import Path
 sys.path.insert(0, str(Path.home() / "claude-home" / "status"))
 import uk_num as u
 
-HOME = Path.home() / "claude-home"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from noosconf import conf, path
+
+HOME = path("paths.home")
 MONTHS = ["", "січня", "лютого", "березня", "квітня", "травня", "червня", "липня",
           "серпня", "вересня", "жовтня", "листопада", "грудня"]
 
@@ -34,7 +37,7 @@ def section(title, lines_text, lines_speech):
     text.append(f"\n*{title}*\n" + "\n".join(lines_text))
     speech.append(f"\n{title}. " + " ".join(lines_speech))
 
-# — світло —
+# --- power ---
 p = probes.get("loe", {})
 v = p.get("value") or {}
 iv = v.get("intervals") or []
@@ -62,7 +65,7 @@ else:
     section("Світло", ["Відключень на сьогодні не заплановано."],
             ["Відключень на сьогодні не заплановано."])
 
-# — тривоги —
+# --- air alerts ---
 p = probes.get("alarm", {})
 v = p.get("value") or {}
 if v:
@@ -77,7 +80,7 @@ if v:
              f"По Україні зараз {u.num(n, fem=True)} {u.plural(n,'область','області','областей')}."]
     section("Тривоги", t, s)
 
-# — погода —
+# --- weather ---
 p = probes.get("weather", {})
 v = p.get("value") or {}
 if v:
@@ -89,7 +92,7 @@ if v:
          f"Ймовірність дощу {u.percent(v['rain_chance'])}."]
     section("Погода", t, s)
 
-# — сервер —
+# --- host ---
 h, sv = probes.get("host", {}).get("value") or {}, probes.get("services", {}).get("value") or {}
 if h:
     t = [f"Диск {h['disk_avail_gb']} ГБ вільно ({h['disk_used_pct']}%), "
@@ -104,7 +107,7 @@ if h:
         s.append("Усі сервіси працюють." if ok else probes["services"]["text"] + ".")
     section("Сервер", t, s)
 
-# — новини —
+# --- news ---
 nt, ns = [], []
 for tid in topics:
     p = probes.get(f"news:{tid}", {})
@@ -126,7 +129,7 @@ else:
 text_msg = "\n".join(text)
 speech_msg = " ".join(speech)
 
-if "--показати" in sys.argv:
+if "--show" in sys.argv:
     print(text_msg); print("\n--- для озвучки ---\n"); print(speech_msg)
 else:
     subprocess.run([str(HOME / "notify.sh"), text_msg])

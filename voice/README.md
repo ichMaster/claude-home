@@ -1,49 +1,49 @@
-# Голосовий стек claude-home
+# The claude-home voice stack
 
-Готовий до перевикористання — саме його варто взяти агентам matrix-agora.
-Ключі: `~/claude-home/.env.voice` (права 600) — ElevenLabs + Deepgram.
-Venv: `~/claude-home/.venv-voice`.
+Ready to reuse — this is what the matrix-agora agents should take.
+Keys: `~/claude-home/.env.voice` (mode 600) — ElevenLabs + Deepgram.
+Virtualenv: `~/claude-home/.venv-voice`.
 
-## Синтез (текст → голос)
+## Synthesis (text to speech)
 
 ```bash
-./voice/reply.sh "текст" out.ogg          # один крок: ElevenLabs → ogg/opus
-./voice/el_say.sh out.mp3 "текст"         # лише синтез
+./voice/reply.sh "text" out.ogg           # one step: ElevenLabs -> ogg/opus
+./voice/el_say.sh out.mp3 "text"          # synthesis only
 .venv-voice/bin/python voice/to_ogg.py in.mp3 out.ogg
 ```
 
-Налаштування через env: `ELEVENLABS_VOICE_ID`, `ELEVENLABS_SPEED` (0.7-1.2),
+Tunable through env: `ELEVENLABS_VOICE_ID`, `ELEVENLABS_SPEED` (0.7-1.2),
 `ELEVENLABS_STABILITY`, `NOOS_MUFFLE` (light|medium|heavy).
-Голос Нооса — **HAL-UA**, id у `.env.voice` (`ELEVENLABS_VOICE_ID`). Приглушення (`voice/muffle.py`)
-за замовчуванням **вимкнене**: чистий голос звучить краще.
+Noos's voice is **HAL-UA**; its id lives in `.env.voice` (`ELEVENLABS_VOICE_ID`).
+Muffling (`voice/muffle.py`) is **off** by default: the clean voice sounds better.
 
-## Розпізнавання (голос → текст)
+## Recognition (speech to text)
 
 ```bash
-./voice/dg_stt.sh file.oga uk             # Deepgram nova-3, ~1 с на 15 с аудіо
-./voice/el_stt.sh file.oga ukr            # запасний шлях, ElevenLabs Scribe
+./voice/dg_stt.sh file.oga uk             # Deepgram nova-3, ~1 s per 15 s of audio
+./voice/el_stt.sh file.oga ukr            # fallback, ElevenLabs Scribe
 ```
 
-`nova-2` на українській плутає власні назви — не брати.
+`nova-2` mangles Ukrainian proper nouns — do not use it.
 
-## Що знати, роблячи голос агентам у Matrix
+## What to know when giving agents a voice in Matrix
 
-1. **Кожному агенту свій `voice_id`**, інакше Kit, Bruno й Ada звучать однаково.
-   Голоси задавати в конфігу агента, не в коді.
-2. **Matrix-подія**: `m.audio` з `org.matrix.msc3245.voice: {}` і `waveform`
-   в `org.matrix.msc1767.audio`. Без цих полів Element показує вкладений файл,
-   а не голосову бульбашку.
-3. **Формат**: ogg/opus, моно. `to_ogg.py` уже дає потрібне.
-4. **Текст теж надсилати.** Правило, перевірене на практиці: голос без дубля
-   текстом незручний — не можна ні процитувати, ні виправити розпізнане.
-5. **Що не озвучувати**: посилання, емодзі, маркери списків, латиницю та
-   скорочення. Готова чистка — у `notify.sh` (regex перед синтезом) і в
-   `status/uk_num.py` (числа словами українською).
-6. **Довжина**: ElevenLabs бере великий текст, але голосове понад ~2 хв ніхто
-   не слухає. Різати на абзаци або давати стислу версію.
+1. **A separate `voice_id` per agent**, otherwise Kit, Bruno and Ada all sound the same.
+   Set voices in the agent config, not in code.
+2. **The Matrix event**: `m.audio` with `org.matrix.msc3245.voice: {}` and a `waveform`
+   in `org.matrix.msc1767.audio`. Without those fields Element shows an attached file
+   rather than a voice bubble.
+3. **Format**: ogg/opus, mono. `to_ogg.py` already produces it.
+4. **Send the text too.** A rule proven in practice: voice without a text duplicate is
+   awkward — you can neither quote it nor correct what was misheard.
+5. **What not to speak**: links, emoji, list markers, Latin script and abbreviations.
+   Ready-made cleanup lives in `notify.sh` (a regex before synthesis) and
+   `status/uk_num.py` (numbers spelled out in Ukrainian).
+6. **Length**: ElevenLabs accepts long text, but nobody listens to a voice message over
+   ~2 minutes. Split by paragraph or send a short version.
 
-## Де це вже працює
+## Where this already runs
 
-- `notify.sh --голос` — надсилання в Telegram текстом і голосом через Bot API
-- `status/digest-headless.sh` — дайджест о 08:03 і 20:03, голос через sendVoice
-- основна сесія Нооса — відповіді в Telegram голосом + текстом
+- `notify.sh --voice` — sends text and voice to Telegram through the Bot API
+- `status/digest-headless.sh` — the 08:03 and 20:03 digest, voice via sendVoice
+- the main Noos session — Telegram replies as voice plus text

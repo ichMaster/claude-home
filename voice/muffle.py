@@ -1,19 +1,23 @@
 #!/usr/bin/env python
-"""Приглушення голосу «за вентиляційною решіткою».
+"""Muffle the voice as if it came through a ventilation grille.
 
-  voice/muffle.py <вхід.mp3> <вихід.ogg> [light|medium|heavy]
+  voice/muffle.py <in.mp3> <out.ogg> [light|medium|heavy]
 
-Робить три речі: ріже верх (голос ніби за панеллю), додає коротке
-«коробкове» відлуння приміщення і підмішує рівний гул вентиляторів.
+Three things: roll off the top end (voice behind a panel), add a short boxy room
+echo, and mix in a steady fan hum.
 """
 import sys, numpy as np, av
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from noosconf import conf, path
 
 PRESETS = {           # зріз, порядок фільтра, рівень шуму (dBFS), гул
     "light":  (4500, 2, -36, 0.5),
     "medium": (3200, 3, -30, 1.0),
     "heavy":  (2200, 4, -25, 1.6),
 }
-SR = 48000
+SR = conf("voice.sample_rate", 48000)
 
 def decode(path):
     c = av.open(path)
@@ -26,11 +30,11 @@ def decode(path):
     return np.concatenate(chunks).astype(np.float64)
 
 def spectral(x, fc, order, kind="low"):
-    """Фільтр у частотній області: 1/(1+(f/fc)^2)^(order/2).
+    """Frequency-domain filter: 1/(1+(f/fc)^2)^(order/2).
 
-    Довжину доповнюємо до степеня двійки: numpy рахує таке перетворення
-    на порядок швидше, ніж довільну довжину, а заразом зникає заворот
-    згортки через край.
+    The length is padded to a power of two: numpy computes that transform an order
+    of magnitude faster than an arbitrary length, and circular convolution wrap-around
+    disappears as a side effect.
     """
     n = len(x)
     N = 1 << int(np.ceil(np.log2(n + 1)))
@@ -62,14 +66,14 @@ v = decode(src)
 v = spectral(v, 120, 2, "high")      # прибрати низ, як у дрібного динаміка
 v = spectral(v, fc, order, "low")    # власне приглушення
 
-# коротке «коробкове» відлуння вентиляційної шахти
+# short boxy echo of a ventilation shaft
 wet = np.zeros_like(v)
 for delay_ms, gain in ((11, 0.28), (23, 0.16), (37, 0.08)):
     d = int(SR * delay_ms / 1000)
     wet[d:] += v[:-d] * gain
 v = v + spectral(wet, fc * 0.8, 2, "low")
 
-# гул вентиляторів: широкий низькочастотний шум + тон 100 Гц
+# fan hum: broad low-frequency noise plus a 100 Hz tone
 rng = np.random.default_rng(7)
 bed = spectral(rng.standard_normal(len(v)), 450, 3, "low")
 bed /= max(1e-9, np.abs(bed).max())

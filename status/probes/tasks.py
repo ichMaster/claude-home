@@ -1,10 +1,13 @@
 #!/usr/bin/env python
-"""Пробник: стан задач — прострочене, на сьогодні, найближче."""
+"""Probe: task state — overdue, due today, coming up."""
 import json, sys
 from datetime import date
 from pathlib import Path
 
-HOME = Path.home() / "claude-home"
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from noosconf import conf, path
+
+HOME = path("paths.home")
 sys.path.insert(0, str(HOME / "tasks"))
 
 try:

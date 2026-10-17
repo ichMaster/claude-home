@@ -1,9 +1,18 @@
 #!/usr/bin/env python
-"""Пробник: графік відключень для нашої черги (alerts.energy, статичний HTML)."""
-import json, re, html, urllib.request, os
+"""Probe: power-outage schedule for our grid queue (alerts.energy, static HTML).
 
-CHERGA = os.environ.get("LOE_CHERGA", "4.1")
-URL = "https://alerts.energy/lvivska-oblast"
+Queue, source URL and TTL come from config.json (`probes.loe`); LOE_CHERGA still
+overrides the queue for a one-off run.
+"""
+import json, re, html, urllib.request, os, sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from noosconf import conf
+
+CHERGA = os.environ.get("LOE_CHERGA", conf("probes.loe.queue"))
+URL = conf("probes.loe.url")
+TTL = conf("probes.loe.ttl", 900)
 
 def lines_of(page):
     t = re.sub(r"<script.*?</script>|<style.*?</style>", "", page, flags=re.S)
@@ -16,7 +25,7 @@ try:
         page = r.read().decode("utf-8", "replace")
     L = lines_of(page)
 
-    # журнал змін: HH:MM | джерело | дія | "Черга" | X.Y | ":" | старе | "→" | нове
+    # change log on the page: HH:MM | source | action | "Черга" | X.Y | ":" | old | "→" | new
     events = []
     for i, x in enumerate(L):
         if x == "Черга" and i + 4 < len(L) and L[i + 1] == CHERGA and L[i + 2] == ":":
@@ -30,7 +39,7 @@ try:
     cur = events[0] if events else None
     sched = cur["to"] if cur and cur["to"] else (cur["from"] if cur else "")
     off = re.findall(r"(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})", sched)
-    # головне питання — коли саме, тому рахуємо відносно поточного часу
+    # the question that matters is "when", so everything is relative to now
     import datetime
     now = datetime.datetime.now()
     def at(hm):
@@ -59,7 +68,7 @@ try:
                       "severity": "warn" if off else "info",
                       "value": {"cherga": CHERGA, "schedule": sched, "intervals": off,
                                 "updated": cur["time"] if cur else "", "events": events[:4]},
-                      "text": text, "ttl": 900}, ensure_ascii=False))
+                      "text": text, "ttl": TTL}, ensure_ascii=False))
 except Exception as e:
     print(json.dumps({"id": "loe", "ok": False, "severity": "warn",
                       "text": f"Графік недоступний: {e}", "ttl": 300}, ensure_ascii=False))

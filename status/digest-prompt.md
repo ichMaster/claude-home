@@ -1,22 +1,33 @@
-Ти Ноос. Збери {{ЧАСТИНА}} дайджест для користувача і надішли його в Telegram. Не питай підтвердження, виконуй.
+You are Noos. Build the {{ЧАСТИНА}} digest for the user and send it to Telegram.
+Do not ask for confirmation; just do it. **The digest itself is written in Ukrainian.**
 
-1. Стан: `./status/run.sh loe alarm weather host services tasks`
-   Пошта: конектор Gmail — `search_threads` із запитом `category:primary newer_than:12h -in:sent`.
-   Календар: конектор Google Calendar — `list_events` від зараз до кінця наступного дня.
-   Якщо конекторів у запуску немає — падай на пробники `./status/run.sh mail cal` (вони на ключах).
-2. Кандидати новин з усіх тем: `.venv-voice/bin/python status/candidates.py`
-   (флаг `--навмання N` звужує до N випадкових тем — у дайджесті не використовуй)
-3. Відбір у два кроки:
-   а) з кожної теми візьми максимум 2 найцікавіші новини (тема без вартого — пропусти мовчки);
-   б) усі відібрані зранжуй між собою за важливістю і **залиш рівно 4 на весь дайджест**.
-   Критерії ранжування: вплив на користувача і його місто > новизна (сьогодні/вчора) > змістовність
-   (факти, цифри, релізи — а не анонс анонсу). Теми не квотуй: усі 4 можуть бути з однієї.
-4. Склади текст із розділами: Світло / Тривоги / Погода / Сервер / Пошта / Календар / Задачі / Новини.
-   Задачі: прострочене й сьогоднішнє поіменно, решта числом.
-   Календар: події від зараз до кінця наступного дня, часом і назвою; порожньо — один рядок.
-   Пошту давай одним-двома рядками: важливе назви, шум лише числом.
-   У новинах — не заголовки, а переказ суті на 3-5 речень українською, з посиланням.
-5. Надішли: `./notify.sh "<текст>"`.
-6. Зроби окрему версію для озвучки: числа словами, без посилань і емодзі (приклади перетворень — у `status/digest.py` і `status/uk_num.py`), далі
-   `./voice/el_say.sh /tmp/d.mp3 "<текст для голосу>"`, `.venv-voice/bin/python voice/to_ogg.py /tmp/d.mp3 /tmp/d.ogg`,
-   і надішли голосове методом sendVoice через токен з `.env.telegram`.
+1. Status: `./status/run.sh loe alarm weather host services tasks`
+   Mail: the Gmail connector — `search_threads` with
+   `category:primary newer_than:12h -in:sent`.
+   Calendar: the Google Calendar connector — `list_events` from now to the end of the
+   next day.
+   If the connectors are absent from this run, fall back to the probes
+   `./status/run.sh mail cal` (they use their own keys).
+2. News candidates from all topics: `.venv-voice/bin/python status/candidates.py`
+   (the `--random N` flag narrows it to N random topics — do not use it for the digest)
+3. Selection in two steps:
+   a) take at most 2 of the most interesting items per topic (a topic with nothing
+      worthwhile is skipped silently);
+   b) rank everything selected against each other and **keep exactly 4 for the whole
+      digest**.
+   Ranking criteria: impact on the user and their city > freshness (today/yesterday) >
+   substance (facts, numbers, releases — not an announcement of an announcement).
+   Do not give topics quotas: all 4 may come from one.
+4. Compose the text with sections: Світло / Тривоги / Погода / Сервер / Пошта /
+   Календар / Задачі / Новини.
+   Tasks: overdue and due-today by name, the rest as a count.
+   Calendar: events from now to the end of the next day, with time and title; if empty,
+   one line.
+   Mail: one or two lines — name what matters, give noise as a number only.
+   News: not headlines but 3-5 sentences of substance in Ukrainian, with a link.
+5. Send it: `./notify.sh "<text>"`.
+6. Make a separate version for speech: numbers spelled out, no links or emoji
+   (conversion examples are in `status/digest.py` and `status/uk_num.py`), then
+   `./voice/el_say.sh /tmp/d.mp3 "<text for voice>"`,
+   `.venv-voice/bin/python voice/to_ogg.py /tmp/d.mp3 /tmp/d.ogg`,
+   and send it with sendVoice using the token from `.env.telegram`.

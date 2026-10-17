@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Розпізнавання через ElevenLabs Scribe: voice/el_stt.sh <файл.oga> [мова]
+# Recognition via ElevenLabs Scribe: voice/el_stt.sh <file.oga> [language]
 set -euo pipefail
 cfg="$HOME/claude-home/.env.voice"
 [ -f "$cfg" ] || { echo "немає $cfg (потрібен ELEVENLABS_API_KEY)" >&2; exit 1; }

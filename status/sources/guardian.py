@@ -1,9 +1,9 @@
 #!/usr/bin/env python
-"""Джерело: The Guardian Content API — статті з текстом, а не лише заголовки.
+"""Source: The Guardian Content API — articles with body text, not just headlines.
 
-  guardian.py "<запит>" [розділ] [скільки]
+  guardian.py "<query>" [section] [count]
 
-Повертає JSON-масив кандидатів: заголовок, анотація, повний текст, посилання.
+Returns a JSON array of candidates: title, standfirst, full text, link.
 """
 import json, sys, urllib.parse, urllib.request, re, html
 from pathlib import Path

@@ -1,18 +1,21 @@
 #!/usr/bin/env python
-"""Пробник новин за темою: news.py <тема>
+"""News probe for one topic: news.py <topic>
 
-Тема — файл status/topics/<тема>.json:
+A topic is the file status/topics/<topic>.json:
   {"назва": "...", "опис": "...", "запит": "...", "джерела": ["domain", ...],
    "ліміт": 5}
 
-Шукає лише в межах указаних джерел (Google News RSS, без ключа) і віддає
-тільки те, чого ще не надсилав — решта відсікається за посиланням.
+Searches only within the listed sources (Google News RSS, no key) and returns only
+what has not been sent yet — the rest is filtered out by link.
 """
 import json, sys, re, html, hashlib, urllib.request, urllib.parse
 from pathlib import Path
 
-HOME = Path.home() / "claude-home" / "status"
-# заголовки-рубрики, які Google підсовує замість новин
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from noosconf import conf, path
+
+HOME = path("paths.home") / "status"
+# section headings Google returns instead of actual news
 JUNK = re.compile(r"(Latest News|Breaking (International )?News|Live updates|"
                   r"News & (Views|Updates)|Top stories|Home ?page|RSS|"
                   r"Останні новини|Головні новини сьогодні|News and Articles|"
@@ -39,7 +42,7 @@ try:
     fresh, norms = [], []
 
     def similar(a):
-        """Чи є вже майже такий самий заголовок — за перетином слів."""
+        """Whether a nearly identical headline is already present (word overlap)."""
         wa = {w for w in re.sub(r"[^\w ]", " ", a.lower()).split() if len(w) > 3}
         return any(len(wa & wb) >= max(3, len(wa) // 2) for wb in norms if wb)
     for it in items:

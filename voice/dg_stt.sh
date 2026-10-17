@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Розпізнавання через Deepgram: voice/dg_stt.sh <файл.oga> [мова] [модель]
+# Recognition via Deepgram: voice/dg_stt.sh <file.oga> [language] [model]
 set -euo pipefail
 cfg="$HOME/claude-home/.env.voice"
 [ -f "$cfg" ] || { echo "немає $cfg (потрібен DEEPGRAM_API_KEY)" >&2; exit 1; }
 set -a; . "$cfg"; set +a
 f="$1"; lang="${2:-uk}"; model="${3:-${DEEPGRAM_MODEL:-nova-2}}"
 
-# Deepgram губить перше слово, якщо мова починається одразу — підкладаємо тишу
+# Deepgram drops the first word when speech starts immediately — pad with silence
 padded="$(mktemp --suffix=.ogg)"
 if "$HOME/claude-home/.venv-voice/bin/python" "$HOME/claude-home/voice/pad.py" "$f" "$padded" 0.6 >/dev/null 2>&1; then
   src="$padded"
@@ -28,7 +28,7 @@ except Exception:
     print(json.dumps(d, ensure_ascii=False)[:500], file=sys.stderr); sys.exit(1)
 ' <<<"$resp")
 
-# Deepgram інколи віддає порожнє на дуже коротких репліках — тоді ElevenLabs Scribe
+# Deepgram sometimes returns nothing on very short clips — fall back to ElevenLabs Scribe
 if [ -z "${txt// /}" ]; then
   echo "Deepgram повернув порожньо, пробую Scribe" >&2
   "$HOME/claude-home/voice/el_stt.sh" "$f" ukr

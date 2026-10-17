@@ -1,0 +1,5 @@
+{
+  "_": "Copy to config.local.json and fill in. Merged over config.json; git-ignored.",
+  "user": { "name": "<name in genitive>", "city": "<city in genitive>", "vocative": "<name in vocative>" },
+  "tasks": { "calendar": { "name": "Noos", "id": "<calendar id from list_calendars>" } }
+}

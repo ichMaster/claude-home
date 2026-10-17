@@ -1,11 +1,11 @@
 #!/usr/bin/env python
-"""Редактор новин: ранжує кандидатів, обирає найважливіше й переказує суть.
+"""News editor: ranks candidates, picks what matters and retells the substance.
 
-  curator.py [тема ...]        — зібрати, відібрати, зберегти у cache/curated.json
-  curator.py --показати        — надрукувати, не зберігаючи
+  curator.py [topic ...]       — collect, select, save to cache/curated.json
+  curator.py --show        — print without saving
 
-Кандидати беруться з Guardian (з повним текстом статті) і з Google News
-(заголовки) — далі один виклик моделі ранжує їх і пише переказ українською.
+Candidates come from the Guardian (with full article text) and Google News
+(headlines); one model call then ranks them and writes the summary in Ukrainian.
 """
 import json, os, subprocess, sys
 from pathlib import Path
@@ -13,7 +13,10 @@ from typing import List
 from pydantic import BaseModel, Field
 import anthropic
 
-HOME = Path.home() / "claude-home"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from noosconf import conf, path
+
+HOME = path("paths.home")
 TOPICS = HOME / "status" / "topics"
 PY_BIN = str(HOME / ".venv-voice" / "bin" / "python")
 
@@ -103,7 +106,7 @@ resp = client.messages.parse(
 digest = resp.parsed_output
 items = sorted(digest.новини, key=lambda i: -i.вага)
 
-if "--показати" in sys.argv:
+if "--show" in sys.argv:
     for i in items:
         print(f"\n[{i.вага}] {i.тема} — {i.заголовок} ({i.джерело})\n{i.суть}")
     u = resp.usage

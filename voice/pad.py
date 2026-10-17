@@ -1,14 +1,18 @@
 #!/usr/bin/env python
-"""Додати тишу на початок і кінець: voice/pad.py <вхід> <вихід.ogg> [секунд]
+"""Pad silence at both ends: voice/pad.py <in> <out.ogg> [seconds]
 
-Deepgram з'їдає перше слово, коли мова починається з нульової секунди —
-Telegram часто віддає саме такі обрізані записи.
+Deepgram eats the first word when speech starts at second zero, and Telegram often
+delivers exactly such clipped recordings.
 """
 import sys, numpy as np, av
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from noosconf import conf, path
 
 src, dst = sys.argv[1], sys.argv[2]
 sec = float(sys.argv[3]) if len(sys.argv) > 3 else 0.6
-SR = 48000
+SR = conf("voice.sample_rate", 48000)
 
 c = av.open(src)
 rs = av.AudioResampler(format="fltp", layout="mono", rate=SR)

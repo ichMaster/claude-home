@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Повідомлення в Telegram напряму через Bot API, без участі сесії.
-#   notify.sh "текст"            — лише текст
-#   notify.sh --голос "текст"    — текст + голосове (ElevenLabs, нативне voice)
+# Send a Telegram message straight through the Bot API, with no session involved.
+#   notify.sh "text"             — text only
+#   notify.sh --voice "text"     — text plus a native voice message (ElevenLabs)
 set -euo pipefail
 cd "$HOME/claude-home"
 cfg="$HOME/claude-home/.env.telegram"
@@ -9,7 +9,7 @@ cfg="$HOME/claude-home/.env.telegram"
 set -a; . "$cfg"; set +a
 
 voice=0
-if [ "${1:-}" = "--голос" ]; then voice=1; shift; fi
+if [ "${1:-}" = "--voice" ]; then voice=1; shift; fi
 text="$*"
 
 curl -sS -m 25 -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
@@ -17,7 +17,7 @@ curl -sS -m 25 -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMe
 
 [ "$voice" = 1 ] || exit 0
 
-# для синтезу: без емодзі, маркерів і посилань — вони звучать як сміття
+# for synthesis: strip emoji, bullets and links — they sound like garbage
 spoken=$(printf '%s' "$text" | "$HOME/claude-home/.venv-voice/bin/python" -c '
 import sys, re
 t = sys.stdin.read()

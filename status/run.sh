@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Запуск пробників з кешем за TTL: status/run.sh host loe news:енергетика
-# Друкує масив JSON — по одному об'єкту на пробник.
+# Run probes with a TTL cache: status/run.sh host loe news:енергетика
+# Prints a JSON array, one object per probe.
 set -uo pipefail
 cd "$HOME/claude-home"
 PY="$HOME/claude-home/.venv-voice/bin/python"

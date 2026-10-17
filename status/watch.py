@@ -1,26 +1,29 @@
 #!/usr/bin/env python
-"""Вартовий: щогодини (або частіше) перевіряє пробники і пише лише тоді,
-коли справді є про що — зміна або проблема.
+"""Watcher: checks the probes every 15 minutes and speaks only when there is
+something to say — a change or a problem.
 
-Правила:
-  alert  — надсилаємо щоразу, коли змінилось; якщо тримається — нагадуємо раз на 3 год
-  warn   — надсилаємо лише при зміні підпису (наприклад, новий графік відключень)
-  info   — мовчимо; потрапляє тільки в повний дайджест
-  новини — лише теми з "терміново": true
+Rules:
+  alert  — sent on every change; if it persists, repeated once every 3 hours
+  warn   — sent only when the signature changes (a new outage schedule, say)
+  info   — silent; reaches the user only through the full digest
+  news   — only topics marked "терміново": true
 
-Підпис (signature) — те, що вважаємо «тією самою новиною». Якщо підпис не
-змінився, повторно не турбуємо.
+The signature is what counts as "the same news". If it has not changed, the user is
+not disturbed again.
 """
 import json, subprocess, sys, time
 from pathlib import Path
 
-HOME = Path.home() / "claude-home"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from noosconf import conf, path
+
+HOME = path("paths.home")
 STATE = HOME / "status" / "state" / "watch.json"
 PROBES = sys.argv[1:] or ["alarm", "loe", "host", "services"]
-REMIND_AFTER = 3 * 3600        # нагадування про тривалий alert
+REMIND_AFTER = conf("watch.remind_after_sec", 3 * 3600)  # reminder for a lasting alert
 
 def signature(p):
-    """Що саме вважати зміною — по одному правилу на пробник."""
+    """What counts as a change — one rule per probe."""
     v = p.get("value") or {}
     pid = p.get("id", "")
     if pid == "loe":
@@ -28,7 +31,7 @@ def signature(p):
     if pid == "alarm":
         return f"{v.get('district_alert')}|{v.get('region_alert')}"
     if pid == "host":
-        # не смикаємось на кожен відсоток — лише на десятки
+        # do not twitch on every percent, only on tens
         return f"{(v.get('disk_used_pct') or 0)//10}|{p.get('severity')}"
     if pid == "services":
         return json.dumps({k: v.get(k) for k in ("tmux", "claude_home", "memory_timer", "exited")},
@@ -72,6 +75,6 @@ if not send:
 
 body = "\n".join(f"{mark} {p.get('text','')}" for mark, p in send)
 voice = any(p.get("severity") == "alert" for _, p in send)
-cmd = [str(HOME / "notify.sh")] + (["--голос"] if voice else []) + [body]
+cmd = [str(HOME / "notify.sh")] + (["--voice"] if voice else []) + [body]
 subprocess.run(cmd)
 print(body)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Пробник: стан самої машини
+# Probe: the machine itself
 set -euo pipefail
 read -r _ total used free shared cache avail < <(free -m | sed -n 2p)
 disk_avail=$(df -BG --output=avail / | tail -1 | tr -dc '0-9')
