@@ -1,0 +1,17 @@
+{
+ "назва": "Фізика та космос",
+ "опис": "Фізика, квантова фізика, астрономія, астрофізика — відкриття й експерименти",
+ "запит": "(physics OR quantum OR astronomy OR astrophysics OR telescope) (discovery OR experiment OR observation)",
+ "джерела": [
+  "phys.org",
+  "quantamagazine.org",
+  "space.com",
+  "sciencealert.com"
+ ],
+ "мова": "en",
+ "ліміт": 3,
+ "guardian": {
+  "запит": "physics OR astronomy OR quantum OR space telescope",
+  "розділ": "science"
+ }
+}

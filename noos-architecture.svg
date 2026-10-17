@@ -1,0 +1,181 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 1010" width="1280" height="1010" font-family="DejaVu Sans, Liberation Sans, sans-serif">
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#0c1016"/><stop offset="1" stop-color="#080b0f"/>
+  </linearGradient>
+  <radialGradient id="eye" cx="50%" cy="50%" r="50%">
+    <stop offset="0" stop-color="#ffd9c0"/><stop offset="0.35" stop-color="#e0503a"/>
+    <stop offset="0.75" stop-color="#7a1a14"/><stop offset="1" stop-color="#2a0c0a"/>
+  </radialGradient>
+  <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#64808f"/>
+  </marker>
+  <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#64808f"/>
+  </marker>
+  <marker id="arrC" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#5bc8d8"/>
+  </marker>
+  <marker id="arrG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5fb87a"/></marker>
+  <marker id="arrA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#e3b341"/>
+  </marker>
+</defs>
+
+<rect width="1280" height="1010" fill="url(#bg)"/>
+
+<!-- header -->
+<circle cx="64" cy="54" r="22" fill="url(#eye)"/>
+<circle cx="64" cy="54" r="22" fill="none" stroke="#3a1c17" stroke-width="1"/>
+<text x="102" y="48" fill="#e8f1f7" font-size="25" font-weight="bold">Ноос — архітектура</text>
+<text x="102" y="70" fill="#7b8c9b" font-size="13">постійний асистент на цьому комп'ютері · ~/claude-home · станом на 17.10.2026</text>
+<line x1="40" y1="92" x2="1240" y2="92" stroke="#1e2832" stroke-width="1"/>
+
+<!-- ===== BAND 1: channels ===== -->
+<text x="40" y="124" fill="#5bc8d8" font-size="12" font-weight="bold" letter-spacing="1.5">КАНАЛИ ДОСТУПУ</text>
+
+<g>
+  <rect x="40" y="136" width="373" height="80" rx="9" fill="#141a21" stroke="#2b3744"/>
+  <text x="58" y="164" fill="#d7e2ea" font-size="15" font-weight="bold">Термінал</text>
+  <text x="58" y="186" fill="#8ea0ae" font-size="12.5">tmux attach -t claude</text>
+  <text x="58" y="204" fill="#6b7d8b" font-size="11.5">повний доступ · тут міняються секрети й дозволи</text>
+</g>
+<g>
+  <rect x="453" y="136" width="373" height="80" rx="9" fill="#141a21" stroke="#2b3744"/>
+  <text x="471" y="164" fill="#d7e2ea" font-size="15" font-weight="bold">Claude desktop / claude.ai/code</text>
+  <text x="471" y="186" fill="#8ea0ae" font-size="12.5">Remote Control, сесія «home»</text>
+  <text x="471" y="204" fill="#6b7d8b" font-size="11.5">та сама сесія, інший екран</text>
+</g>
+<g>
+  <rect x="866" y="136" width="374" height="80" rx="9" fill="#141a21" stroke="#3d4a3a"/>
+  <text x="884" y="164" fill="#d7e2ea" font-size="15" font-weight="bold">Telegram-бот</text>
+  <text x="884" y="186" fill="#8ea0ae" font-size="12.5">MCP-плагін · текст, голос, фото</text>
+  <text x="884" y="204" fill="#6b7d8b" font-size="11.5">без прав на дозволи — чат не доводить, хто пише</text>
+</g>
+
+<path d="M226,216 L226,258" stroke="#64808f" stroke-width="1.6" marker-end="url(#arr)"/>
+<path d="M639,216 L639,258" stroke="#64808f" stroke-width="1.6" marker-end="url(#arr)"/>
+<path d="M1053,216 L1053,258" stroke="#64808f" stroke-width="1.6" marker-end="url(#arr)"/>
+
+<!-- ===== BAND 2: core ===== -->
+<rect x="40" y="258" width="1200" height="148" rx="11" fill="#17202a" stroke="#3a4a5a" stroke-width="1.6"/>
+<text x="62" y="288" fill="#e8f1f7" font-size="17" font-weight="bold">Ядро — одна постійна сесія Claude Code</text>
+<text x="62" y="309" fill="#7b8c9b" font-size="12">усі три канали говорять з одним процесом, тому контекст спільний</text>
+
+<rect x="62" y="322" width="368" height="66" rx="7" fill="#101820" stroke="#2b3744"/>
+<text x="78" y="344" fill="#9fb2c0" font-size="12" font-weight="bold">Запуск і живучість</text>
+<text x="78" y="363" fill="#7b8c9b" font-size="11.5">systemd claude-home → start.sh → tmux «claude»</text>
+<text x="78" y="379" fill="#6b7d8b" font-size="11.5">падіння → перезапуск через 5 с · 24/7</text>
+
+<rect x="446" y="322" width="368" height="66" rx="7" fill="#101820" stroke="#2b3744"/>
+<text x="462" y="344" fill="#9fb2c0" font-size="12" font-weight="bold">Системна підказка</text>
+<text x="462" y="363" fill="#7b8c9b" font-size="11.5">persona.md + facts.py prompt</text>
+<text x="462" y="379" fill="#6b7d8b" font-size="11.5">характер і закріплені факти — з першої репліки</text>
+
+<rect x="830" y="322" width="388" height="66" rx="7" fill="#101820" stroke="#2b3744"/>
+<text x="846" y="344" fill="#9fb2c0" font-size="12" font-weight="bold">Режим</text>
+<text x="846" y="363" fill="#7b8c9b" font-size="11.5">--permission-mode auto · робота через Bash</text>
+<text x="846" y="379" fill="#6b7d8b" font-size="11.5">CLAUDE.md — правила проєкту</text>
+
+<!-- arrows core -> band 3 -->
+<path d="M226,406 L226,462" stroke="#64808f" stroke-width="1.6" marker-end="url(#arr)"/>
+<path d="M639,406 L639,462" stroke="#64808f" stroke-width="1.6" marker-end="url(#arr)"/>
+<path d="M1053,406 L1053,462" stroke="#64808f" stroke-width="1.6" marker-end="url(#arr)"/>
+<path d="M226,462 L226,406" stroke="#64808f" stroke-width="1.6" marker-end="url(#arr)" opacity="0"/>
+
+<!-- ===== BAND 3: voice | memory | output ===== -->
+<g>
+  <rect x="40" y="462" width="373" height="186" rx="9" fill="#141a21" stroke="#2b3744"/>
+  <text x="58" y="489" fill="#e0503a" font-size="12" font-weight="bold" letter-spacing="1.2">ГОЛОС</text>
+  <text x="58" y="516" fill="#d7e2ea" font-size="13.5" font-weight="bold">Вхід · voice/dg_stt.sh</text>
+  <text x="58" y="535" fill="#8ea0ae" font-size="11.5">Deepgram nova-3, укр. — ~1 с на 15 с аудіо</text>
+  <text x="58" y="563" fill="#d7e2ea" font-size="13.5" font-weight="bold">Вихід · voice/reply.sh</text>
+  <text x="58" y="582" fill="#8ea0ae" font-size="11.5">ElevenLabs, голос HAL-UA → .ogg</text>
+  <text x="58" y="600" fill="#6b7d8b" font-size="11.5">приглушення вимкнене (muffle.py лишився)</text>
+  <text x="58" y="626" fill="#6b7d8b" font-size="11.5">резерв: el_stt.sh (Scribe) · локального нема</text>
+</g>
+<g>
+  <rect x="453" y="462" width="373" height="186" rx="9" fill="#141a21" stroke="#2b3744"/>
+  <text x="471" y="489" fill="#5bc8d8" font-size="12" font-weight="bold" letter-spacing="1.2">ПАМ'ЯТЬ</text>
+  <text x="471" y="516" fill="#d7e2ea" font-size="13.5" font-weight="bold">memory/sessions.db</text>
+  <text x="471" y="535" fill="#8ea0ae" font-size="11.5">SQLite: FTS5 + ембедінги MiniLM-L12</text>
+  <text x="471" y="553" fill="#8ea0ae" font-size="11.5">ingest.py ← ~/.claude/projects/**/*.jsonl</text>
+  <text x="471" y="571" fill="#8ea0ae" font-size="11.5">search.sh — гібридний пошук, ~2 с</text>
+  <text x="471" y="599" fill="#d7e2ea" font-size="13.5" font-weight="bold">memory/facts/ · facts.py</text>
+  <text x="471" y="618" fill="#8ea0ae" font-size="11.5">pin 1|2 → у підказку, pin 0 → лише пошук</text>
+  <text x="471" y="638" fill="#6b7d8b" font-size="11.5">import/lumi/ — чекає екстракт агента Лілі</text>
+</g>
+<g>
+  <rect x="866" y="462" width="374" height="186" rx="9" fill="#141a21" stroke="#2b3744"/>
+  <text x="884" y="489" fill="#5fb87a" font-size="12" font-weight="bold" letter-spacing="1.2">ВИХІД У TELEGRAM</text>
+  <text x="884" y="516" fill="#d7e2ea" font-size="13.5" font-weight="bold">reply — з сесії</text>
+  <text x="884" y="535" fill="#8ea0ae" font-size="11.5">MCP-інструмент плагіна, з chat_id</text>
+  <text x="884" y="553" fill="#8ea0ae" font-size="11.5">голос + обов'язкове дублювання текстом</text>
+  <text x="884" y="581" fill="#d7e2ea" font-size="13.5" font-weight="bold">notify.sh — без сесії</text>
+  <text x="884" y="600" fill="#8ea0ae" font-size="11.5">напряму Bot API, для таймерів</text>
+  <text x="884" y="618" fill="#8ea0ae" font-size="11.5">нативне voice, чистить емодзі перед синтезом</text>
+  <text x="884" y="638" fill="#6b7d8b" font-size="11.5">картинки — як фото, аудіо — як файл</text>
+</g>
+
+<path d="M413,555 L453,555" stroke="#64808f" stroke-width="1.4" marker-end="url(#arr)" marker-start="url(#arr)"/>
+
+<!-- ===== BAND 4: status layer | schedulers ===== -->
+<g>
+  <rect x="40" y="700" width="786" height="250" rx="9" fill="#141a21" stroke="#2b3744"/>
+  <text x="58" y="727" fill="#e3b341" font-size="12" font-weight="bold" letter-spacing="1.2">СТАТУС-ШАР · status/</text>
+
+  <rect x="58" y="740" width="320" height="58" rx="7" fill="#101820" stroke="#3a4a5a"/>
+  <text x="74" y="762" fill="#d7e2ea" font-size="13.5" font-weight="bold">run.sh — кеш за TTL</text>
+  <text x="74" y="782" fill="#7b8c9b" font-size="11.5">розклади поряд не б&#8217;ють у той самий API двічі</text>
+
+  <rect x="402" y="740" width="406" height="58" rx="7" fill="#101820" stroke="#2b3744"/>
+  <text x="418" y="762" fill="#9fb2c0" font-size="12" font-weight="bold">Єдиний контракт пробника (JSON)</text>
+  <text x="418" y="782" fill="#7b8c9b" font-size="11.5">id · ok · severity info|warn|alert · text · value · ttl</text>
+
+  <path d="M218,798 L218,826" stroke="#e3b341" stroke-width="1.5" marker-end="url(#arrA)"/>
+  <text x="58" y="844" fill="#8ea0ae" font-size="11.5" font-weight="bold">Пробники — факт без побічних ефектів:</text>
+
+  <g font-size="12">
+    <rect x="58" y="856" width="96" height="30" rx="15" fill="#1b232c" stroke="#3d2f2f"/>
+    <text x="106" y="876" fill="#e0836f" text-anchor="middle">alarm</text>
+    <rect x="164" y="856" width="86" height="30" rx="15" fill="#1b232c" stroke="#3a3a2c"/>
+    <text x="207" y="876" fill="#e3b341" text-anchor="middle">loe</text>
+    <rect x="260" y="856" width="92" height="30" rx="15" fill="#1b232c" stroke="#2b3744"/>
+    <text x="306" y="876" fill="#9fb2c0" text-anchor="middle">host</text>
+    <rect x="362" y="856" width="116" height="30" rx="15" fill="#1b232c" stroke="#2b3744"/>
+    <text x="420" y="876" fill="#9fb2c0" text-anchor="middle">services</text>
+    <rect x="488" y="856" width="112" height="30" rx="15" fill="#1b232c" stroke="#2b3744"/>
+    <text x="544" y="876" fill="#9fb2c0" text-anchor="middle">weather</text>
+    <rect x="610" y="856" width="198" height="30" rx="15" fill="#1b232c" stroke="#2c3a44"/>
+    <text x="709" y="876" fill="#5bc8d8" text-anchor="middle">news:&lt;тема&gt; · 8 тем</text>
+  </g>
+  <text x="58" y="912" fill="#6b7d8b" font-size="11.5">topics/*.json — ші, наукпоп, наука, світ, україна, енергетика, робототехніка, embedded</text>
+  <text x="58" y="931" fill="#6b7d8b" font-size="11.5">sources/guardian.py · candidates.py (збір) · curator.py (відбір) · state/ (що вже надсилав)</text>
+</g>
+
+<g>
+  <rect x="866" y="700" width="374" height="250" rx="9" fill="#141a21" stroke="#2b3744"/>
+  <text x="884" y="727" fill="#b48ee0" font-size="12" font-weight="bold" letter-spacing="1.2">ПЛАНУВАЛЬНИКИ · systemd --user</text>
+
+  <rect x="884" y="740" width="338" height="62" rx="7" fill="#101820" stroke="#2b3744"/>
+  <text x="900" y="761" fill="#d7e2ea" font-size="13" font-weight="bold">noos-watch.timer — 15 хв</text>
+  <text x="900" y="779" fill="#8ea0ae" font-size="11.5">watch.py: alarm, loe, host, services</text>
+  <text x="900" y="795" fill="#6b7d8b" font-size="11.5">сповіщає лише про зміни й проблеми</text>
+
+  <rect x="884" y="812" width="338" height="78" rx="7" fill="#101820" stroke="#2b3744"/>
+  <text x="900" y="833" fill="#d7e2ea" font-size="13" font-weight="bold">noos-digest.timer — 08:03 / 20:03</text>
+  <text x="900" y="851" fill="#8ea0ae" font-size="11.5">digest-headless.sh: окрема сесія claude -p</text>
+  <text x="900" y="867" fill="#6b7d8b" font-size="11.5">обов'язково --strict-mcp-config з порожнім</text>
+  <text x="900" y="883" fill="#6b7d8b" font-size="11.5">конфігом, інакше перехопить Telegram</text>
+
+  <rect x="884" y="900" width="338" height="36" rx="7" fill="#101820" stroke="#2b3744"/>
+  <text x="900" y="923" fill="#d7e2ea" font-size="13" font-weight="bold">claude-memory.timer — 15 хв → ingest.py</text>
+</g>
+
+<path d="M866,770 L826,770" stroke="#e3b341" stroke-width="1.5" marker-end="url(#arrA)"/>
+<path d="M866,845 L826,845" stroke="#e3b341" stroke-width="1.5" marker-end="url(#arrA)"/>
+<path d="M1053,936 C1053,968 650,968 650,660" stroke="#5bc8d8" stroke-width="1.4" fill="none" stroke-dasharray="5 4" marker-end="url(#arrC)" opacity="0.75"/>
+<path d="M1240,800 C1266,800 1266,600 1242,586" stroke="#5fb87a" stroke-width="1.4" fill="none" stroke-dasharray="5 4" marker-end="url(#arrG)" opacity="0.7"/>
+
+<text x="40" y="984" fill="#5a6b78" font-size="11">Суцільна лінія — потік даних. Пунктир — індексація в пам'ять. Пробники без побічних ефектів; «операції» (ops/) із журналом і дозволами — заплановані, ще не реалізовані.</text>
+</svg>

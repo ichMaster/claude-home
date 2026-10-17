@@ -1,0 +1,17 @@
+{
+ "назва": "Наукпоп",
+ "опис": "Математика, хімія, біологія, нейронауки — цікаве й зрозуміле, без глибокої спеціалізації",
+ "запит": "(mathematics OR chemistry OR biology OR neuroscience OR brain) (study OR curious OR surprising OR explained)",
+ "джерела": [
+  "livescience.com",
+  "newscientist.com",
+  "bigthink.com",
+  "smithsonianmag.com"
+ ],
+ "мова": "en",
+ "ліміт": 3,
+ "guardian": {
+  "запит": "biology OR chemistry OR neuroscience OR mathematics",
+  "розділ": "science"
+ }
+}

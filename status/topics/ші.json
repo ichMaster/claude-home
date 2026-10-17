@@ -1,0 +1,17 @@
+{
+ "назва": "Штучний інтелект",
+ "опис": "Релізи моделей, Anthropic, OpenAI, інструменти, дослідження",
+ "запит": "(Anthropic OR Claude OR OpenAI OR \"AI model\") (release OR benchmark OR research)",
+ "джерела": [
+  "techcrunch.com",
+  "theverge.com",
+  "arstechnica.com",
+  "venturebeat.com"
+ ],
+ "мова": "en",
+ "ліміт": 3,
+ "guardian": {
+  "запит": "artificial intelligence OR Anthropic OR OpenAI OR \"AI model\"",
+  "розділ": "technology"
+ }
+}

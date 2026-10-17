@@ -1,0 +1,17 @@
+{
+ "назва": "Світ",
+ "опис": "Головні світові події: геополітика, економіка, великі рішення",
+ "запит": "(summit OR ceasefire OR sanctions OR election OR crisis OR agreement OR economy) world",
+ "джерела": [
+  "reuters.com",
+  "apnews.com",
+  "bbc.com",
+  "theguardian.com"
+ ],
+ "мова": "en",
+ "ліміт": 3,
+ "guardian": {
+  "запит": "summit OR sanctions OR election OR crisis OR economy",
+  "розділ": "world"
+ }
+}

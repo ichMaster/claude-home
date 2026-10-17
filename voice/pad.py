@@ -1,0 +1,36 @@
+#!/usr/bin/env python
+"""Додати тишу на початок і кінець: voice/pad.py <вхід> <вихід.ogg> [секунд]
+
+Deepgram з'їдає перше слово, коли мова починається з нульової секунди —
+Telegram часто віддає саме такі обрізані записи.
+"""
+import sys, numpy as np, av
+
+src, dst = sys.argv[1], sys.argv[2]
+sec = float(sys.argv[3]) if len(sys.argv) > 3 else 0.6
+SR = 48000
+
+c = av.open(src)
+rs = av.AudioResampler(format="fltp", layout="mono", rate=SR)
+ch = []
+for fr in c.decode(audio=0):
+    for r in rs.resample(fr):
+        ch.append(r.to_ndarray().reshape(-1))
+c.close()
+x = np.concatenate(ch) if ch else np.zeros(0, dtype="float32")
+pad = np.zeros(int(SR * sec), dtype="float32")
+y = np.concatenate([pad, x, pad]).astype("float32")
+
+out = av.open(dst, "w", format="ogg")
+st = out.add_stream("libopus", rate=SR, layout="mono")
+rs2 = av.AudioResampler(format="s16", layout="mono", rate=SR)
+for i in range(0, len(y), 960):
+    fr = av.AudioFrame.from_ndarray(y[i:i + 960].reshape(1, -1), format="fltp", layout="mono")
+    fr.sample_rate = SR
+    for r in rs2.resample(fr):
+        for p in st.encode(r):
+            out.mux(p)
+for p in st.encode(None):
+    out.mux(p)
+out.close()
+print(dst)
