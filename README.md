@@ -9,7 +9,7 @@ Built for one person, in Ukrainian. Published as a working example of what a
 persistent Claude Code session can be turned into; the code is MIT, the personal
 data never leaves the machine.
 
-![Architecture](noos-architecture.svg)
+![Architecture](docs/assets/noos-architecture.svg)
 
 ## What it does
 
@@ -115,6 +115,15 @@ claude-memory.timer   every 15 min   incremental transcript indexing
   `calendar` and breaks `urllib`. It is called `cal.py` for that reason.
 - In `.gitignore`, a comment on the same line as a pattern becomes part of the
   pattern, and the rule silently stops working.
+
+## Documents
+
+- [docs/VISION.md](docs/VISION.md) — what this is for and the principles it holds to
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — components, data flows, constraints learned
+- [docs/ROADMAP.md](docs/ROADMAP.md) — done, next, later, and what is deliberately refused
+- [docs/concept-tasks.md](docs/concept-tasks.md) — the task and planning concept
+- [docs/design-status.md](docs/design-status.md) — why probes look the way they do
+- [CLAUDE.md](CLAUDE.md) — the operating instructions the session itself reads
 
 ## License
 

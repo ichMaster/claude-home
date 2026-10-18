@@ -18,6 +18,27 @@ Claude desktop / claude.ai/code (Remote Control, session "home"), and the Telegr
 Conversation with the user is Ukrainian; so are user-facing strings (probe output,
 digests, Telegram replies) and the Ukrainian CLI flags of `tasks/store.py`.
 
+## Restarting
+
+```
+./restart.sh         restart, keeping the conversation (the default)
+./restart-clean.sh   restart with an empty context
+```
+
+In the terminal the same two are slash commands — `/restart` and `/restart-clean`
+(`.claude/commands/`); in Telegram, `/restart` and `/restart_clean`.
+
+Both detach through `systemd-run`, so the restart survives the death of the session that
+issued it, and both report the outcome to Telegram.
+
+The session resumes the previous conversation by default (`claude --continue`).
+`restart-clean.sh` drops a one-shot `.fresh` flag that `start.sh` consumes, so a crash
+or a reboot afterwards goes back to continuing.
+
+What a clean restart drops: the conversation only. What always survives: the system
+prompt (rebuilt from `persona.md` plus pinned facts), `CLAUDE.md`, the facts store, the
+transcript index, tasks, the change log, probe state and configuration.
+
 ## Voice (Telegram)
 
 Keys: `~/claude-home/.env.voice` (mode 600) — ElevenLabs + Deepgram, inherited from the
@@ -66,11 +87,16 @@ the session is alive.
 | `/mail` | `./status/send.sh mail` |
 | `/calendar` | `./status/send.sh cal` |
 | `/tasks` | `./status/send.sh tasks` |
+| `/youtube` | `./status/send.sh youtube` |
+| `/facebook` | Gmail connector: `from:facebookmail.com newer_than:24h`, personal items only |
+| `/linkedin` | Gmail connector: the four personal senders from `probes.linkedin` |
 | `/task <text>` | `tasks/store.py add "<text>"` — date and period are parsed out of the text |
 | `/done <id\|title>` | `tasks/store.py done …` |
 | `/plan <id> <when> [min]` | create an event in the `Noos` calendar via the connector → `store.py link` |
 | `/unplan <id>` | delete the event via the connector → `store.py unlink` |
 | `/today` | today's events from the calendars + `run.sh tasks` |
+| `/restart` | `restart` — перезапуск зі збереженням контексту |
+| `/restart_clean` | `restart-clean` — перезапуск з чистого аркуша |
 | `/changes` | `./status/changes-send.sh` |
 | `/digest` | `./status/digest-headless.sh вечірній` (or `ранковий`) |
 
@@ -114,6 +140,13 @@ indexed into `memory/sessions.db` (project `факти`), so search finds them.
 - `claude-memory.timer` — every 15 min, transcript indexing.
 - `noos-changes.timer` — 23:30, `status/changes-send.sh`: a short summary of the day's
   changes (text only).
+- `noos-social.timer` — every two hours from 09:05 to 23:05, `status/social-headless.sh`:
+  Facebook and LinkedIn through the Gmail connector, personal items only; stays silent
+  otherwise. It also polls the YouTube probe so videos accumulate, but never reports
+  them.
+- `noos-youtube.timer` — 18:05, `status/youtube-headless.sh`: drains the accumulated
+  videos (`youtube.py --drain`), picks 4-6 worth watching and sends them as a separate
+  message with links.
 
 **IMPORTANT:** in headless runs disable **the Telegram plugin specifically**, not MCP as
 a whole: `--settings status/digest-settings.json` (it holds `enabledPlugins` with
@@ -153,6 +186,54 @@ too. Recurring events are expanded through RRULE (`python-dateutil`, installed i
 
 The file is deliberately `cal.py` and not `calendar.py`: the latter shadows the stdlib
 `calendar` module and breaks `urllib`.
+
+## YouTube (probe `youtube`)
+
+`status/probes/youtube.py` — new videos from followed channels via YouTube's per-channel
+RSS (`feeds/videos.xml?channel_id=UC...`): plain HTTPS, no API key, works headless.
+
+Channels live in `config.local.json` under `probes.youtube.channels` (so the public
+config does not record what the user watches), each entry `{"name": ..., "id": "UC..."}`
+or `{"name": ..., "handle": "@name"}` — a handle is resolved once and cached in state.
+`status/tools/import_youtube_subs.py <subscriptions.csv>` fills that list from a Google
+Takeout export.
+
+There are 600+ subscriptions, so a run polls a rotating window of
+`probes.youtube.per_run` channels (cursor in state) through a small thread pool —
+80 channels take about 4 seconds. Entries in `probes.youtube.priority` are polled every
+run. Shorts are skipped (`skip_shorts`), because they are the bulk of the feed and
+almost never worth an interruption.
+
+State is `status/state/youtube.json` (reported video ids), so "new" means "not seen at
+the previous check". Videos older than `probes.youtube.max_age_days` are marked seen and
+never reported, which keeps the first run from dumping the whole backlog.
+
+## Facebook
+
+There is no API for a personal feed — Meta removed it (`user_feed`/`read_stream` in
+2018-2020, Groups in 2024). The only workable source is Facebook's own email
+notifications, read through the Gmail connector in the digest:
+`search_threads` with `from:facebookmail.com newer_than:12h`.
+
+Only what concerns the user personally is shown — a comment under their own post, a
+mention, a message, an invitation. "A friend commented on someone's post" and page
+stories are noise and are reported as a count at most.
+
+## LinkedIn
+
+Same situation as Facebook: no feed API, so the source is mail through the Gmail
+connector. The difference is volume — LinkedIn sends about 200 mails a month, nearly
+all of it noise, so the filter is by sender and lives in `config.json`
+(`probes.linkedin`):
+
+- personal: `messages-noreply@`, `invitations@`, `inmail-hit-reply@`,
+  `notifications-noreply@` — messages, InMail, connection requests, reactions to the
+  user's own activity;
+- noise, never reported: `newsletters-`, `updates-`, `jobs-`, `jobalerts-`.
+
+Note: Facebook does not email comments on your own posts unless
+Settings -> Notifications -> Email is switched to "All notifications activity"; by
+default only account and security mail is sent.
 
 ## Tasks (tasks/)
 
@@ -196,6 +277,26 @@ show up in the digest, but no time is reserved for them.
 Planning (step 2, not built yet): blocks go **only** into the `Noos` calendar (id in
 `config.local.json`), at any time except the 00:00–08:00 sleep window, routing around
 power outages from the `loe` probe. The user's own events are never edited.
+
+## Documents
+
+Every concept, specification and design note lives in `docs/` — nothing of that kind at
+the repository root. Only three files stay outside: `README.md` (the public face),
+`CLAUDE.md` (these instructions) and `persona.md` (the character), because tooling
+expects them there.
+
+```
+docs/VISION.md          what this is for, and the principles it holds to
+docs/ARCHITECTURE.md    components, data flows, constraints learned the hard way
+docs/ROADMAP.md         done / next / later / deliberately refused
+docs/concept-tasks.md   the task and planning concept
+docs/design-status.md   why probes look the way they do
+docs/prompts/           prompts for generated imagery
+docs/assets/            diagrams and pictures
+```
+
+New document, new file in `docs/` — and a line in the README list if it is meant to be
+found by someone other than the session.
 
 ## Configuration
 

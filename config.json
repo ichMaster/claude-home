@@ -65,6 +65,54 @@
     },
     "changes": {
       "ttl": 300
+    },
+    "youtube": {
+      "ttl": 1800,
+      "max_age_days": 2,
+      "max_shown": 6,
+      "channels": [],
+      "per_run": 80,
+      "workers": 8,
+      "priority": [],
+      "skip_shorts": true
+    },
+    "facebook": {
+      "ttl": 900,
+      "senders": [
+        "facebookmail.com"
+      ],
+      "personal_only": true,
+      "personal_markers": [
+        "відповів",
+        "відповіла",
+        "згадав",
+        "згадала",
+        "mentioned",
+        "replied",
+        "повідомлення",
+        "your post",
+        "ваш допис",
+        "вашу публікацію",
+        "запросив",
+        "запросила",
+        "invited"
+      ]
+    },
+    "linkedin": {
+      "personal_senders": [
+        "messages-noreply@linkedin.com",
+        "invitations@linkedin.com",
+        "inmail-hit-reply@linkedin.com",
+        "notifications-noreply@linkedin.com"
+      ],
+      "noise_senders": [
+        "newsletters-noreply@linkedin.com",
+        "updates-noreply@linkedin.com",
+        "jobs-noreply@linkedin.com",
+        "jobalerts-noreply@linkedin.com",
+        "jobs-listings@linkedin.com"
+      ],
+      "ttl": 900
     }
   },
   "digest": {

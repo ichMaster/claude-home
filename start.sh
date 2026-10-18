@@ -7,6 +7,20 @@ cd "$HOME/claude-home" || exit 1
 PROMPT="$(cat "$HOME/claude-home/persona.md")
 $("$HOME/claude-home/.venv-voice/bin/python" "$HOME/claude-home/memory/facts.py" prompt 2>/dev/null)"
 ARGS=(--remote-control "home" --append-system-prompt "$PROMPT" --channels plugin:telegram@claude-plugins-official --permission-mode auto)
+
+# The session continues the previous conversation by default. restart-clean.sh drops
+# a one-shot .fresh flag to start empty instead; it is consumed immediately, so the
+# next restart (crash, reboot, timer) goes back to continuing.
+PROJECT_DIR="$HOME/.claude/projects/-home-ich-claude-home"
+if [ -f "$HOME/claude-home/.fresh" ]; then
+  rm -f "$HOME/claude-home/.fresh"
+  echo "сесія стартує з чистого аркуша"
+elif compgen -G "$PROJECT_DIR/*.jsonl" >/dev/null; then
+  # --continue would fail on a machine with no transcripts yet, hence the check
+  ARGS+=(--continue)
+  echo "сесія продовжує попередній контекст"
+fi
+
 while true; do
   claude "${ARGS[@]}"
   echo "claude завершився, перезапуск через 5 с (Ctrl-C щоб зупинити цикл)"; sleep 5

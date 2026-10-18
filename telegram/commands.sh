@@ -28,6 +28,11 @@ read -r -d '' COMMANDS <<'JSON' || true
  {"command":"plan",    "description":"Забронювати час: /plan t006 завтра 14:00 90хв"},
  {"command":"unplan",  "description":"Зняти бронь часу: /unplan t006"},
  {"command":"today",   "description":"Сьогодні: події, блоки, задачі"},
+ {"command":"youtube", "description":"Нові відео з каналів"},
+ {"command":"facebook","description":"Що з Facebook стосується тебе"},
+ {"command":"linkedin","description":"LinkedIn: повідомлення й запрошення"},
+ {"command":"restart", "description":"Перезапуск сесії, контекст зберігається"},
+ {"command":"restart_clean","description":"Перезапуск з чистого аркуша"},
  {"command":"changes", "description":"Що Ноос змінив за сьогодні"},
  {"command":"digest",  "description":"Зібрати дайджест новин зараз"}
 ]
