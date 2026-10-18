@@ -118,9 +118,10 @@ claude-memory.timer   every 15 min   incremental transcript indexing
 
 ## Documents
 
-- [docs/VISION.md](docs/VISION.md) — what this is for and the principles it holds to
+- [docs/VISION.md](docs/VISION.md) — the mission, principles and non-goals
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — components, data flows, constraints learned
-- [docs/ROADMAP.md](docs/ROADMAP.md) — done, next, later, and what is deliberately refused
+- [docs/ROADMAP.md](docs/ROADMAP.md) — versions v0–v6, phase by phase
+- [docs/features/ADMIN-PANEL.md](docs/features/ADMIN-PANEL.md) — the v5 panel: screens, design, limits
 - [docs/concept-tasks.md](docs/concept-tasks.md) — the task and planning concept
 - [docs/design-status.md](docs/design-status.md) — why probes look the way they do
 - [CLAUDE.md](CLAUDE.md) — the operating instructions the session itself reads

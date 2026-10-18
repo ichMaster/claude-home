@@ -1,162 +1,144 @@
-# Architecture
+# Architecture — Noos
 
-## The shape of it
+## Overview
 
-```
-                    ┌──────────────── channels ────────────────┐
-   terminal  ───────┤ tmux attach                               │
-   Telegram  ───────┤ bot plugin (MCP) + notify.sh (Bot API)    │
-   claude.ai ───────┤ Remote Control                            │
-                    └───────────────────┬──────────────────────┘
-                                        │
-                           ┌────────────▼────────────┐
-                           │   the session (24/7)    │
-                           │  persona + CLAUDE.md +  │
-                           │     pinned facts        │
-                           └───┬──────────┬──────────┘
-                               │          │
-        ┌──────────────────────┘          └──────────────────────┐
-        │                                                         │
-┌───────▼────────┐   ┌──────────────┐   ┌─────────────┐   ┌──────▼──────┐
-│  probes        │   │   memory     │   │   tasks     │   │   voice     │
-│ status/probes  │   │ sessions.db  │   │ tasks.jsonl │   │ ElevenLabs  │
-│ JSON contract  │   │ facts/       │   │ + calendar  │   │ Deepgram    │
-└───────┬────────┘   └──────────────┘   └─────────────┘   └─────────────┘
-        │
-┌───────▼─────────────────────────────────────────────────────────────┐
-│ schedulers (systemd --user): watch · digest · social · youtube ·     │
-│ changes · memory index                                               │
-└──────────────────────────────────────────────────────────────────────┘
-```
+Two independent axes. **The assistant's senses** grow: the terminal and Telegram → probes
+and digests → memory of every past conversation → tasks and a calendar → feeds
+(YouTube, social) → operations with side effects. **The interfaces** grow separately: a
+tmux session, then Telegram, then Remote Control, and from v5 a local **admin panel**.
+They are bound by **files on disk**, which are independent of any interface: the
+terminal, the bot, and the browser are three clients of one state.
+
+The second invariant is **the schedule is not the session**. Everything that must happen
+whether or not the session is alive — digests, alerts, indexing — runs as a systemd user
+timer, either as a plain script or as a short-lived headless session. The long-running
+session is a participant, not a dependency.
 
 ## Components
 
-### The session
+- **Session.** One `claude` process in a tmux window, kept alive by the `claude-home`
+  systemd service and an inner restart loop. Its system prompt is assembled at start by
+  `start.sh` from `persona.md` plus `facts.py prompt`; `CLAUDE.md` is loaded as project
+  instructions. **Resumes the previous conversation by default** (`--continue`);
+  `restart-clean.sh` drops a one-shot `.fresh` flag for an empty start. Changing the
+  persona or the facts requires a restart — the prompt is built once.
 
-One long-running Claude Code session in a tmux window, kept alive by a systemd service.
-Its system prompt is assembled at start by `start.sh`: `persona.md` plus the output of
-`facts.py prompt`. `CLAUDE.md` is loaded as project instructions. Changing any of those
-requires a restart to take effect — the prompt is built once.
+- **Channels.** **Telegram** is primary: inbound messages arrive through the plugin as
+  `<channel source="telegram">`, replies go out through its `reply` tool. **`notify.sh`**
+  is the session-free path: it talks to the Bot API directly with the token from
+  `.env.telegram`, so a timer can deliver a message with no session at all. **Terminal**
+  (`tmux attach`) and **Remote Control** (claude.ai, session `home`) are the other two.
+  Exactly one process may poll `getUpdates`; this is the sharpest constraint in the
+  system (§Constraints).
 
-### Channels
+- **Probes** (`status/probes/`). Each prints one JSON object and has no side effects:
+  `{id, ok, severity, value, text, ttl}`. `status/run.sh` executes them behind a TTL
+  cache, so two schedulers minutes apart do not hit the same API twice. `text` is for
+  humans, `value` for comparison with the previous run, `severity` decides whether
+  anything is sent at all. Adding a source of truth means adding one file.
 
-Telegram is the primary one. Inbound messages arrive through the plugin as
-`<channel source="telegram">` blocks; replies go out through the plugin's `reply` tool.
-Outbound messages that must work **without** a session — scheduled digests, alerts — go
-through `notify.sh`, which talks to the Bot API directly with the token from
-`.env.telegram`.
+- **Watcher** (`status/watch.py`, every 15 min). Runs the fast probes and compares a
+  per-probe **signature** against the previous run: `alert` is sent on every change and
+  repeated at most every three hours, `warn` only when the signature changes, `info`
+  stays silent, a return to normal is reported once. This is where "silence is the
+  default" is implemented.
 
-Only one process may poll `getUpdates` at a time. This is the single sharpest constraint
-in the system: a second session with the Telegram plugin enabled silently steals inbound
-messages. Headless runs therefore disable that plugin specifically
-(`status/digest-settings.json`) rather than disabling MCP as a whole — because the
-claude.ai connectors (Gmail, Calendar) are needed by the same runs.
+- **Scenarios.** A prompt file executed by a **headless session** (`claude -p`) on a
+  timer: `digest-prompt.md` (08:03, 20:03), `social-prompt.md` (every two hours),
+  `youtube-prompt.md` (18:05). They read probes and connectors, compose text, and send
+  it through `notify.sh`. Being separate sessions, they cannot block the main one; the
+  cost is that they do not share its context. Each runs with the Telegram plugin
+  disabled and the claude.ai connectors enabled (§Constraints).
 
-### Probes
+- **Memory.** Two layers, deliberately separate. **Facts** (`memory/facts/`) — one file
+  per fact, pinned 0–2, injected into the system prompt at start; small and
+  hand-curated. **Archive** (`memory/sessions.db`) — every transcript under
+  `~/.claude/projects`, indexed incrementally by file offset into SQLite with FTS5 and
+  multilingual embeddings, searched by reciprocal rank fusion. The first answers "who is
+  this person", the second "what did we decide in August".
 
-Small scripts under `status/probes/`, each printing one JSON object:
+- **Tasks and the plan.** `tasks/tasks.jsonl` is an append-only event log — `add`,
+  `done`, `defer`, `cancel`, `edit`, `block`, `link`, `unlink` — replayed into state on
+  every read; `tasks/open.md` is a derived human view. A **task** is work; an **event**
+  is time booked for it in the `Noos` calendar. The link lives in the log rather than in
+  the calendar, because the log is always local while the calendar is reachable only
+  through a connector.
 
-```json
-{"id": "loe", "ok": true, "severity": "info|warn|alert",
- "value": {...}, "text": "ready-made line", "ttl": 900}
+- **Voice.** ElevenLabs for synthesis, Deepgram `nova-3` for recognition, ogg/opus for
+  Telegram. Every voice reply is duplicated as text and recognized speech is quoted back,
+  so a misheard word can be corrected. Numbers are spelled out before synthesis
+  (`status/uk_num.py`); links and emoji are stripped.
+
+- **Change log.** A `PostToolUse` hook appends one line per mutating tool call to
+  `changelog/YYYY-MM-DD.jsonl`; reads are not logged. Daily files carry `chattr +a`, so
+  not even the assistant can rewrite them.
+
+- **Configuration.** `config.json` holds shared defaults and is committed;
+  `config.local.json` holds person-specific values, is git-ignored, and is merged over it
+  key by key. Python reads both through `noosconf.py` (`conf()` / `path()`), shell
+  through `config.sh`. No magic numbers or hardcoded paths in scripts.
+
+- **Panel (from v5).** A local web process on `127.0.0.1:8091` that reads and edits the
+  same files: the assembled prompt, facts, scenarios, schedule, permissions, task board.
+  It has **no store of its own** and writes every change to the change log, so the panel
+  and the session can never diverge. Details in [features/ADMIN-PANEL.md](features/ADMIN-PANEL.md).
+
+## Contracts
+
+**Probe → anything.** One JSON object on stdout:
+`{"id", "ok", "severity": "info|warn|alert", "value": {...}, "text": "…", "ttl": seconds}`.
+A probe that cannot answer still prints an object with `ok: false` and a human `text`;
+it never exits non-zero and never writes to stderr in anger.
+
+**Task log line.** `{"ts", "op", "id", …fields}` appended to `tasks.jsonl`. State is the
+replay; no reader mutates the file.
+
+**Change log line.** `{"ts", "kind", "target", "detail", "session", "cwd"}`.
+
+**Config access.** `conf("dotted.key", default)` and `path("dotted.key")`. Code never
+reads `config.json` directly, so the local overlay always applies.
+
+## State on disk
+
+```
+memory/facts/*.md            pinned facts, one per file
+memory/sessions.db           transcript index (FTS5 + embeddings)
+tasks/tasks.jsonl            append-only task events
+tasks/open.md                derived view
+status/state/mail.json       last seen UID
+status/state/youtube.json    seen video ids, rotation cursor, pending queue
+status/state/watch.json      per-probe signatures and last-sent times
+status/cache/*.json          probe answers within their TTL
+changelog/*.jsonl            append-only, chattr +a
+config.json / config.local.json
+.env.telegram / .env.voice / .env.news   mode 600, never in git
 ```
 
-`status/run.sh` executes them with a TTL cache, so two schedulers minutes apart do not
-hit the same API twice. `text` is for humans, `value` for comparison with the previous
-run, `severity` decides whether anything is sent at all.
+## Security and access
 
-Probes have no side effects and may be run at any time. Anything with side effects is
-not a probe.
+Secrets live only in `.env.*` files with mode 600 and are read by scripts, never by an
+interface. The panel may show that a key exists; it may never show or edit one.
+Permission changes, pairing, and anything touching the allowlist happen **from the
+terminal only** — a message in a chat does not prove who sent it.
 
-### Schedulers
-
-systemd user timers, each with a different job:
-
-| Timer | Cadence | Job |
-|---|---|---|
-| `noos-watch` | 15 min | run probes, send only on change or problem |
-| `noos-digest` | 08:03, 20:03 | full digest via a headless session |
-| `noos-social` | every 2 h, 09–23 | Facebook and LinkedIn, personal items only |
-| `noos-youtube` | 18:05 | drain the accumulated video queue, pick a handful |
-| `noos-changes` | 23:30 | summary of the day's own changes |
-| `claude-memory` | 15 min | incremental transcript indexing |
-
-The digests run as **separate headless sessions** (`claude -p`). They are independent of
-the main session's health and cannot block it; the cost is that they do not share its
-context.
-
-### Memory
-
-Two layers, deliberately separate:
-
-- **Facts** (`memory/facts/`) — one file per fact, pinned by importance, injected into
-  the system prompt at start. Small, hand-curated, about the user.
-- **Archive** (`memory/sessions.db`) — every transcript under `~/.claude/projects`,
-  indexed into SQLite with FTS5 and multilingual embeddings, searched with reciprocal
-  rank fusion. Large, automatic, about everything that was ever said.
-
-The first answers "who is this person"; the second answers "what did we decide in
-August".
-
-### Tasks and the plan
-
-`tasks/tasks.jsonl` is an event log — `add`, `done`, `defer`, `cancel`, `edit`, `block`,
-`link`, `unlink` — replayed into current state on every read. Nothing is mutated in
-place.
-
-A **task** is work to do; an **event** is a slice of time booked for it in the `Noos`
-calendar. One task may own several events. The link between them lives in the log, not
-in the calendar, because the calendar is reachable only through the connector while the
-log is always local.
-
-Three levels of definiteness: a `due` date, a `period` ("this weekend"), or nothing
-(backlog). Separately, a `block` flag decides whether time is reserved at all. Tasks
-with a date but no block are mirrored as all-day events marked `☐`, closed ones become
-`☑`.
-
-### Voice
-
-ElevenLabs for synthesis, Deepgram `nova-3` for recognition, ogg/opus for Telegram.
-Every voice reply is duplicated as text, and recognized speech is quoted back so a
-misheard word can be corrected. Numbers are spelled out before synthesis
-(`status/uk_num.py`), links and emoji stripped.
-
-### Change log
-
-A `PostToolUse` hook (`changelog/hook.py`) appends one line per mutating tool call to
-`changelog/YYYY-MM-DD.jsonl`. Reads are not logged. The files carry `chattr +a`, so even
-the assistant cannot rewrite them; corrections are new lines.
-
-### Configuration
-
-`config.json` holds shared defaults and is committed; `config.local.json` holds
-person-specific values, is git-ignored and merged over it key by key. Code reads both
-through `noosconf.py` (`conf()` / `path()`); shell scripts through `config.sh`. No magic
-numbers or hardcoded paths in scripts.
-
-## Data flows
-
-**Inbound message:** Telegram → plugin → session → (probe / memory / tool) → `reply`
-with text plus voice.
-
-**Scheduled digest:** timer → headless session → probes and connectors → `notify.sh` →
-Telegram. No dependency on the main session.
-
-**New task:** chat or `/task` → `store.py add` → event appended → `open.md` regenerated
-→ optionally an event created in the `Noos` calendar → `store.py link`.
-
-**Recall:** question → `memory/search.sh` → hybrid search over the archive → fragments
-with date, project and session → answer.
+Outward actions are ranked: sending mail and creating calendar events are allowed only
+with an explicit instruction; editing the owner's own events is never allowed; deleting
+data requires a human sentence. From v5 these rules become switches in the panel rather
+than prose in `CLAUDE.md`.
 
 ## Constraints learned the hard way
 
-- Two sessions polling `getUpdates` lose each other's messages (2026-10-17).
-- `--strict-mcp-config` with an empty server list removes the claude.ai connectors too,
-  which silently strips Gmail and Calendar from the digest.
-- A probe named after a stdlib module (`calendar.py`) shadows it and breaks `urllib`.
-  The file is `cal.py`.
-- In `.gitignore`, a comment on the same line as a pattern becomes part of the pattern,
-  and the rule stops working without a word of warning.
-- Deepgram `nova-2` mangles Ukrainian proper nouns; `nova-3` does not.
-- Six hundred subscription feeds cannot be polled on every run: the YouTube probe walks
-  a rotating window and accumulates findings for the daily digest.
+- **One `getUpdates` poller.** A second session with the Telegram plugin enabled
+  silently steals inbound messages. Headless runs disable that plugin specifically.
+- **`--strict-mcp-config` removes the connectors too.** Killing all MCP to protect the
+  bot also strips Gmail and Calendar, which the digest needs. Disable the plugin, not the
+  protocol.
+- **A probe must not be named after a stdlib module.** `calendar.py` shadowed `calendar`
+  and broke `urllib`; the file is `cal.py`.
+- **`.gitignore` has no inline comments.** A comment after a pattern becomes part of the
+  pattern, and the rule silently stops working.
+- **Deepgram `nova-2` mangles Ukrainian proper nouns**; `nova-3` does not.
+- **Six hundred feeds cannot be polled per run.** The YouTube probe walks a rotating
+  window and accumulates findings for the daily digest.
+- **Context is not memory.** The session compacts itself when full; anything that must
+  survive the day belongs in a file, not in the conversation.
