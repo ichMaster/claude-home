@@ -184,3 +184,41 @@ def test_static_cannot_escape_its_directory(attack):
 def test_unknown_screens_name_their_phase():
     html = render.render_soon("Зірка", "/zirka", server.SOON["/zirka"])
     assert "фаза 3" in html and "Зірка" in html
+
+
+# --- t1056: probes_now stamps `checked` from the cache mtime --------------------------------
+# No probe JSON carries a timestamp — run.sh keys freshness off the cache file's mtime, so
+# the panel must read the same clock or every probe renders «невідомо коли / застаріле».
+
+def run_returning(payload):
+    def fake_run(*args, **kwargs):
+        class R:
+            stdout = json.dumps(payload, ensure_ascii=False)
+        return R()
+    return fake_run
+
+
+def test_probes_now_takes_the_age_from_the_cache_file(tmp_path, monkeypatch):
+    import os
+    import time
+    payload = [{"id": "loe", "ok": True, "severity": "info", "text": "Світло є", "ttl": 900},
+               {"id": "alarm", "ok": True, "severity": "info", "text": "Тиша", "ttl": 60}]
+    monkeypatch.setattr(data.subprocess, "run", run_returning(payload))
+    cached = tmp_path / "loe.json"
+    cached.write_text("{}")
+    ten_min_ago = time.time() - 600
+    os.utime(cached, (ten_min_ago, ten_min_ago))
+
+    rows = data.probe_rows(data.probes_now(["loe", "alarm"], cache_dir=tmp_path))
+    loe = next(r for r in rows if r["id"] == "loe")
+    alarm = next(r for r in rows if r["id"] == "alarm")
+    assert loe["age"] is not None and 550 <= loe["age"] <= 700
+    assert loe["stale"] is False                       # 10 min old against a 15 min TTL
+    assert alarm["age"] is None and alarm["stale"] is True   # no cache file → unknown age
+
+
+def test_probes_now_maps_a_colon_id_to_its_cache_name(tmp_path, monkeypatch):
+    payload = [{"id": "news:світ", "ok": True, "severity": "info", "text": "…", "ttl": 600}]
+    monkeypatch.setattr(data.subprocess, "run", run_returning(payload))
+    (tmp_path / "news-світ.json").write_text("{}")
+    assert data.probes_now(["news:світ"], cache_dir=tmp_path)[0].get("checked")

@@ -182,13 +182,30 @@ def recent_changes(limit: int = 20, log_dir: Path | None = None) -> list[dict]:
     return rows
 
 
-def probes_now(ids: list[str] | None = None) -> list[dict]:
-    """Run the probes through the same script the session uses. Shells out."""
+def probes_now(ids: list[str] | None = None, cache_dir: Path | None = None) -> list[dict]:
+    """Run the probes through the same script the session uses. Shells out.
+
+    A probe's answer carries no timestamp of its own — run.sh keys freshness off the cache
+    file's mtime — so each probe is stamped with `checked` from that same mtime here
+    (t1056). A probe with no cache file stays unstamped and renders as stale, which is
+    right: unknown age is not freshness.
+    """
     wanted = ids or list(conf("panel.probes", []) or
                          ["loe", "alarm", "weather", "host", "services", "tasks", "mood"])
     out = subprocess.run([str(HOME / "status" / "run.sh"), *wanted],
                          capture_output=True, text=True, timeout=120)
     try:
-        return json.loads(out.stdout) if out.stdout.strip() else []
+        probes = json.loads(out.stdout) if out.stdout.strip() else []
     except json.JSONDecodeError:
         return []
+    d = cache_dir or (HOME / "status" / "cache")
+    for p in probes:
+        if p.get("checked") or p.get("ts"):
+            continue
+        cache = d / (str(p.get("id") or "").replace(":", "-") + ".json")
+        try:
+            p["checked"] = datetime.fromtimestamp(cache.stat().st_mtime,
+                                                  tz=timezone.utc).isoformat()
+        except OSError:
+            pass
+    return probes
