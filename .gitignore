@@ -45,3 +45,7 @@ docs/personal/
 
 # third-party security notes — contain the start of someone else's token; never publish
 docs/chudinov-store-security*
+
+# runtime handoff notes (generated each restart, contain conversation content)
+memory/handoff.md
+memory/handoff-last.md
