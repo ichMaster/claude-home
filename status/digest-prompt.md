@@ -54,6 +54,8 @@ Do not ask for confirmation; just do it. **The digest itself is written in Ukrai
    and so on, in the order above. `--voice` sends the text and a spoken version of the
    same section; spell numbers out and drop links and emoji from what will be spoken by
    writing the section so that it reads well aloud. Skip a section entirely rather than sending "nothing to report".
+   **Новини are the exception: they are not sent here.** That section goes to its own bot
+   in Bruno's voice — see step 7.
    Check the exit output of every call: `notify.sh` prints `текст 200` on success.
    **If any call prints anything other than 200, say so in the final message instead of
    claiming the digest was delivered.**
@@ -63,7 +65,20 @@ Do not ask for confirmation; just do it. **The digest itself is written in Ukrai
    `.venv-voice/bin/python status/tools/news_seen.py --mark <url1> <url2> … --title "<first headline>"`
    Run it once per item if the headlines differ, so each gets its own fingerprint.
 
-7. News links do not survive speech: send the news section twice if needed — once as
-   `./notify.sh` with the links, once as `./notify.sh --voice-only "<retelling>"`.
+7. **The news section goes to Bruno's bot**, not to the main chat, and in two calls,
+   because links do not survive speech:
+   - `./notify.sh --bot news --no-voice "<text with links>"`
+   - `./notify.sh --bot news --voice-profile news --voice-only "<retelling>"`
+   The bot (`telegram.bots.news`) and the voice (`voice.roles.news` → Bruno) are the same
+   channel the YouTube digest uses: one place for content, recognisable by voice alone,
+   so the main chat stays conversational. Every other section keeps the main bot and the
+   default voice.
+
+   **Tags in the spoken copy.** Bruno is on `eleven_v4_turbo`, so square-bracket directions
+   are performed rather than read out. Place one or two per news item in the spoken text
+   only, never in the text message: `[спокійно]` or `[стримано]` before the clause they
+   govern, `[пауза]` between two items, `[довга пауза]` before the first. A newsreader's
+   restraint, not cheer — the tone comes from the news, not from a mood. Nothing else from
+   the tag vocabulary; the verified set for this voice is those four.
    Conversion examples for numbers are in `status/digest.py` and `status/uk_num.py`.
    Every call prints `текст 200` / `голос 200` — check them.

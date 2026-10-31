@@ -155,24 +155,116 @@
         "done": "☑"
       },
       "rule": "a task with a date or period but no time block becomes an all-day event with availability=FREE; backlog items and Noos's own technical tasks stay out of the calendar"
+    },
+    "reminders": {
+      "lead_min": 15,
+      "checkin_min": 15,
+      "window_min": 6
     }
   },
   "watch": {
     "remind_after_sec": 10800
   },
+  "codereview": {
+    "_": "Nightly self code-review after the 05:00 restart (status/code-review-headless.sh, noos-codereview.timer). Fable 5, ultracode multi-agent; fixes High/Medium findings locally with a task + spec + test each, writes a scan report then a fix report under status/state/code-review/ (git-ignored), never pushes.",
+    "model": "claude-fable-5",
+    "fix_severities": ["high", "medium"],
+    "report_dir": "status/state/code-review"
+  },
+  "telegram": {
+    "env": "~/claude-home/.env.telegram",
+    "inbox": {
+      "_": "status/bots/inbox.py reads what the owner writes to the named bots and answers in their voice. Only his chat id is answered — the bots are public; everything else is logged to status/state/bots/dropped.jsonl. The answering call has no tools and no MCP, so a message in those chats cannot make anything happen.",
+      "max_per_hour": 20,
+      "history": 12,
+      "timeout": 180,
+      "model": "",
+      "intent_model": "sonnet",
+      "search_min_score": 0.5,
+      "fetch_workers": 4,
+      "feedback_min_chars": 25
+    },
+    "bots": {
+      "_": "message kind \u2192 env suffix. notify.sh --bot <kind> sends through TELEGRAM_BOT_TOKEN_<SUFFIX> (and TELEGRAM_CHAT_ID_<SUFFIX> if set) from .env.telegram, falling back to the main bot when the token is missing. Several kinds may share one suffix: news and youtube both live in Bruno's channel, spoken in his voice. The suffix is the bot's own name (Zirka, Bruno), not the kind, so a token is easy to match to the bot it came from. These are one-way broadcast channels: nothing polls getUpdates for them, so a reply sent to one of them never reaches the session.",
+      "mood": "zirka",
+      "news": "bruno",
+      "youtube": "bruno"
+    }
+  },
   "voice": {
-    "sample_rate": 48000
+    "sample_rate": 48000,
+    "muffle": "off",
+    "env": "~/claude-home/.env.voice",
+    "voices": {
+      "_": "name → ElevenLabs voice id. The real roster is personal and lives in config.local.json; notify.sh --voice <name> resolves through it."
+    },
+    "roles": {
+      "_": "message kind → profile name from voice.profiles. Unset kinds use the default voice and model from .env.voice."
+    },
+    "profiles": {
+      "_": "profile name → {voice, model, stability, speed, style, tempo, tags}. Audio tags ([зітхає], [тихо]) are only performed by eleven_v3/v4 models; multilingual_v2 reads them aloud. `speed` is ignored by those same v3/v4 models (measured), so `tempo` speeds the audio up after synthesis instead — see docs/voice-emotion.md."
+    }
   },
   "usage": {
-    "_": "ElevenLabs is a flat subscription, so what matters is the monthly credit quota, not a per-message price. Tokens and recognition are plain counters.",
+    "_": "ElevenLabs is a flat subscription, so what matters is the monthly credit quota, not a per-message price. The quota and what is already spent are read from the provider's own API (the account is shared with other agents), with the local voice log kept as this machine's share. Tokens are plain counters.",
     "voice_log": "status/state/voice-usage.jsonl",
     "elevenlabs": {
       "plan": "Pro",
       "usd_per_month": 99,
-      "credits_per_month": 600000,
+      "api_url": "https://api.elevenlabs.io/v1/user/subscription",
+      "credits_per_month": 1800000,
       "credits_per_char": 1.0,
       "warn_at_percent": 80
     },
-    "ttl": 300
+    "ttl": 300,
+    "api_timeout": 8,
+    "api_cache_ttl": 600,
+    "api_cache": "status/state/usage-api.json",
+    "deepgram": {
+      "_": "Needs a key with the usage:read scope; without it the probe falls back to the local log.",
+      "api_url": "https://api.deepgram.com/v1/projects",
+      "project_id": ""
+    },
+    "projection_min_days": 5
+  },
+  "astro": {
+    "_": "The daily mood: the chart is computed locally (status/astro.py, Swiss Ephemeris / Moshier). Birth data is personal and lives in config.local.json under astro.birth.",
+    "tz": "Europe/Kyiv",
+    "houses": "P",
+    "orb": 5.0,
+    "orbs": {
+      "з'єднання": 6.0,
+      "опозиція": 6.0,
+      "тригон": 5.0,
+      "квадратура": 5.0,
+      "секстиль": 3.0
+    },
+    "natal_file": "status/state/natal.md",
+    "log": "status/state/mood.log",
+    "state": "status/state/mood.json",
+    "send_at": "08:15",
+    "max_tokens": 2000,
+    "window_days": 45,
+    "facts": {
+      "transits": 10,
+      "sky": 4
+    },
+    "models": {
+      "fact": "sonnet",
+      "judge": "",
+      "final": "",
+      "layer": "sonnet",
+      "review": ""
+    },
+    "parallel": 5,
+    "budget_chars": 3300,
+    "feedback": "status/state/mood-feedback.jsonl",
+    "calibration": "status/state/mood-calibration.md",
+    "reference": "status/state/astro-reference.jsonl",
+    "reference_rules": "status/state/astro-reference-rules.md",
+    "reference_rules_in_prompt": 6,
+    "ask_at": "21:00",
+    "rules_in_prompt": 8,
+    "ask_after_hour": 18
   }
 }

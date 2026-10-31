@@ -34,6 +34,7 @@ MAX_AGE_DAYS = conf("probes.youtube.max_age_days", 3)
 # accumulated set and clears it, which is how the once-a-day YouTube digest works
 # despite each run only polling a rotating window of channels
 DRAIN = "--drain" in sys.argv
+LAST = "--last" in sys.argv        # reprint the previous digest instead of draining
 MAX_SHOWN = conf("probes.youtube.max_shown", 6)
 PER_RUN = conf("probes.youtube.per_run", 80)
 WORKERS = conf("probes.youtube.workers", 8)
@@ -89,6 +90,18 @@ if not channels:
     out(ok=False, severity="warn", ttl=3600,
         text="YouTube: канали не налаштовані. Додай їх у config.json → "
              "probes.youtube.channels (назва + id або handle)")
+
+if LAST:
+    saved = STATE.parent / "youtube-last-digest.json"
+    if not saved.exists():
+        out(ok=False, severity="warn", text="Попереднього дайджесту не збережено")
+    data = json.loads(saved.read_text(encoding="utf-8"))
+    items = data.get("items", [])
+    lines = [f"YouTube, дайджест від {data['drained_at'][:16].replace('T', ' ')}: {len(items)} відео"]
+    for e in items:
+        lines.append(f"  • {e['channel']}: {e['title']}\n    {e['link']}")
+    out(ok=True, severity="info", value={"new": len(items), "items": items},
+        text="\n".join(lines))
 
 state = json.loads(STATE.read_text(encoding="utf-8")) if STATE.exists() else {}
 pending = state.get("pending", [])
@@ -178,6 +191,29 @@ known = {p["link"] for p in pending}
 pending += [{"channel": e["channel"], "title": e["title"], "link": e["link"],
              "published": e["published"]} for e in fresh if e["link"] not in known]
 pending = pending[-200:]
+
+# A longer archive than `pending`, which the digest empties every evening: Bruno searches
+# the subscriptions by topic (the owner, 2026-10-30 — searching all of YouTube "буде багато
+# трешу", so his own 600 channels are the filter). Append-only, trimmed by age on write.
+archive = STATE.parent / "youtube-archive.jsonl"
+if fresh:
+    kept = []
+    if archive.exists():
+        keep_after = (datetime.now(timezone.utc)
+                      - timedelta(days=conf("probes.youtube.archive_days", 45))).isoformat()
+        for line in archive.read_text(encoding="utf-8").splitlines():
+            if line.strip() and line.find('"published": "') > 0:
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if rec.get("published", "") >= keep_after:
+                    kept.append(rec)
+    have = {r.get("link") for r in kept}
+    kept += [{"channel": e["channel"], "title": e["title"], "link": e["link"],
+              "published": e["published"]} for e in fresh if e["link"] not in have]
+    archive.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n"
+                               for r in kept[-20000:]), encoding="utf-8")
 if DRAIN:
     drained, pending = pending, []
 STATE.parent.mkdir(parents=True, exist_ok=True)
@@ -188,6 +224,11 @@ STATE.write_text(json.dumps({"seen": sorted(seen)[-4000:], "resolved": resolved,
                             ensure_ascii=False, indent=1), encoding="utf-8")
 
 if DRAIN:
+    # keep a copy so "send it again" never has to re-poll the channels
+    if drained:
+        (STATE.parent / "youtube-last-digest.json").write_text(
+            json.dumps({"drained_at": datetime.now().isoformat(timespec="seconds"),
+                        "items": drained}, ensure_ascii=False, indent=1), encoding="utf-8")
     if not drained:
         out(ok=True, severity="quiet", value={"new": 0, "items": []},
             text="YouTube: нових відео немає")
