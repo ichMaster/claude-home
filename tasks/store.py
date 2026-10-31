@@ -153,6 +153,8 @@ def state():
                 tasks[tid]["status"] = "cancelled"; tasks[tid]["closed"] = e["ts"]
             elif op == "defer":
                 tasks[tid]["due"] = e.get("due"); tasks[tid]["status"] = "open"
+                if "period" in e:      # old defer events carry no period key (t1075)
+                    tasks[tid]["period"] = e["period"]
             elif op == "start":
                 tasks[tid].setdefault("runs", []).append({"from": e["ts"], "to": None})
                 tasks[tid]["running"] = True
@@ -310,11 +312,16 @@ def main():
     elif cmd == "defer":
         tid = find(tasks, rest[0])
         phrase = " ".join(rest[1:])
-        due, _ = parse_due(phrase)
-        if phrase.strip() and not due:
+        # the same two parsers add uses: «на вихідних» is a period, not a date (t1075)
+        period, remainder = parse_period(phrase)
+        due, _ = parse_due(remainder)
+        if phrase.strip() and not due and not period:
             # writing due: null here silently wiped an existing deadline (t1048)
             sys.exit(f"не зрозумів дату «{phrase}» — дедлайн лишається як був")
-        append({"op": "defer", "id": tid, "due": due.isoformat() if due else None})
+        rec = {"op": "defer", "id": tid, "due": due.isoformat() if due else None}
+        if period:
+            rec["period"] = [period[0], period[1].isoformat(), period[2].isoformat()]
+        append(rec)
         tasks = state(); write_view(tasks)
         print(fmt(tasks[tid], tid))
 
