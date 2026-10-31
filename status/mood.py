@@ -180,14 +180,14 @@ def life_context() -> str:
     """Whose day the examples should come from.
 
     The story has to land in a life someone recognises, and that life is different for
-    every subject — so it is configured (`astro.subjects.<name>.context`) rather than
-    assumed to be the owner's.
+    every subject — so it is configured (`astro.context` for the owner,
+    `astro.subjects.<name>.context` for anyone else) rather than written down here. Both
+    fall back to an instruction rather than to a description: a life sketch is personal and
+    belongs in `config.local.json`, which never enters this public repository (t1053).
     """
-    if astro.SUBJECT:
-        return (conf(f"astro.subjects.{astro.SUBJECT}.context")
-                or "про цю людину нічого не відомо — пиши загальними побутовими прикладами")
-    return conf("astro.context", "робота з даними й міграціями, продуктові розмови, "
-                "специфікації й код, діти, домашні справи, акваріум, нічні години")
+    key = f"astro.subjects.{astro.SUBJECT}.context" if astro.SUBJECT else "astro.context"
+    return (conf(key)
+            or "про цю людину нічого не відомо — пиши загальними побутовими прикладами")
 
 
 def natal_text() -> str:

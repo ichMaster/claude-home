@@ -526,9 +526,9 @@ with all twelve in view.
      wrong and gets rewritten.
 
      **The ratio is 80/20**: four sentences of life to one of cause, never more. At most
-     three lines are told at all. Examples come from his actual life (data migrations,
-     product conversations, specs and code, the children, the aquarium, the night hours) and
-     always as possibility, never as invented events. Houses and planets are always glossed
+     three lines are told at all. Examples come from his actual life — the sketch of it is
+     `astro.context` in `config.local.json`, personal and git-ignored, and the prompts are
+     handed it at run time — always as possibility, never as invented events. Houses and planets are always glossed
      in a few words from `astro.glossary_lines()` — fixed reference text, so «восьмий дім
      (спільні ресурси, борги)» reads the same every morning.
    - `ГОЛОВНЕ` — the reference: the one to three facts that were picked, with their names and
@@ -664,8 +664,10 @@ than leaving the reading alone.
   (`kira-forecast`). Calibration rules do **not** carry across subjects: they were learned
   from his account of his days.
 - Birth data: `config.local.json` (`astro.birth`) — date, time, timezone, place, lat/lon.
-  Personal, so never in the committed config. Mind the historical offset: Lviv in November
-  1977 was UTC+3, and `zoneinfo` gets that right where a hardcoded +2 would not.
+  Personal, so never in the committed config, and never quoted in documentation either
+  (t1053). Mind the historical offset: a zone's offset at a birth moment decades ago is
+  often not today's, and `zoneinfo` gets that right where a hardcoded number would not —
+  which is why the `tz` field is a zone name and not a number.
 - The written natal portrait: `status/state/natal.md` (git-ignored, same format as
   `canon/kira.natal.md` in matrix-agora). It is added **beside** the computed chart, never
   instead of it — replacing it quietly hid the house table from the call.
