@@ -20,7 +20,7 @@
 
 The file is append-only: a correction is a new event, never an edit of an old one.
 """
-import json, re, sys
+import fcntl, json, re, sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -120,6 +120,23 @@ def parse_due(text):
         ahead = (want - today.weekday()) % 7 or 7
         cut_span(m); return today + timedelta(days=ahead), t
     return None, t
+
+
+# Commands that write. Read-only ones (list, spent, …) take no lock, so a hung writer
+# can never block the probes.
+MUTATORS = {"add", "done", "cancel", "defer", "edit", "block", "start", "stop",
+            "link", "unlink", "md"}
+
+
+def writer_lock():
+    """One writer at a time (t1076): next_id is a read-modify-write over the log, and two
+    overlapping adds both minted the same id — the earlier task stayed in the log but
+    vanished from state. Blocking flock, held until the process exits; the callers'
+    subprocess timeouts are the backstop."""
+    LOG.parent.mkdir(parents=True, exist_ok=True)
+    f = (LOG.parent / ".lock").open("w")
+    fcntl.flock(f, fcntl.LOCK_EX)
+    return f
 
 
 def append(rec):
@@ -263,6 +280,7 @@ def main():
     if not args:
         sys.exit(__doc__)
     cmd, rest = args[0], args[1:]
+    _lock = writer_lock() if cmd in MUTATORS else None                   # noqa: F841
     tasks = state()
 
     if cmd == "add":

@@ -76,6 +76,46 @@ def test_defer_to_a_date_keeps_an_existing_period(monkeypatch, task_log):
     assert t["period"] and t["period"][0] == "вихідні"
 
 
+# t1076 — one writer at a time: next_id is a read-modify-write over the log, and two
+# overlapping adds both minted the same id, silently shadowing a task.
+
+def _run_in_thread(monkeypatch, argv):
+    import threading
+    monkeypatch.setattr(store.sys, "argv", argv)
+    done = threading.Event()
+
+    def go():
+        try:
+            store.main()
+        except SystemExit:
+            pass
+        done.set()
+    threading.Thread(target=go, daemon=True).start()
+    return done
+
+
+def test_add_waits_for_the_writer_lock(monkeypatch, task_log):
+    """TC1: a mutating command must queue behind another writer, not race it."""
+    import fcntl
+    held = (task_log.parent / ".lock").open("w")
+    fcntl.flock(held, fcntl.LOCK_EX)
+    done = _run_in_thread(monkeypatch, ["store.py", "add", "задача під замком"])
+    assert not done.wait(0.5), "add must block while another writer holds the lock"
+    fcntl.flock(held, fcntl.LOCK_UN)
+    assert done.wait(2), "add must proceed once the lock is released"
+    assert any(v["title"] == "задача під замком" for v in store.state().values())
+
+
+def test_list_ignores_the_writer_lock(monkeypatch, task_log):
+    """TC2: a hung writer must never block the read-only commands the probes use."""
+    import fcntl
+    held = (task_log.parent / ".lock").open("w")
+    fcntl.flock(held, fcntl.LOCK_EX)
+    done = _run_in_thread(monkeypatch, ["store.py", "list"])
+    assert done.wait(2), "list must answer while the writer lock is held"
+    fcntl.flock(held, fcntl.LOCK_UN)
+
+
 def test_old_defer_events_replay_unchanged(task_log):
     """TC4: a defer line without a period key must not invent or wipe one."""
     with task_log.open("a", encoding="utf-8") as f:

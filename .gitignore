@@ -18,6 +18,7 @@ memory/models/
 # задачі
 tasks/tasks.jsonl
 tasks/open.md
+tasks/.lock
 # журнал дій: у командах трапляються шляхи й ключі
 changelog/*.jsonl
 # стан вартового, останній UID пошти
