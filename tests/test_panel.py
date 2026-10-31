@@ -222,3 +222,27 @@ def test_probes_now_maps_a_colon_id_to_its_cache_name(tmp_path, monkeypatch):
     monkeypatch.setattr(data.subprocess, "run", run_returning(payload))
     (tmp_path / "news-світ.json").write_text("{}")
     assert data.probes_now(["news:світ"], cache_dir=tmp_path)[0].get("checked")
+
+
+# --- t1057: one dead collector must not blank the whole page --------------------------------
+# run.sh has no internal timeout and several probes fetch the network; a hanging upstream
+# used to turn the whole page into «500 panel error» instead of one empty section.
+
+@pytest.mark.parametrize("exc", [
+    lambda: data.subprocess.TimeoutExpired(cmd="x", timeout=1),
+    lambda: OSError("no such file"),
+])
+def test_collectors_degrade_instead_of_raising(monkeypatch, exc):
+    def boom(*args, **kwargs):
+        raise exc()
+    monkeypatch.setattr(data.subprocess, "run", boom)
+    assert data.probes_now(["loe"]) == []
+    assert data.timer_units() == []
+    assert data.show("noos-x.timer", "Unit") == ""
+
+
+def test_the_board_renders_with_every_collector_empty():
+    html = render.render_pulse([], [], data.queues(Path("/nonexistent")), [])
+    for heading in ("Пробники", "Таймери", "Черги", "Останні зміни"):
+        assert heading in html
+    assert "Пробники не відповіли" in html and "Таймерів не знайдено" in html

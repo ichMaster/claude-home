@@ -107,10 +107,14 @@ def timer_rows(blobs: list[tuple[str, str, str]]) -> list[dict]:
 
 
 def timer_units() -> list[str]:
-    """The project's own timers, by name. Shells out, so it is never called from a test."""
-    out = subprocess.run(["systemctl", "--user", "list-units", "--type=timer", "--all",
-                          "--no-legend", "--plain"], capture_output=True, text=True,
-                         timeout=15)
+    """The project's own timers, by name. Shells out — and degrades to an empty list when
+    systemd does not answer (t1057): one dead collector must not blank the whole page."""
+    try:
+        out = subprocess.run(["systemctl", "--user", "list-units", "--type=timer", "--all",
+                              "--no-legend", "--plain"], capture_output=True, text=True,
+                             timeout=15)
+    except (subprocess.TimeoutExpired, OSError):
+        return []
     units = []
     for line in out.stdout.splitlines():
         name = line.split()[0] if line.split() else ""
@@ -120,8 +124,12 @@ def timer_units() -> list[str]:
 
 
 def show(unit: str, properties: str) -> str:
-    out = subprocess.run(["systemctl", "--user", "show", unit, f"--property={properties}"],
-                         capture_output=True, text=True, timeout=15)
+    try:
+        out = subprocess.run(["systemctl", "--user", "show", unit,
+                              f"--property={properties}"],
+                             capture_output=True, text=True, timeout=15)
+    except (subprocess.TimeoutExpired, OSError):
+        return ""
     return out.stdout
 
 
@@ -192,8 +200,11 @@ def probes_now(ids: list[str] | None = None, cache_dir: Path | None = None) -> l
     """
     wanted = ids or list(conf("panel.probes", []) or
                          ["loe", "alarm", "weather", "host", "services", "tasks", "mood"])
-    out = subprocess.run([str(HOME / "status" / "run.sh"), *wanted],
-                         capture_output=True, text=True, timeout=120)
+    try:
+        out = subprocess.run([str(HOME / "status" / "run.sh"), *wanted],
+                             capture_output=True, text=True, timeout=120)
+    except (subprocess.TimeoutExpired, OSError):
+        return []                      # run.sh hung or missing — the board shows the rest
     try:
         probes = json.loads(out.stdout) if out.stdout.strip() else []
     except json.JSONDecodeError:
