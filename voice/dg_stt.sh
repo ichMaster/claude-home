@@ -35,3 +35,15 @@ if [ -z "${txt// /}" ]; then
 else
   echo "$txt"
 fi
+
+# usage accounting: audio seconds per recognition, read by the `usage` probe
+secs=$("$HOME/claude-home/.venv-voice/bin/python" -c '
+import sys, av                      # ffprobe is not installed; PyAV already is
+try:
+    with av.open(sys.argv[1]) as c:
+        print(round((c.duration or 0) / 1_000_000, 1))
+except Exception:
+    print(0)' "$src" 2>/dev/null)
+printf '{"ts":"%s","kind":"stt","seconds":%s,"model":"%s"}\n' \
+  "$(date -Is)" "${secs:-0}" "${model:-nova-3}" \
+  >> "$HOME/claude-home/status/state/voice-usage.jsonl" 2>/dev/null || true

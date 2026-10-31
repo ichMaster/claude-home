@@ -1,8 +1,8 @@
 ---
-description: Restart the session, keeping the conversation
+description: Restart with a handoff note (the default)
 allowed-tools: Bash(~/claude-home/restart.sh)
 ---
 
-Run `~/claude-home/restart.sh` and say one line: the restart was launched detached and
-the conversation will be resumed. Do not wait for the result — this session dies in a
-few seconds; the new one reports to Telegram itself.
+Run `~/claude-home/restart.sh` and say one line: a headless session is writing the
+handoff note, then the session restarts clean but knowing what we were doing. Do not
+wait for the result — this session dies in a few seconds.

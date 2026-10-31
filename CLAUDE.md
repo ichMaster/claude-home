@@ -21,12 +21,28 @@ digests, Telegram replies) and the Ukrainian CLI flags of `tasks/store.py`.
 ## Restarting
 
 ```
-./restart.sh         restart, keeping the conversation (the default)
-./restart-clean.sh   restart with an empty context
+./restart.sh            the default: clean context plus a handoff note
+./restart-continue.sh   keep the whole conversation (expensive)
+./restart-clean.sh      keep nothing
 ```
 
-In the terminal the same two are slash commands — `/restart` and `/restart-clean`
-(`.claude/commands/`); in Telegram, `/restart` and `/restart_clean`.
+`noos-nightly-restart.timer` runs the default restart every day at **05:00**, so the
+session starts each morning with a fresh context and yesterday's thread in one page.
+
+Every restart announces itself in the chat before the session dies and reports the
+outcome afterwards, including the size of the handoff note. Between 03:00 and 08:00
+both messages go out with `notify.sh --quiet`: delivered, but without a notification
+ping.
+
+The default restart runs `memory/handoff.py` first: a headless session reads the tail
+of the transcript and writes `memory/handoff.md` — what we are working on, what was just
+done, what is open, what not to repeat. `start.sh` injects that note into the system
+prompt of the next session and moves it to `handoff-last.md`, so it is consumed exactly
+once. Size is capped by `memory.handoff_max_chars` (6000) over
+`memory.handoff_turns` (60) of conversation.
+
+In the terminal: `/restart`, `/restart-continue`, `/restart-clean`
+(`.claude/commands/`). In Telegram: `/restart`, `/restart_continue`, `/restart_clean`.
 
 Both detach through `systemd-run`, so the restart survives the death of the session that
 issued it, and both report the outcome to Telegram.
@@ -95,8 +111,10 @@ the session is alive.
 | `/plan <id> <when> [min]` | create an event in the `Noos` calendar via the connector → `store.py link` |
 | `/unplan <id>` | delete the event via the connector → `store.py unlink` |
 | `/today` | today's events from the calendars + `run.sh tasks` |
-| `/restart` | `restart` — перезапуск зі збереженням контексту |
+| `/restart` | `restart` — перезапуск з естафетною запискою (типовий) |
+| `/restart_continue` | `restart-continue` — зі збереженням усієї розмови |
 | `/restart_clean` | `restart-clean` — перезапуск з чистого аркуша |
+| `/usage` | `./status/send.sh usage` |
 | `/changes` | `./status/changes-send.sh` |
 | `/digest` | `./status/digest-headless.sh вечірній` (or `ранковий`) |
 
@@ -137,6 +155,10 @@ indexed into `memory/sessions.db` (project `факти`), so search finds them.
   the digest as text and voice. Candidates come from all eight topics; selection is two
   steps: at most 2 items per topic, then rank everything selected and keep exactly 4.
   The `candidates.py --random N` flag remains as an option for manual runs.
+  Candidates pass through `status/tools/news_seen.py --filter`, which drops anything
+  already sent — by link, or by a 60% headline-word overlap, so the same story from
+  another source counts as a repeat. After sending, the digest records what went out
+  with `--mark`; the memory lasts `digest.news_memory_days` (14).
 - `claude-memory.timer` — every 15 min, transcript indexing.
 - `noos-changes.timer` — 23:30, `status/changes-send.sh`: a short summary of the day's
   changes (text only).
@@ -183,6 +205,10 @@ Google Calendar settings, one line per calendar in `.env.calendar` (sample in
 Why this and not the connector: iCal is plain HTTPS without OAuth, so it works headless
 too. Recurring events are expanded through RRULE (`python-dateutil`, installed into
 `.venv-voice`); cancelled ones (`STATUS:CANCELLED`) and `EXDATE` are dropped.
+
+The `Noos` calendar is read from the task log rather than from the calendar API: every
+block booked for a task is stored as a `link` event, so it shows up even with no iCal
+address configured and with no connector available.
 
 The file is deliberately `cal.py` and not `calendar.py`: the latter shadows the stdlib
 `calendar` module and breaks `urllib`.
@@ -335,6 +361,25 @@ Repository: `git@github.com:ichMaster/claude-home.git`, branch `main`, **public*
   `git grep -nIE "(sk-[A-Za-z0-9]{20,}|bot[0-9]{6,}:|@gmail\.com|AIza[0-9A-Za-z_-]{25,})" HEAD -- .`
 - Personal and secret material never enters the repository — the list is in
   `.gitignore`, and it is verified with `git status --ignored`, not by eye.
+
+## Usage and cost (probe `usage`)
+
+`status/probes/usage.py` — what today cost. Tokens come from the Claude Code transcripts
+(`usage` block per assistant record: input, output, cache write, cache read, plus the
+model). Voice comes from `status/state/voice-usage.jsonl`, appended by `voice/el_say.sh`
+(characters synthesized) and `voice/dg_stt.sh` (audio seconds, measured with PyAV since
+ffprobe is not installed).
+
+Tokens are **counters only** — nothing is billed per token on a subscription, so a
+dollar figure there would be fiction. ElevenLabs is a flat plan (Creator, $22/mo,
+121k credits), so synthesis is reported as **credits used this month against the quota**
+plus a projection to month end: `usage.elevenlabs` in `config.json` holds the plan,
+quota, credits per character and the warn threshold (80%). The probe goes `warn` when
+the projection crosses it, so the watcher speaks up before the quota runs out rather
+than after.
+
+The evening digest ends with "Підсумок дня": tasks closed today, what stayed open, and
+the day's spend.
 
 ## Change log (changelog/)
 

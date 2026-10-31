@@ -121,8 +121,49 @@ def events(ics, lo, hi):
     return res
 
 
+def noos_blocks(lo, hi):
+    """Blocks booked in the Noos calendar, read from the task log rather than the
+    calendar itself: the log is always local, the calendar needs a connector."""
+    store = path("paths.home") / "tasks"
+    sys.path.insert(0, str(store))
+    try:
+        from store import state  # type: ignore
+    except Exception:
+        return []
+    items = []
+    for tid, t in state().items():
+        if t.get("status") != "open":
+            continue
+        for e in t.get("events") or []:
+            try:
+                start = datetime.fromisoformat(e["start"])
+            except Exception:
+                continue
+            if start.tzinfo is None:
+                start = start.replace(tzinfo=TZ)
+            allday = len(e["start"]) <= 10
+            if start + timedelta(hours=1) > lo and start < hi:
+                items.append({"start": start, "allday": allday, "cal": "Noos",
+                              "summary": t["title"], "loc": ""})
+    return items
+
+
 cals = env()
 if not cals:
+    # no iCal addresses configured: still show what Noos itself booked
+    now0 = datetime.now(TZ)
+    hi0 = (now0 + timedelta(days=HORIZON_DAYS)).replace(hour=23, minute=59, second=59)
+    mine = sorted(noos_blocks(now0, hi0), key=lambda e: e["start"])
+    if mine:
+        def lbl(e):
+            day = "сьогодні" if e["start"].date() == now0.date() else "завтра"
+            when = day if e["allday"] else f"{day} {e['start']:%H:%M}"
+            return f"  • {when} — {e['summary']} [Noos]"
+        out(ok=True, severity="info",
+            value={"count": len(mine), "source": "tasks",
+                   "items": [{"start": e["start"].isoformat(), "summary": e["summary"],
+                              "cal": "Noos"} for e in mine]},
+            text="\n".join([f"Календар Noos: {len(mine)} подій"] + [lbl(e) for e in mine[:10]]))
     out(ok=False, severity="warn", ttl=3600,
         text="Календар: немає адрес. Поклади секретні iCal-посилання у "
              "~/claude-home/.env.calendar рядками CAL_назва=https://...")
@@ -141,6 +182,7 @@ for name, url in cals.items():
     except Exception as e:
         broken.append(f"{name}: {e}")
 
+items += noos_blocks(now, hi)        # the Noos calendar comes from the task log
 items.sort(key=lambda e: e["start"])
 
 def label(e):

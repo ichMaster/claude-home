@@ -18,7 +18,7 @@ rude to YouTube, so each run takes a rotating window of `probes.youtube.per_run`
 channels (the cursor lives in state) and fetches them in a small thread pool. Channels
 listed in `probes.youtube.priority` are polled on every run regardless of the window.
 """
-import json, re, sys, urllib.request
+import json, re, sys, time, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -39,6 +39,8 @@ PER_RUN = conf("probes.youtube.per_run", 80)
 WORKERS = conf("probes.youtube.workers", 8)
 PRIORITY = set(conf("probes.youtube.priority", []))
 SKIP_SHORTS = conf("probes.youtube.skip_shorts", True)
+DELAY = conf("probes.youtube.request_delay_sec", 0.4)
+COOLDOWN_MIN = conf("probes.youtube.block_cooldown_min", 120)
 UA = {"User-Agent": "Mozilla/5.0"}
 
 
@@ -50,6 +52,10 @@ def out(**kw):
 
 
 def fetch(url, timeout=20):
+    # YouTube soft-blocks the feeds endpoint when it is hit too fast: every channel
+    # starts answering 404 while the channel pages still return 200
+    if DELAY:
+        time.sleep(DELAY)
     req = urllib.request.Request(url, headers=UA)
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read().decode("utf-8", "replace")
@@ -86,6 +92,14 @@ if not channels:
 
 state = json.loads(STATE.read_text(encoding="utf-8")) if STATE.exists() else {}
 pending = state.get("pending", [])
+
+# circuit breaker: while YouTube is blocking us, stop hammering it
+blocked_until = state.get("blocked_until", "")
+if blocked_until and datetime.now(timezone.utc).isoformat() < blocked_until and not DRAIN:
+    out(ok=True, severity="quiet", ttl=600,
+        value={"new": 0, "blocked_until": blocked_until},
+        text=f"YouTube: опитування призупинено до {blocked_until[11:16]} UTC — "
+             f"сервіс віддавав 404 на всі канали")
 seen = set(state.get("seen", []))
 resolved = state.get("resolved", {})
 cutoff = datetime.now(timezone.utc) - timedelta(days=MAX_AGE_DAYS)
@@ -143,6 +157,18 @@ with ThreadPoolExecutor(max_workers=WORKERS) as pool:
                 seen.add(e["vid"])      # old video seen for the first time: remember, do not report
             else:
                 fresh.append(e)
+
+# all requests failing means a block, not 600 dead channels
+if ordered and len(broken) >= max(3, int(0.8 * len(ordered))):
+    until = (datetime.now(timezone.utc) + timedelta(minutes=COOLDOWN_MIN)).isoformat()
+    state["blocked_until"] = until
+    STATE.write_text(json.dumps({**state, "pending": pending}, ensure_ascii=False, indent=1),
+                     encoding="utf-8")
+    out(ok=False, severity="warn", ttl=600,
+        value={"new": 0, "blocked_until": until, "errors": broken[:3]},
+        text=f"YouTube: {len(broken)} з {len(ordered)} каналів віддали помилку — схоже на "
+             f"тимчасове блокування. Пауза на {COOLDOWN_MIN} хв.")
+state.pop("blocked_until", None)
 
 fresh.sort(key=lambda e: e["when"], reverse=True)
 seen.update(e["vid"] for e in fresh)

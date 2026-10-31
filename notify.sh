@@ -2,18 +2,44 @@
 # Send a Telegram message straight through the Bot API, with no session involved.
 #   notify.sh "text"             — text only
 #   notify.sh --voice "text"     — text plus a native voice message (ElevenLabs)
+#   notify.sh --quiet "text"     — delivered without a notification ping
 set -euo pipefail
 cd "$HOME/claude-home"
 cfg="$HOME/claude-home/.env.telegram"
 [ -f "$cfg" ] || { echo "немає $cfg" >&2; exit 1; }
 set -a; . "$cfg"; set +a
 
-voice=0
-if [ "${1:-}" = "--voice" ]; then voice=1; shift; fi
+voice=0; text_only=1; silent=""
+case "${1:-}" in
+  --quiet)      silent="-d disable_notification=true"; shift ;;   # delivered, no ping
+  --voice)      voice=1; shift ;;                # text plus a voice message
+  --voice-only) voice=1; text_only=0; shift ;;   # voice only, no text part
+esac
 text="$*"
 
-curl -sS -m 25 -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-  -d "chat_id=${TELEGRAM_CHAT_ID}" --data-urlencode "text=$text" -o /dev/null -w 'текст %{http_code}\n'
+# Telegram refuses anything over 4096 characters, so split on paragraph breaks
+# and send the parts in order. One long digest used to fail silently with a 400.
+if [ "$text_only" = 1 ]; then
+mapfile -d '' -t parts < <(printf '%s' "$text" | "$HOME/claude-home/.venv-voice/bin/python" -c '
+import sys
+LIMIT = 3900
+text, out, cur = sys.stdin.read(), [], ""
+for block in text.split("\n\n"):
+    if len(cur) + len(block) + 2 > LIMIT and cur:
+        out.append(cur); cur = ""
+    cur += ("\n\n" if cur else "") + block
+    while len(cur) > LIMIT:                       # a single oversized paragraph
+        out.append(cur[:LIMIT]); cur = cur[LIMIT:]
+if cur:
+    out.append(cur)
+sys.stdout.write("\0".join(out))')
+
+for part in "${parts[@]}"; do
+  [ -z "$part" ] && continue
+  curl -sS -m 25 -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+    -d "chat_id=${TELEGRAM_CHAT_ID}" $silent --data-urlencode "text=$part" -o /dev/null -w 'текст %{http_code}\n'
+done
+fi
 
 [ "$voice" = 1 ] || exit 0
 

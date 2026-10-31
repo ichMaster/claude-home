@@ -31,8 +31,10 @@ read -r -d '' COMMANDS <<'JSON' || true
  {"command":"youtube", "description":"Нові відео з каналів"},
  {"command":"facebook","description":"Що з Facebook стосується тебе"},
  {"command":"linkedin","description":"LinkedIn: повідомлення й запрошення"},
- {"command":"restart", "description":"Перезапуск сесії, контекст зберігається"},
+ {"command":"restart", "description":"Перезапуск з естафетною запискою"},
+ {"command":"restart_continue","description":"Перезапуск зі збереженням усієї розмови"},
  {"command":"restart_clean","description":"Перезапуск з чистого аркуша"},
+ {"command":"usage",   "description":"Витрати за день: токени й голос"},
  {"command":"changes", "description":"Що Ноос змінив за сьогодні"},
  {"command":"digest",  "description":"Зібрати дайджест новин зараз"}
 ]

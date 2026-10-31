@@ -12,7 +12,9 @@
     "max_facts": 100,
     "max_facts_in_prompt": 25,
     "max_fact_chars": 240,
-    "rrf_k": 60
+    "rrf_k": 60,
+    "handoff_turns": 60,
+    "handoff_max_chars": 6000
   },
   "user": {
     "name": "користувача",
@@ -71,10 +73,12 @@
       "max_age_days": 2,
       "max_shown": 6,
       "channels": [],
-      "per_run": 80,
-      "workers": 8,
+      "per_run": 200,
+      "workers": 1,
       "priority": [],
-      "skip_shorts": true
+      "skip_shorts": true,
+      "request_delay_sec": 1.2,
+      "block_cooldown_min": 180
     },
     "facebook": {
       "ttl": 900,
@@ -118,7 +122,9 @@
   "digest": {
     "items_per_topic": 2,
     "items_total": 4,
-    "model": "claude-opus-5"
+    "model": "claude-opus-5",
+    "news_memory_days": 14,
+    "news_title_overlap": 0.6
   },
   "changelog": {
     "dir": "changelog",
@@ -156,5 +162,17 @@
   },
   "voice": {
     "sample_rate": 48000
+  },
+  "usage": {
+    "_": "ElevenLabs is a flat subscription, so what matters is the monthly credit quota, not a per-message price. Tokens and recognition are plain counters.",
+    "voice_log": "status/state/voice-usage.jsonl",
+    "elevenlabs": {
+      "plan": "Pro",
+      "usd_per_month": 99,
+      "credits_per_month": 600000,
+      "credits_per_char": 1.0,
+      "warn_at_percent": 80
+    },
+    "ttl": 300
   }
 }

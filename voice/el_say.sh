@@ -26,3 +26,8 @@ code=$(curl -sS -o "$out" -w '%{http_code}' \
   -d "$body")
 [ "$code" = 200 ] || { echo "ElevenLabs TTS помилка $code:" >&2; head -c 400 "$out" >&2; echo >&2; exit 1; }
 echo "$out"
+
+# usage accounting: one line per synthesis, read by the `usage` probe
+printf '{"ts":"%s","kind":"tts","chars":%d,"voice":"%s"}\n' \
+  "$(date -Is)" "${#text}" "${ELEVENLABS_VOICE_ID:-default}" \
+  >> "$HOME/claude-home/status/state/voice-usage.jsonl" 2>/dev/null || true

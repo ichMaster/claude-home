@@ -6,6 +6,18 @@ cd "$HOME/claude-home" || exit 1
 # System prompt = persona plus the pinned facts from memory/facts/
 PROMPT="$(cat "$HOME/claude-home/persona.md")
 $("$HOME/claude-home/.venv-voice/bin/python" "$HOME/claude-home/memory/facts.py" prompt 2>/dev/null)"
+
+# A handoff note from restart-summary.sh: the thread of the previous session, carried
+# into an otherwise clean context. Consumed once, then archived.
+HANDOFF="$HOME/claude-home/memory/handoff.md"
+if [ -f "$HANDOFF" ]; then
+  PROMPT="$PROMPT
+
+## Естафета з попередньої сесії
+$(cat "$HANDOFF")"
+  mv "$HANDOFF" "$HOME/claude-home/memory/handoff-last.md"
+  echo "естафетну записку підхоплено"
+fi
 ARGS=(--remote-control "home" --append-system-prompt "$PROMPT" --channels plugin:telegram@claude-plugins-official --permission-mode auto)
 
 # The session continues the previous conversation by default. restart-clean.sh drops
