@@ -108,7 +108,12 @@ def parse_due(text):
         d, mo = int(m.group(1)), int(m.group(2))
         y = int(m.group(3) or today.year)
         y += 2000 if y < 100 else 0
-        cut_span(m); return date(y, mo, d), t
+        try:
+            when = date(y, mo, d)
+        except ValueError:      # «python 3.14», «31.11» — a number, not a date (t1048)
+            when = None
+        if when:
+            cut_span(m); return when, t
     m = re.search(r"\b(?:до|у|в|на)\s+(" + "|".join(map(re.escape, DAYS)) + r")\b", low)
     if m:
         want = DAYS[m.group(1)]
@@ -304,7 +309,11 @@ def main():
 
     elif cmd == "defer":
         tid = find(tasks, rest[0])
-        due, _ = parse_due(" ".join(rest[1:]))
+        phrase = " ".join(rest[1:])
+        due, _ = parse_due(phrase)
+        if phrase.strip() and not due:
+            # writing due: null here silently wiped an existing deadline (t1048)
+            sys.exit(f"не зрозумів дату «{phrase}» — дедлайн лишається як був")
         append({"op": "defer", "id": tid, "due": due.isoformat() if due else None})
         tasks = state(); write_view(tasks)
         print(fmt(tasks[tid], tid))
