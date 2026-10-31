@@ -77,6 +77,8 @@
       "workers": 1,
       "priority": [],
       "skip_shorts": true,
+      "archive_days": 45,
+      "oauth_env": "~/claude-home/.env.youtube",
       "request_delay_sec": 1.2,
       "block_cooldown_min": 180
     },

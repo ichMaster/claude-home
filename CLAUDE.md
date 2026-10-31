@@ -418,6 +418,18 @@ State is `status/state/youtube.json` (reported video ids), so "new" means "not s
 the previous check". Videos older than `probes.youtube.max_age_days` are marked seen and
 never reported, which keeps the first run from dumping the whole backlog.
 
+## New YouTube subscriptions (`status/tools/youtube_subs.py`, `noos-subs.timer`)
+
+A private subscription list can only be read through the Data API with OAuth, so this is
+**dormant until a one-time login** (`status/tools/youtube_oauth.py`) writes a refresh token to
+`.env.youtube` (mode 600, git-ignored). With creds, `noos-subs.timer` at **07:50** fetches the
+current subscriptions, diffs against `probes.youtube.channels` in `config.local.json`, reports
+new channels in Bruno's chat and appends them to the polling list so the archive starts
+covering them. Nothing is ever removed — an unsubscribed channel may still have videos worth
+keeping; removals are only reported. Without creds the run is a clean no-op. One-time setup:
+a Desktop OAuth client in Google Cloud (YouTube Data API v3), then run `youtube_oauth.py` once
+(header has the steps; `ssh -L 8765:localhost:8765` if the box has no browser).
+
 ## The morning forecast (`status/mood.py`, probe `mood`)
 
 Two separate readings, sent by `noos-mood.timer` at **08:15** — after the morning digest,
