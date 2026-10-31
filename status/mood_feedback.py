@@ -75,7 +75,14 @@ def remarks(day: date | None = None) -> list[dict]:
     f = feedback_file()
     if not f.is_file():
         return []
-    rows = [json.loads(ln) for ln in f.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    rows = []
+    for ln in f.read_text(encoding="utf-8").splitlines():
+        if not ln.strip():
+            continue
+        try:
+            rows.append(json.loads(ln))
+        except json.JSONDecodeError:    # a torn line (several appenders, no locking) — skip,
+            continue                    # or ask/calibrate crash forever (t1047)
     return [r for r in rows if day is None or r.get("day") == day.isoformat()]
 
 
