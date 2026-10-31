@@ -18,22 +18,30 @@ $(cat "$HANDOFF")"
   mv "$HANDOFF" "$HOME/claude-home/memory/handoff-last.md"
   echo "естафетну записку підхоплено"
 fi
-ARGS=(--remote-control "home" --append-system-prompt "$PROMPT" --channels plugin:telegram@claude-plugins-official --permission-mode auto)
+BASE_ARGS=(--remote-control "home" --append-system-prompt "$PROMPT" --channels plugin:telegram@claude-plugins-official --permission-mode auto)
 
 # The session continues the previous conversation by default. restart-clean.sh drops
-# a one-shot .fresh flag to start empty instead; it is consumed immediately, so the
-# next restart (crash, reboot, timer) goes back to continuing.
+# a one-shot .fresh flag to start empty instead; it applies to the FIRST run only —
+# the continue decision is recomputed on every loop iteration, because reusing the
+# fresh ARGS after an in-process crash silently dropped the whole conversation (t1052).
 PROJECT_DIR="$HOME/.claude/projects/-home-ich-claude-home"
+FRESH=0
 if [ -f "$HOME/claude-home/.fresh" ]; then
   rm -f "$HOME/claude-home/.fresh"
-  echo "сесія стартує з чистого аркуша"
-elif compgen -G "$PROJECT_DIR/*.jsonl" >/dev/null; then
-  # --continue would fail on a machine with no transcripts yet, hence the check
-  ARGS+=(--continue)
-  echo "сесія продовжує попередній контекст"
+  FRESH=1
 fi
 
 while true; do
+  ARGS=("${BASE_ARGS[@]}")
+  if [ "$FRESH" = 1 ]; then
+    FRESH=0
+    echo "сесія стартує з чистого аркуша"
+  elif compgen -G "$PROJECT_DIR/*.jsonl" >/dev/null; then
+    # --continue would fail on a machine with no transcripts yet, hence the check
+    ARGS+=(--continue)
+    echo "сесія продовжує попередній контекст"
+  fi
   claude "${ARGS[@]}"
-  echo "claude завершився, перезапуск через 5 с (Ctrl-C щоб зупинити цикл)"; sleep 5
+  echo "claude завершився, перезапуск через ${NOOS_RESTART_DELAY:-5} с (Ctrl-C щоб зупинити цикл)"
+  sleep "${NOOS_RESTART_DELAY:-5}"
 done
