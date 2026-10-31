@@ -29,7 +29,8 @@ are built from different things — his from a sun sign, ours from this chart's 
 transits. Only the rules carry over.
 
     astro_learn.py add "<текст>" [--day …] [--author …] [--period …] [--split] [--learn]
-        `--split` cuts a week of calendar into one entry per date, by its day headers
+        `--split` cuts a week of calendar into one entry per date — the model reads the
+        headers, no pattern matching (t1033)
     astro_learn.py learn [--day 2026-10-31]      distil rules from the latest reference
     astro_learn.py rules [--limit 8]             what the prompts are currently obeying
     astro_learn.py list [--limit 5]              references on file
@@ -38,7 +39,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 from datetime import date, datetime
 from pathlib import Path
@@ -67,47 +67,54 @@ def add(text: str, day: date, author: str = "", period: str = "день") -> Non
                             ensure_ascii=False) + "\n")
 
 
-# "➲ Пт 30 октября", "Вс 1 ноября", "Пн 03 ноя" — the day headers of the hourly calendar
-_MONTHS = {"янв": 1, "фев": 2, "мар": 3, "апр": 4, "май": 5, "мая": 5, "июн": 6, "июл": 7,
-           "авг": 8, "сен": 9, "окт": 10, "ноя": 11, "дек": 12,
-           "січ": 1, "лют": 2, "бер": 3, "кві": 4, "тра": 5, "чер": 6, "лип": 7, "сер": 8,
-           "вер": 9, "жов": 10, "лис": 11, "гру": 12}
-_DAY_HEAD = re.compile(
-    r"^[\s➲►▶*#>]*(?:пн|вт|ср|чт|пт|сб|вс|нд|пон|сер|пʼя|суб|нед)?[а-яіїєґ]*\.?\s*"
-    r"(\d{1,2})\s*([а-яіїєґ]{3,10})\.?\s*$",
-    re.IGNORECASE | re.MULTILINE)
+def ask(prompt: str, model: str = "", timeout: int = 180) -> str:
+    """One model call, through the same headless path the forecast uses."""
+    import mood                                                          # noqa: E402
+
+    return mood.run_claude(prompt, model or str(conf("astro.models.layer", "sonnet")), timeout)
 
 
 def split_days(text: str, first: date) -> list[tuple[date, str]]:
-    """Cut a multi-day calendar into one block per date.
+    """Cut a multi-day reference into one block per date — by the model, not by a pattern.
 
-    He sends the reference a week ahead (2026-10-31), and comparing day against day only
-    works if each day is stored under its own date. Headers carry a day and a month name but
-    no year, so the year is taken from `first` and rolled forward when the month wraps.
+    He sends a week of hourly calendar at once, and comparing day against day only works if
+    each day is stored under its own date. The headers are free-form prose in two languages
+    («➲ Пт 30 октября», «31 жовтня», «завтра»), so the old regex plus month table missed
+    anything it had not been shown and filed the whole week under one date — silently, which
+    is the worst way to be wrong. The owner's standing rule settles it: content is read by
+    the model, never parsed by a script (2026-10-31, said twice).
+
+    Python's share is `json.loads` and `date.fromisoformat` — reading the model's structured
+    answer, not the owner's content. A call that fails or answers unusably keeps the text
+    whole under `first`: a reference stored in one piece beats a reference lost.
     """
-    heads = list(_DAY_HEAD.finditer(text))
-    if not heads:
+    prompt = ((HOME / "status" / "mood" / "split.md").read_text(encoding="utf-8")
+              .replace("{{СЬОГОДНІ}}", date.today().isoformat())
+              .replace("{{ТИПОВА}}", first.isoformat())
+              .replace("{{ТЕКСТ}}", text))
+    try:
+        raw = ask(prompt)
+    except Exception as e:                                               # noqa: BLE001
+        print(f"різати на дні не вдалось ({e}) — лишаю одним шматком", file=sys.stderr)
         return [(first, text.strip())]
+
+    start, end = raw.find("["), raw.rfind("]")
+    try:
+        blocks = json.loads(raw[start:end + 1]) if start >= 0 < end else None
+    except json.JSONDecodeError:
+        blocks = None
+    if not isinstance(blocks, list):
+        return [(first, text.strip())]
+
     out: list[tuple[date, str]] = []
-    year = first.year
-    prev_month = None
-    for i, m in enumerate(heads):
-        mon = None
-        key = m.group(2).lower()[:3]
-        if key in _MONTHS:
-            mon = _MONTHS[key]
-        if mon is None:
+    for b in blocks:
+        if not isinstance(b, dict) or not str(b.get("text", "")).strip():
             continue
-        if prev_month is not None and mon < prev_month:
-            year += 1                             # the week crossed into January
-        prev_month = mon
         try:
-            when = date(year, mon, int(m.group(1)))
+            when = date.fromisoformat(str(b.get("day", "")))
         except ValueError:
-            continue
-        body = text[m.end(): heads[i + 1].start() if i + 1 < len(heads) else len(text)]
-        if body.strip():
-            out.append((when, body.strip()))
+            continue                              # a block we cannot date is not a day
+        out.append((when, str(b["text"]).strip()))
     return out or [(first, text.strip())]
 
 

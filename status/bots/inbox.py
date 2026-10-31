@@ -292,9 +292,41 @@ def zirka_kind(message: str) -> dict:
         d = json.loads(m.group(0))
     except json.JSONDecodeError:
         return {"kind": "feedback"}
-    if d.get("kind") not in ("reference", "feedback", "chat"):
+    if d.get("kind") not in ("reference", "feedback", "recalc", "chat"):
         d["kind"] = "feedback"
     return d
+
+
+def recompute_forecast(day) -> str:
+    """Re-run the day's reading, detached, and say what happened.
+
+    The owner asked for this from Zirka's own chat (2026-10-31: «ну буду я їхати до дому
+    щоб зайти на сервер по терміналу і запускати перерахунок гороскопу, дай можливість це
+    робити Зірці»). It is a full re-run rather than `--resume`: the rules learned from a
+    reference feed the weighing and the draft as well as the summary, so redoing only the
+    last stage would apply a third of what was learned.
+
+    `systemd-run` with a fixed unit name does three jobs at once — it survives the death of
+    this timer's cgroup, it gives the eight-minute pipeline its own place to live, and the
+    name itself is the lock: a second request while one is in flight simply fails to start,
+    which is the wanted behaviour and needs no lock file.
+
+    The model never runs this. It is called from the script after the intent is classified,
+    like the feedback path — so nothing said in that chat can do anything but ask for the
+    one thing this function does.
+    """
+    unit = str(conf("astro.recalc_unit", "noos-mood-recalc"))
+    cmd = ["systemd-run", "--user", f"--unit={unit}", "--collect",
+           "--setenv", f"HOME={os.environ.get('HOME', '')}",
+           str(HOME / ".venv-voice" / "bin" / "python"), str(HOME / "status" / "mood.py"),
+           "--day", day.isoformat()]
+    out = subprocess.run(cmd, capture_output=True, text=True, timeout=60, cwd=str(HOME))
+    if out.returncode != 0:
+        err = (out.stderr or "").strip()
+        if "already exists" in err or "Unit" in err and "exists" in err:
+            return "перерахунок уже йде"
+        return f"перерахунок не запустився: {err[:200]}"
+    return "перерахунок запущено — нове читання прийде сюди хвилин за вісім"
 
 
 def take_reference(message: str, meta: dict) -> str:
@@ -311,7 +343,12 @@ def take_reference(message: str, meta: dict) -> str:
     out = subprocess.run(cmd, capture_output=True, text=True, timeout=600, cwd=str(HOME))
     if out.returncode != 0:
         return f"(записати не вдалось: {out.stderr.strip()[:200]})"
-    return out.stdout.strip()
+    learned = out.stdout.strip()
+    # A reference about today must change today, not only tomorrow morning: the rules it
+    # yields are useless to him if the reading he already has stays as it was (t1033).
+    if day == datetime.now().date():
+        learned += "\n\nПерерахунок: " + recompute_forecast(day)
+    return learned
 
 
 def run_search(scope: str, query: str) -> str:
@@ -488,6 +525,11 @@ def handle_update(bot: str, token: str, owner: str, st: dict, upd: dict,
         if kind["kind"] == "reference":
             print(f"{bot}: прогноз астролога ({kind.get('period')}) — вчусь")
             search = take_reference(text, kind)
+        elif kind["kind"] == "recalc":
+            # asked for from her own chat, so he does not have to reach a terminal to get
+            # the day re-read (the owner, 2026-10-31). Started here, not by the model.
+            print(f"{bot}: просять перерахувати прогноз")
+            search = "Перерахунок: " + recompute_forecast(datetime.now().date())
         elif kind["kind"] == "feedback":
             record_feedback(text)
     try:

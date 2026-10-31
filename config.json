@@ -266,6 +266,7 @@
     "reference": "status/state/astro-reference.jsonl",
     "reference_rules": "status/state/astro-reference-rules.md",
     "reference_rules_in_prompt": 6,
+    "recalc_unit": "noos-mood-recalc",
     "ask_at": "21:00",
     "rules_in_prompt": 8,
     "ask_after_hour": 18
