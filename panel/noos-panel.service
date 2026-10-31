@@ -1,0 +1,19 @@
+[Unit]
+# The admin panel. Kept in the repo so the unit is version-controlled, installed with
+#   ln -sf ~/claude-home/panel/noos-panel.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now noos-panel
+# Loopback only, no authentication — reached over `ssh -L 8091:localhost:8091`.
+Description=Noos admin panel
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/claude-home
+ExecStart=%h/claude-home/.venv-voice/bin/python %h/claude-home/panel/server.py
+Restart=on-failure
+RestartSec=5
+# A probe run can take a while; nothing here should ever hang the unit, but cap it anyway.
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target

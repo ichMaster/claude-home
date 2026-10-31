@@ -230,6 +230,14 @@
     },
     "projection_min_days": 5
   },
+  "panel": {
+    "_": "The admin panel (panel/server.py, noos-panel.service). Loopback only and no authentication by design — it is reached over an SSH tunnel; 8090 belongs to the matrix-agora panel. See docs/features/ADMIN-PANEL.md.",
+    "host": "127.0.0.1",
+    "port": 8091,
+    "refresh_sec": 30,
+    "changes": 20,
+    "probes": ["loe", "alarm", "weather", "host", "services", "tasks", "usage", "mood"]
+  },
   "astro": {
     "_": "The daily mood: the chart is computed locally (status/astro.py, Swiss Ephemeris / Moshier). Birth data is personal and lives in config.local.json under astro.birth.",
     "tz": "Europe/Kyiv",
