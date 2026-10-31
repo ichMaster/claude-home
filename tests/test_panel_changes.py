@@ -69,6 +69,38 @@ def test_security_reading_present_and_absent_differ(monkeypatch, tmp_path):
     assert changes.commit_detail({"sha": "b" * 40, "task": ""})["review"] is None
 
 
+# --- t1064: push state ----------------------------------------------------------------------
+
+class _Run:
+    def __init__(self, rc, out=""):
+        self.returncode, self.stdout = rc, out
+
+
+def test_ahead_is_unknown_when_the_remote_ref_fails(monkeypatch):
+    """t1064: a failed rev-list (no origin/main, git error) must answer None, not 'zero'."""
+    monkeypatch.setattr(changes.subprocess, "run", lambda *a, **k: _Run(128))
+    assert changes.ahead_hashes() is None
+    monkeypatch.setattr(changes.subprocess, "run",
+                        lambda *a, **k: (_ for _ in ()).throw(OSError("no git")))
+    assert changes.ahead_hashes() is None
+
+
+def test_ahead_still_counts_when_the_ref_answers(monkeypatch):
+    monkeypatch.setattr(changes.subprocess, "run",
+                        lambda *a, **k: _Run(0, "a" * 40 + "\n"))
+    assert changes.ahead_hashes() == {"a" * 40}
+    monkeypatch.setattr(changes.subprocess, "run", lambda *a, **k: _Run(0, ""))
+    assert changes.ahead_hashes() == set()
+
+
+def test_unknown_push_state_is_not_rendered_as_pushed():
+    """t1064: «Усе запушено» may only mean a verified zero."""
+    html = render.render_changes([], {}, [], [], None, [])
+    assert "Усе запушено" not in html and "невідом" in html
+    assert "Усе запушено" in render.render_changes([], {}, [], [], 0, [])
+    assert changes.commit_rows(LOG, ahead=None)[0]["local"] is False
+
+
 # --- TC4: the nightly reviews --------------------------------------------------------------
 
 SCAN = """# Nightly review

@@ -39,11 +39,17 @@ def git(*args: str) -> str:
     return out.stdout if out.returncode == 0 else ""
 
 
-def ahead_hashes() -> set[str]:
-    """Commits not yet on the public remote. Empty when there is no remote ref to compare
-    against — an unknown answer must not be rendered as "everything is pushed"."""
-    out = git("rev-list", "origin/main..HEAD")
-    return {h.strip() for h in out.splitlines() if h.strip()}
+def ahead_hashes() -> set[str] | None:
+    """Commits not yet on the public remote, or `None` when there is no answer — a missing
+    remote ref or a failed git must not be rendered as "everything is pushed"."""
+    try:
+        out = subprocess.run(["git", "rev-list", "origin/main..HEAD"], capture_output=True,
+                             text=True, cwd=str(HOME), timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0:
+        return None
+    return {h.strip() for h in out.stdout.splitlines() if h.strip()}
 
 
 def commit_rows(log: str, ahead: set[str] | None = None) -> list[dict]:

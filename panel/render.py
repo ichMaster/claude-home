@@ -193,11 +193,17 @@ def _lows_block(lows: list[dict]) -> str:
 
 
 def render_changes(rows: list[dict], details: dict[str, dict], nights: list[dict],
-                   lows: list[dict], ahead: int, changes: list[dict],
+                   lows: list[dict], ahead: int | None, changes: list[dict],
                    query: str = "") -> str:
     """Screen 10 — what was built and how it was reviewed. Read-only, like all of phase 2."""
-    push = (f'<p><b class="warn">{ahead}</b> комітів попереду origin — чекають на ранковий '
-            f'пуш.</p>' if ahead else '<p class="dim">Усе запушено.</p>')
+    # «Усе запушено» may only mean a verified zero; None means git had no answer.
+    if ahead is None:
+        push = '<p class="warn">origin недоступний — стан пушу невідомий.</p>'
+    elif ahead:
+        push = (f'<p><b class="warn">{int(ahead)}</b> комітів попереду origin — чекають '
+                f'на ранковий пуш.</p>')
+    else:
+        push = '<p class="dim">Усе запушено.</p>'
     search = (f'<form method="get" class="search">'
               f'<input name="q" value="{e(query)}" placeholder="пошук у журналі змін">'
               f'<button type="submit">знайти</button></form>')

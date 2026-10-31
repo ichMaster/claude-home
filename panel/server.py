@@ -57,11 +57,11 @@ def pulse_html() -> str:
 
 def changes_html(query: str = "") -> str:
     """Screen 10. The git calls live here; the parsing they feed is pure and tested."""
+    ahead = changes.ahead_hashes()                    # None = origin unreachable, say so
     rows = changes.commit_rows(
-        git_log := changes.git("log", f"--format={changes.LOG_FORMAT}",
-                               f"-{int(conf('panel.commits', 40))}"),
-        changes.ahead_hashes())
-    del git_log
+        changes.git("log", f"--format={changes.LOG_FORMAT}",
+                    f"-{int(conf('panel.commits', 40))}"),
+        ahead)
     tasks = {}
     try:
         sys.path.insert(0, str(HOME / "tasks"))
@@ -76,7 +76,8 @@ def changes_html(query: str = "") -> str:
         needle = query.lower()
         log = [r for r in log if needle in json.dumps(r, ensure_ascii=False).lower()]
     return render.render_changes(rows, details, nights, changes.open_lows(nights),
-                                 len(changes.ahead_hashes()), log[:60], query)
+                                 len(ahead) if ahead is not None else None,
+                                 log[:60], query)
 
 
 def static_file(path: str) -> tuple[bytes, str] | None:
