@@ -17,11 +17,13 @@ Two very different sources, for one reason:
   quality filter. The archive is filled by the `youtube` probe on every run
   (`status/state/youtube-archive.jsonl`, trimmed to `probes.youtube.archive_days`).
 
-Matching is deliberately dumb and transparent — normalized word overlap, with a bonus for
-a whole-phrase hit — because the ranking is done afterwards by a model that sees the items.
+**No relevance matching happens here** (the owner, 2026-10-31). News relevance is Bing's;
+video candidates are the subscription archive by recency only. Which of them actually answer
+the query is decided by the LLM (Bruno) that reads the titles — a regex score once dropped a
+video whose title did not share the query's words.
 
     search.py news "лідар"            JSON: the news hits
-    search.py youtube "lidar robot"   JSON: the video hits
+    search.py youtube "lidar robot"   JSON: recent subscription videos (LLM picks from them)
     search.py both "квантові обчислення"
 """
 from __future__ import annotations
@@ -44,35 +46,13 @@ ARCHIVE = HOME / "status" / "state" / "youtube-archive.jsonl"
 NEWS_RSS = "https://www.bing.com/news/search?q={}&format=RSS&mkt={}"
 ARTICLE_CHARS = 1800            # enough for a model to find the substance, not the whole page
 UA = {"User-Agent": "Mozilla/5.0"}
-STOP = {"і", "та", "в", "у", "на", "по", "про", "з", "із", "до", "за", "the", "a", "an",
-        "of", "for", "and", "or", "in", "on", "to", "is", "are", "with", "new"}
 
 
 def norm(text: str) -> str:
+    """Normalise a title for de-duplicating news hits only — never for relevance matching,
+    which is the LLM's job (the owner, 2026-10-31)."""
     text = unicodedata.normalize("NFKD", (text or "").lower())
     return re.sub(r"[^a-zа-яіїєґ0-9 ]+", " ", text)
-
-
-def words(text: str) -> set[str]:
-    return {w for w in norm(text).split() if len(w) > 2 and w not in STOP}
-
-
-def score(query: str, title: str, extra: str = "") -> float:
-    """Word overlap, plus a bonus when the whole query appears as a phrase. A stem-ish
-    prefix match catches Ukrainian inflection without a morphology library."""
-    q, t = words(query), words(f"{title} {extra}")
-    if not q:
-        return 0.0
-    hits = 0.0
-    for w in q:
-        if w in t:
-            hits += 1
-        elif any(o.startswith(w[:5]) or w.startswith(o[:5]) for o in t):
-            hits += 0.6
-    s = hits / len(q)
-    if norm(query).strip() and norm(query).strip() in norm(f"{title} {extra}"):
-        s += 0.5
-    return s
 
 
 def fetch(url: str, timeout: int = 20) -> bytes:
@@ -157,8 +137,15 @@ def news(query: str, limit: int = 12, bodies: int = 8) -> list[dict]:
     return uniq
 
 
-def videos(query: str, limit: int = 12) -> list[dict]:
-    """The subscription archive, scored by overlap. Nothing leaves this machine."""
+def videos(query: str, limit: int = 0) -> list[dict]:
+    """The subscription archive as a candidate pool — NO relevance matching here.
+
+    The owner was firm (2026-10-31): matching is the LLM's job, not a regex script. A word-
+    overlap score dropped a video whose title did not literally share the query's words. So
+    this returns candidates by recency only (recency is a window, not a judgement of meaning),
+    and Bruno — the answering LLM — reads the titles and decides what is relevant. `query` is
+    kept in the signature for callers but deliberately not used to filter.
+    """
     if not ARCHIVE.exists():
         return []
     rows = []
@@ -169,13 +156,9 @@ def videos(query: str, limit: int = 12) -> list[dict]:
             rows.append(json.loads(line))
         except json.JSONDecodeError:
             continue
-    scored = []
-    for r in rows:
-        s = score(query, r.get("title", ""), r.get("channel", ""))
-        if s >= float(conf("telegram.inbox.search_min_score", 0.5)):
-            scored.append((s, r))
-    scored.sort(key=lambda x: (-x[0], x[1].get("published", "")))
-    return [{**r, "score": round(s, 2)} for s, r in scored[:limit]]
+    rows.sort(key=lambda r: r.get("published", ""), reverse=True)
+    pool = limit or int(conf("telegram.inbox.search_video_pool", 500))
+    return rows[:pool]
 
 
 def archive_span() -> str:

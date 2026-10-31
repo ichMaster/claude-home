@@ -7,5 +7,5 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-for p in (ROOT, ROOT / "status", ROOT / "tasks"):
+for p in (ROOT, ROOT / "status", ROOT / "tasks", ROOT / "status" / "bots"):
     sys.path.insert(0, str(p))

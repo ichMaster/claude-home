@@ -180,7 +180,7 @@
       "timeout": 180,
       "model": "",
       "intent_model": "sonnet",
-      "search_min_score": 0.5,
+      "search_video_pool": 500,
       "fetch_workers": 4,
       "max_document_bytes": 262144,
       "feedback_min_chars": 25
