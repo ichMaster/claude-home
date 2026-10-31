@@ -398,6 +398,70 @@ def send(bot: str, text: str) -> None:
                    check=False, cwd=str(HOME), timeout=300)
 
 
+def handle_update(bot: str, token: str, owner: str, st: dict, upd: dict,
+                  dry_run: bool = False) -> int:
+    """One update → zero or one answered message. Mutates st (offset is advanced by the
+    caller); returns 1 when the message was answered."""
+    msg = upd.get("message") or upd.get("edited_message")
+    if not msg:
+        return 0
+    if str(msg.get("chat", {}).get("id")) != owner:
+        log_dropped(bot, "чужий чат", upd)
+        return 0
+    text = (msg.get("text") or msg.get("caption") or "").strip()
+    if not text and msg.get("voice"):
+        text = transcribe(token, msg["voice"]["file_id"])
+        if text:
+            print(f"{bot}: голосове розпізнано: {text[:80]}")
+    if not text and msg.get("document"):
+        text = read_document(token, msg["document"])
+        if text:
+            print(f"{bot}: документ прочитано: {len(text)} символів")
+    if not text:
+        log_dropped(bot, "без тексту", upd)
+        return 0
+    if not within_cap(st, bot):
+        log_dropped(bot, "ліміт на годину", upd)
+        print(f"{bot}: ліміт відповідей на годину вичерпано")
+        return 0
+
+    print(f"{bot} ← {text[:120]}")
+    if dry_run:
+        return 1
+    search = ""
+    if bot == "bruno":
+        want = intent(text, st.get("last_scope", ""))
+        if want["mode"] == "search":
+            print(f"{bot}: пошук [{want['scope']}] {want['query']}")
+            search = run_search(want["scope"], want["query"])
+            st["last_scope"] = want["scope"]     # a follow-up inherits this area
+    elif bot == "zirka":
+        kind = zirka_kind(text)
+        if kind["kind"] == "reference":
+            print(f"{bot}: прогноз астролога ({kind.get('period')}) — вчусь")
+            search = take_reference(text, kind)
+        elif kind["kind"] == "feedback":
+            record_feedback(text)
+    try:
+        reply = answer(bot, st.get("history", []), text, search)
+    except Exception as e:                                               # noqa: BLE001
+        print(f"{bot}: відповідь не склалась: {e}")
+        return 0
+    reply, request = split_handoff(reply)
+    if not reply:
+        return 0
+    st.setdefault("history", []).append({"role": "user", "text": text})
+    st["history"].append({"role": "bot", "text": reply})
+    st.setdefault("answers", []).append(
+        datetime.now().astimezone().isoformat(timespec="seconds"))
+    send(bot, reply)
+    print(f"{bot} → {reply[:120]}")
+    if request:
+        print(f"{bot}: передаю в головний чат: {request}")
+        hand_over(bot, text, reply, request)
+    return 1
+
+
 def poll(bot: str, dry_run: bool = False) -> int:
     kind, _, _ = BOTS[bot]
     suffix = str(conf(f"telegram.bots.{kind}", "")).replace("-", "_").upper()
@@ -424,65 +488,14 @@ def poll(bot: str, dry_run: bool = False) -> int:
     answered = 0
     for upd in res.get("result", []):
         st["offset"] = upd["update_id"] + 1
-        msg = upd.get("message") or upd.get("edited_message")
-        if not msg:
-            continue
-        if str(msg.get("chat", {}).get("id")) != owner:
-            log_dropped(bot, "чужий чат", upd)
-            continue
-        text = (msg.get("text") or msg.get("caption") or "").strip()
-        if not text and msg.get("voice"):
-            text = transcribe(token, msg["voice"]["file_id"])
-            if text:
-                print(f"{bot}: голосове розпізнано: {text[:80]}")
-        if not text and msg.get("document"):
-            text = read_document(token, msg["document"])
-            if text:
-                print(f"{bot}: документ прочитано: {len(text)} символів")
-        if not text:
-            log_dropped(bot, "без тексту", upd)
-            continue
-        if not within_cap(st, bot):
-            log_dropped(bot, "ліміт на годину", upd)
-            print(f"{bot}: ліміт відповідей на годину вичерпано")
-            continue
-
-        print(f"{bot} ← {text[:120]}")
-        if dry_run:
-            answered += 1
-            continue
-        search = ""
-        if bot == "bruno":
-            want = intent(text, st.get("last_scope", ""))
-            if want["mode"] == "search":
-                print(f"{bot}: пошук [{want['scope']}] {want['query']}")
-                search = run_search(want["scope"], want["query"])
-                st["last_scope"] = want["scope"]     # a follow-up inherits this area
-        elif bot == "zirka":
-            kind = zirka_kind(text)
-            if kind["kind"] == "reference":
-                print(f"{bot}: прогноз астролога ({kind.get('period')}) — вчусь")
-                search = take_reference(text, kind)
-            elif kind["kind"] == "feedback":
-                record_feedback(text)
+        # one bad update (a transcription timeout, a dead network, a hung notify.sh) must
+        # not abort the batch: letting it escape skips save_state, and the next timer run
+        # re-answers everything already sent (t1041). Logged and skipped instead.
         try:
-            reply = answer(bot, st.get("history", []), text, search)
+            answered += handle_update(bot, token, owner, st, upd, dry_run)
         except Exception as e:                                           # noqa: BLE001
-            print(f"{bot}: відповідь не склалась: {e}")
-            continue
-        reply, request = split_handoff(reply)
-        if not reply:
-            continue
-        st.setdefault("history", []).append({"role": "user", "text": text})
-        st["history"].append({"role": "bot", "text": reply})
-        st.setdefault("answers", []).append(
-            datetime.now().astimezone().isoformat(timespec="seconds"))
-        send(bot, reply)
-        print(f"{bot} → {reply[:120]}")
-        if request:
-            print(f"{bot}: передаю в головний чат: {request}")
-            hand_over(bot, text, reply, request)
-        answered += 1
+            print(f"{bot}: збій обробки повідомлення: {e}")
+            log_dropped(bot, f"збій обробки: {e}", upd)
 
     # a dry run must not consume the queue: offsets are only committed when the messages
     # were actually answered (2026-10-30: a --dry-run swallowed a real question)
