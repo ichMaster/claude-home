@@ -63,7 +63,11 @@ def changes_html(query: str = "") -> str:
         ahead)
     tasks = {}
     try:
-        sys.path.insert(0, str(HOME / "tasks"))
+        # Appended, not inserted, and only once: this runs per request in a 24/7 process,
+        # and the task-title import is a nicety that must not outrank the panel's modules.
+        tasks_dir = str(HOME / "tasks")
+        if tasks_dir not in sys.path:
+            sys.path.append(tasks_dir)
         from store import state as task_state                           # noqa: E402
         tasks = task_state()
     except Exception:                                                   # noqa: BLE001

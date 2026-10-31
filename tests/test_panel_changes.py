@@ -247,6 +247,23 @@ def test_changes_page_escapes_everything():
     assert "&lt;img src=x" in html
 
 
+def test_rendering_changes_does_not_grow_sys_path(monkeypatch):
+    """t1067: the panel runs 24/7 — one leaked path entry per request never shrinks."""
+    import server
+    monkeypatch.setattr(server.data, "recent_changes", lambda n: [])
+    monkeypatch.setattr(server.changes, "git", lambda *a: "")
+    monkeypatch.setattr(server.changes, "ahead_hashes", lambda: set())
+    monkeypatch.setattr(server.changes, "review_nights", lambda: [])
+    server.changes_html("")
+    before = list(sys.path)
+    server.changes_html("")
+    server.changes_html("")
+    # Identical, not merely same length: the handler must add nothing on repeat requests.
+    # (Other modules — conftest, status/remind.py — insert the tasks dir on import, so the
+    # absolute count is not this code's to assert.)
+    assert sys.path == before
+
+
 def test_changes_page_names_the_missing_review():
     rows = changes.commit_rows(LOG)
     html = render.render_changes(rows, {rows[0]["sha"]: {"task_title": "", "spec": None,
