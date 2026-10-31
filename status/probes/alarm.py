@@ -35,11 +35,17 @@ try:
     on_region = bool(st.get("enabled"))
     on_dist = bool(dist.get("enabled"))
     since = ago(dist.get("enabled_at") or st.get("enabled_at"))
+    # the source marks an alert yellow or red; red means a heightened threat
+    level = (dist.get("alert_level") or st.get("alert_level") or "")
+    level_word = {"red": "червоний", "yellow": "жовтий"}.get(level, level)
     elsewhere = sorted(k for k, v in d["states"].items() if v.get("enabled") and k != REGION)
 
     if on_dist or on_region:
         where = DISTRICT if on_dist else REGION
-        text = f"🔴 Повітряна тривога: {where}" + (f", вже {since}" if since else "")
+        mark = "🔴" if level == "red" else "🟡" if level == "yellow" else "🔴"
+        text = f"{mark} Повітряна тривога: {where}" + (f", вже {since}" if since else "")
+        if level_word:
+            text += f"; рівень {level_word}"
         sev = "alert"
     else:
         text = f"Тривоги немає: {REGION}"
@@ -50,7 +56,7 @@ try:
     print(json.dumps({"id": "alarm", "ok": True, "severity": sev,
                       "value": {"region": REGION, "district": DISTRICT,
                                 "region_alert": on_region, "district_alert": on_dist,
-                                "since": since, "elsewhere": elsewhere},
+                                "since": since, "level": level, "elsewhere": elsewhere},
                       "text": text, "ttl": TTL}, ensure_ascii=False))
 except Exception as e:
     print(json.dumps({"id": "alarm", "ok": False, "severity": "warn",
