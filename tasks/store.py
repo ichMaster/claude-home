@@ -10,7 +10,12 @@
   store.py list [--all]
   store.py done <id|частина назви>
   store.py defer <id|частина назви> "завтра"
+  store.py edit <id> [--title "нова назва"] [--project x] [--min 90]
   store.py cancel <id|частина назви>
+  store.py start <id|частина назви> — почав робити: пишемо факт у журнал
+  store.py stop  <id|частина назви> — закінчив або відклав; рахуємо витрачений час
+  store.py spent [<id>]             — план проти факту
+  store.py similar "текст"          — скільки насправді займали схожі задачі
   store.py md                       — перезібрати tasks/open.md
 
 The file is append-only: a correction is a new event, never an edit of an old one.
@@ -143,10 +148,19 @@ def state():
                 tasks[tid]["status"] = "cancelled"; tasks[tid]["closed"] = e["ts"]
             elif op == "defer":
                 tasks[tid]["due"] = e.get("due"); tasks[tid]["status"] = "open"
+            elif op == "start":
+                tasks[tid].setdefault("runs", []).append({"from": e["ts"], "to": None})
+                tasks[tid]["running"] = True
+            elif op == "stop":
+                runs = tasks[tid].setdefault("runs", [])
+                if runs and runs[-1]["to"] is None:
+                    runs[-1]["to"] = e["ts"]
+                tasks[tid]["running"] = False
             elif op == "link":
                 tasks[tid].setdefault("events", []).append(
                     {"event": e["event"], "start": e["start"], "end": e["end"],
-                     "calendar": e.get("calendar", "noos")})
+                     "calendar": e.get("calendar", "noos"),
+                     "kind": e.get("kind", "plan")})      # plan = booked, fact = happened
             elif op == "unlink":
                 tasks[tid]["events"] = [x for x in tasks[tid].get("events", [])
                                         if x["event"] != e["event"]]
@@ -176,6 +190,19 @@ def find(tasks, needle):
     sys.exit("неоднозначно — " + ", ".join(f"{k}: {tasks[k]['title']}" for k in hits))
 
 
+def minutes(t):
+    """Actual time spent, from the start/stop pairs in the log."""
+    total = 0
+    for r in t.get("runs") or []:
+        try:
+            a = datetime.fromisoformat(r["from"])
+            b = datetime.fromisoformat(r["to"]) if r["to"] else datetime.now().astimezone()
+            total += max(0, int((b - a).total_seconds() // 60))
+        except Exception:
+            continue
+    return total
+
+
 def fmt(t, tid):
     due = t.get("due")
     mark = ""
@@ -200,13 +227,19 @@ def fmt(t, tid):
     proj = f" [{t['project']}]" if t.get("project") else ""
     est = f" ~{t['estimate']}хв" if t.get("estimate") else ""
     blk = " 📌" if t.get("block") else ""      # 📌 = хоче блок часу
-    evs = t.get("events") or []
+    spent = minutes(t)
+    run = ""
+    if t.get("running"):
+        run = f" ▶ {spent} хв"
+    elif spent:
+        run = f" ⏱ {spent} хв"
+    evs = [e for e in (t.get("events") or []) if e.get("kind", "plan") == "plan"]
     ev = ""
     if evs:
         nearest = min(e["start"] for e in evs)
         ev = f" 🗓 {nearest[8:10]}.{nearest[5:7]} {nearest[11:16]}" + (
             f" (+{len(evs) - 1})" if len(evs) > 1 else "")
-    return f"{tid}  {t['title']}{proj}{mark}{est}{blk}{ev}"
+    return f"{tid}  {t['title']}{proj}{mark}{est}{blk}{run}{ev}"
 
 
 def write_view(tasks):
@@ -263,6 +296,8 @@ def main():
 
     elif cmd in ("done", "cancel"):
         tid = find(tasks, " ".join(rest))
+        if tasks[tid].get("running"):      # closing also stops the clock
+            append({"op": "stop", "id": tid})
         append({"op": cmd, "id": tid})
         tasks = state(); write_view(tasks)
         print(("закрито: " if cmd == "done" else "скасовано: ") + tasks[tid]["title"])
@@ -274,6 +309,27 @@ def main():
         tasks = state(); write_view(tasks)
         print(fmt(tasks[tid], tid))
 
+    elif cmd == "edit":
+        # a correction is a new event, never a rewrite of an old line
+        tid = find(tasks, rest[0])
+        rec = {"op": "edit", "id": tid}
+        i = 1
+        while i < len(rest):
+            a = rest[i]
+            if a == "--title" and i + 1 < len(rest):
+                rec["title"] = rest[i + 1]; i += 2
+            elif a == "--project" and i + 1 < len(rest):
+                rec["project"] = rest[i + 1]; i += 2
+            elif a == "--min" and i + 1 < len(rest):
+                rec["estimate"] = int(rest[i + 1]); i += 2
+            else:
+                i += 1
+        if len(rec) == 2:
+            sys.exit("нічого не змінено: вкажи --title, --project або --min")
+        append(rec)
+        tasks = state(); write_view(tasks)
+        print(fmt(tasks[tid], tid))
+
     elif cmd == "block":
         tid = find(tasks, rest[0])
         on = (rest[1:2] or ["on"])[0] not in ("off", "ні", "0")
@@ -281,11 +337,58 @@ def main():
         tasks = state(); write_view(tasks)
         print(("у календар: " if on else "без календаря: ") + tasks[tid]["title"])
 
+    elif cmd in ("start", "stop"):
+        tid = find(tasks, " ".join(rest))
+        append({"op": cmd, "id": tid})
+        tasks = state(); write_view(tasks)
+        t = tasks[tid]
+        if cmd == "start":
+            est = t.get("estimate")
+            hint = f" Плановано {est} хв." if est else ""
+            print(f"почав: {t['title']}.{hint}")
+        else:
+            spent, est = minutes(t), t.get("estimate")
+            diff = ""
+            if est:
+                d = spent - est
+                diff = f" — {'довше' if d > 0 else 'швидше'} за план на {abs(d)} хв" if abs(d) >= 5 else " — рівно за планом"
+            print(f"зупинив: {t['title']}. Витрачено {spent} хв{diff}")
+
+    elif cmd == "spent":
+        rows = [(k, v) for k, v in tasks.items() if minutes(v)]
+        if rest:
+            rows = [(k, v) for k, v in rows if k == find(tasks, " ".join(rest))]
+        if not rows:
+            print("факту ще немає — користуйся start/stop")
+        for k, v in sorted(rows, key=lambda kv: -minutes(kv[1])):
+            est = v.get("estimate")
+            plan = f"план {est}" if est else "без плану"
+            print(f"{k}  {v['title'][:46]:48} {plan:>10} | факт {minutes(v)} хв")
+
+    elif cmd == "similar":
+        """What comparable work actually took — the basis for the next estimate."""
+        needle = set(w.lower() for w in " ".join(rest).split() if len(w) > 3)
+        scored = []
+        for k, v in tasks.items():
+            spent = minutes(v)
+            if not spent:
+                continue
+            words = set(w.lower() for w in v["title"].split() if len(w) > 3)
+            overlap = len(needle & words)
+            if overlap or (v.get("project") and v["project"] in " ".join(rest).lower()):
+                scored.append((overlap, spent, k, v))
+        if not scored:
+            print("схожого з виміряним часом ще немає")
+        for _, spent, k, v in sorted(scored, key=lambda x: (-x[0], -x[1]))[:5]:
+            est = v.get("estimate") or 0
+            print(f"{k}  {v['title'][:44]:46} план {est or '—':>4} | факт {spent} хв")
+
     elif cmd == "link":
         tid = find(tasks, rest[0])
         append({"op": "link", "id": tid, "event": rest[1],
                 "start": rest[2], "end": rest[3],
-                "calendar": rest[4] if len(rest) > 4 else "noos"})
+                "calendar": rest[4] if len(rest) > 4 else "noos",
+                "kind": rest[5] if len(rest) > 5 else "plan"})
         tasks = state(); write_view(tasks)
         print(fmt(tasks[tid], tid))
 
@@ -304,7 +407,8 @@ def main():
             t = tasks[tid]
             print(f"{tid}  {t['title']}")
             for e in t.get("events", []):
-                print(f"    🗓 {e['start']} → {e['end']}  [{e['calendar']}]  {e['event']}")
+                mark = "🗓" if e.get("kind", "plan") == "plan" else "✔"
+                print(f"    {mark} {e['start']} → {e['end']}  [{e['calendar']}]  {e['event']}")
 
     elif cmd == "list":
         show_all = "--all" in rest
