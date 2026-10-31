@@ -229,6 +229,10 @@ already has Telegram, which is the better interface for intent.
   unreachable for the only person it is for. **No authentication**: the trust boundary is
   the network, and if the panel ever needs to be reachable beyond a trusted one, that is a
   version of its own and not a checkbox.
+- The network boundary is enforced, not only declared: every request's `Host` must be an
+  IP literal, `localhost`, a `*.ts.net` name or an entry in `panel.hosts` — a DNS name an
+  attacker controls is refused with 403, which is what stops DNS rebinding from making an
+  internet page same-origin with the panel and replaying the form token (t1069).
 - **`ufw` must be told about the port.** The firewall is enabled on this machine and drops
   inbound 8091 silently — *timed out*, not *refused*, which is why it reads as the panel
   being broken rather than blocked. The agora panel on 8090 is reachable only because

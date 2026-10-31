@@ -14,6 +14,7 @@ that builds them, so the rail is honest rather than full of dead links.
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import secrets
 import subprocess
 import sys
@@ -96,6 +97,35 @@ FORM_TOKEN = secrets.token_urlsafe(24)
 
 def check_token(value: str) -> bool:
     return bool(value) and secrets.compare_digest(value, FORM_TOKEN)
+
+
+def host_ok(header: str | None) -> bool:
+    """Reject a Host naming a DNS domain — the one thing DNS rebinding cannot fake away.
+
+    The token stops a cross-origin page from posting here; rebinding makes the attacker's
+    page *same-origin* (their domain re-resolves to this panel's address), after which the
+    token can be read out of the page and replayed. Every such request still carries the
+    attacker's own domain in Host. The owner reaches the panel by IP, `localhost` or a
+    tailnet name, so that is all that is accepted; extra names go in `panel.hosts` (t1069).
+    A missing Host is let through — only non-browser clients omit it, and rebinding needs
+    a browser.
+    """
+    if not header:
+        return True
+    host = header.strip()
+    if host.startswith("["):                                 # [::1]:8091
+        host = host[1:host.find("]")] if "]" in host else host[1:]
+    else:
+        host = host.rsplit(":", 1)[0]
+    if host == "localhost" or host.endswith(".ts.net"):
+        return True
+    if host in (conf("panel.hosts", []) or []):
+        return True
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        return False
 
 
 def run_script(*cmd: str, timeout: int = 300) -> tuple[bool, str]:
@@ -234,6 +264,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:                                            # noqa: N802
         path = self.path.split("?")[0]
         try:
+            if not host_ok(self.headers.get("Host")):
+                return self._send(403, "Невідомий Host — запит не до цієї панелі."
+                                  .encode("utf-8"), "text/plain; charset=utf-8")
             if path.startswith("/static/"):
                 found = static_file(path[len("/static/"):])
                 if not found:
@@ -264,6 +297,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:                                           # noqa: N802
         path = self.path.split("?")[0]
         try:
+            # before the token: a rebound page can read the token, but not fake the Host
+            if not host_ok(self.headers.get("Host")):
+                return self._send(403, "Невідомий Host — запит не до цієї панелі."
+                                  .encode("utf-8"), "text/plain; charset=utf-8")
             length = min(int(self.headers.get("Content-Length") or 0),
                          int(conf("panel.max_post_bytes", 1_000_000)))
             body = self.rfile.read(length).decode("utf-8", "replace")
