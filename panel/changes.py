@@ -28,6 +28,7 @@ COMMIT_REVIEW = HOME / "status" / "state" / "commit-review"
 TASK_ID = re.compile(r"\((t\d{3,5})\)")
 # `## High` / `## Medium (…)` / `## Low (reported, not fixed)` and the findings under them
 SEVERITY_HEAD = re.compile(r"^##\s+(High|Medium|Low)\b", re.IGNORECASE | re.MULTILINE)
+ANY_HEAD = re.compile(r"^##\s", re.MULTILINE)
 FINDING_HEAD = re.compile(r"^###\s+(.+?)\s*$", re.MULTILINE)
 LOG_FORMAT = "%H%x1f%cI%x1f%s%x1f%an"
 
@@ -116,8 +117,11 @@ def findings(report: str) -> dict[str, list[str]]:
     marks = list(SEVERITY_HEAD.finditer(report or ""))
     if not marks:
         return {}
-    for i, m in enumerate(marks):
-        end = marks[i + 1].start() if i + 1 < len(marks) else len(report)
+    for m in marks:
+        # The section ends at the next `## ` heading of ANY kind: the scans end with a
+        # `## Checked and cleared` section whose entries are not findings of anything.
+        nxt = ANY_HEAD.search(report, m.end())
+        end = nxt.start() if nxt else len(report)
         severity = m.group(1).lower()
         titles = [t.group(1).strip() for t in FINDING_HEAD.finditer(report[m.end():end])]
         out.setdefault(severity, []).extend(titles)

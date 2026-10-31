@@ -98,6 +98,16 @@ def test_unrecognised_report_is_not_guessed_at():
     assert changes.findings("just some prose with no headings") == {}
 
 
+def test_a_section_after_low_is_not_counted_as_low():
+    """t1063: the real scans end with `## Checked and cleared` — its entries are cleared
+    non-findings and must not leak into the Low count or the standing Low list."""
+    report = (SCAN + "\n## Checked and cleared\n\n"
+              "### Path traversal — verified safe\n### XSS — verified safe\n")
+    got = changes.findings(report)
+    assert got["low"] == ["L1 — a naive timestamp (panel/data.py:50)"]
+    assert all("verified safe" not in t for ts in got.values() for t in ts)
+
+
 def test_nights_pair_scan_with_fixes(tmp_path):
     (tmp_path / "2026-10-31-scan.md").write_text(SCAN, encoding="utf-8")
     (tmp_path / "2026-10-31-fixes.md").write_text("fixed both", encoding="utf-8")
