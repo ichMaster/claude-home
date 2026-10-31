@@ -39,3 +39,9 @@ tasks/config.json
 
 # локальні значення конфігу (ім’я, id календаря)
 config.local.json
+
+# --- особисті документи: план квартири, датчики, розміщення ---
+docs/personal/
+
+# third-party security notes — contain the start of someone else's token; never publish
+docs/chudinov-store-security*

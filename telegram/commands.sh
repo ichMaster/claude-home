@@ -24,6 +24,8 @@ read -r -d '' COMMANDS <<'JSON' || true
  {"command":"calendar","description":"Календар: сьогодні і завтра"},
  {"command":"tasks",   "description":"Задачі: відкриті й дедлайни"},
  {"command":"task",    "description":"Додати задачу: /task текст [завтра|на вихідних]"},
+ {"command":"doing",   "description":"Почав задачу: /doing t008 або частина назви"},
+ {"command":"spent",   "description":"План проти факту за задачами"},
  {"command":"done",    "description":"Закрити задачу: /done t003 або частина назви"},
  {"command":"plan",    "description":"Забронювати час: /plan t006 завтра 14:00 90хв"},
  {"command":"unplan",  "description":"Зняти бронь часу: /unplan t006"},
@@ -34,6 +36,8 @@ read -r -d '' COMMANDS <<'JSON' || true
  {"command":"restart", "description":"Перезапуск з естафетною запискою"},
  {"command":"restart_continue","description":"Перезапуск зі збереженням усієї розмови"},
  {"command":"restart_clean","description":"Перезапуск з чистого аркуша"},
+ {"command":"mood",    "description":"Прогноз дня: стан і біоритми"},
+ {"command":"feel",    "description":"Як відчувався день: /feel текст — для калібрування"},
  {"command":"usage",   "description":"Витрати за день: токени й голос"},
  {"command":"changes", "description":"Що Ноос змінив за сьогодні"},
  {"command":"digest",  "description":"Зібрати дайджест новин зараз"}
