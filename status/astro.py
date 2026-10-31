@@ -523,6 +523,136 @@ def window_line(w: dict) -> str:
     return f"{span} ({bounds}), {when}, орбіс {w['orb_today']}°"
 
 
+def moon_events(day: date, step_hours: float | None = None) -> list[dict]:
+    """Every aspect the Moon makes during `day` — in the sky and to the natal chart.
+
+    The rest of the module reads one frame, at local noon, which is the fair midpoint for
+    *where* a body is. For the Moon it is the wrong question. It covers ~13° a day, more
+    than twice the widest orb here, so an aspect exact in the evening is simply absent from
+    a noon snapshot and no later stage can recover what was never computed.
+
+    Caught against a real reference on 2026-10-31 (t1060): the Moon squared retrograde
+    Venus in the 8th from 20:29, and our run had nothing for the whole evening because at
+    noon the Moon was 7° short of it. Three of that reference's four factors matched ours
+    to the degree; the fourth was missing for this reason alone, and the loss is systematic
+    — roughly half the Moon's aspects are exact outside a few hours around noon, and those
+    are the sharp dated triggers a day is actually made of.
+
+    Walks the day in `step_hours` (2 h: the Moon moves ~1.1° in that time, so no passage
+    can slip between two samples), keeps the tightest moment per pairing, then refines to
+    the nearest ten minutes so the hour is usable. Pure arithmetic — no model, no network.
+    """
+    step = step_hours or float(conf("astro.moon_step_hours", 2))
+    tz = ZoneInfo(conf("astro.tz", "Europe/Kyiv"))
+    orbs = conf("astro.orbs", {})
+    default_orb = conf("astro.orb", 5.0)
+
+    b = birth_data()
+    npos, nangles = positions(b.moment, b.lat, b.lon)
+    natal = {p.name: p.lon for p in npos}
+    natal.update({"ASC": nangles["asc"], "MC": nangles["mc"]})
+    cusps = nangles["cusps"]
+
+    def frame(moment: datetime) -> tuple[float, dict[str, float]]:
+        jd = julday(moment)
+        moon, _ = swe.calc_ut(jd, swe.MOON, FLAGS)
+        others = {}
+        for name, ipl in BODIES:
+            if name == "Місяць":
+                continue
+            xx, _ = swe.calc_ut(jd, ipl, FLAGS)
+            others[name] = _norm(xx[0])
+        return _norm(moon[0]), others
+
+    # pairing → the tightest sample seen so far
+    best: dict[tuple[str, str, bool], dict] = {}
+    steps = max(1, int(round(24 / step)))
+    for i in range(steps + 1):
+        moment = datetime.combine(day, time(0, 0), tz) + timedelta(hours=i * step)
+        if moment.date() != day and i:                # the last sample lands on midnight
+            break
+        moon_lon, sky = frame(moment)
+        targets = [(name, lon, False) for name, lon in sky.items()]
+        targets += [(name, lon, True) for name, lon in natal.items()]
+        for name, lon, is_natal in targets:
+            for kind, exact_angle in ASPECTS:
+                orb_limit = float(orbs.get(kind, default_orb))
+                sep = _separation(moon_lon, lon, exact_angle)
+                if sep > orb_limit:
+                    continue
+                key = (name, kind, is_natal)
+                if key not in best or sep < best[key]["orb"]:
+                    best[key] = {"orb": sep, "moment": moment}
+                # the first aspect that fits is the only one that can
+                break
+
+    out: list[dict] = []
+    for (name, kind, is_natal), hit in best.items():
+        # refine around the tightest sample: ten-minute resolution is enough to say
+        # "towards the evening" without pretending to an hourly calendar
+        finest, when = hit["orb"], hit["moment"]
+        for minutes in range(-int(step * 60), int(step * 60) + 1, 10):
+            moment = hit["moment"] + timedelta(minutes=minutes)
+            if moment.date() != day:
+                continue
+            moon_lon, sky = frame(moment)
+            lon = natal[name] if is_natal else sky[name]
+            sep = _separation(moon_lon, lon, dict(ASPECTS)[kind])
+            if sep < finest:
+                finest, when = sep, moment
+
+        orb_limit = float(orbs.get(kind, default_orb))
+        # how long it holds today, in whole hours either side of the exact moment
+        held = 0.0
+        for direction in (-1, 1):
+            hours = 0.0
+            while hours < 24:
+                hours += 0.5
+                moment = when + timedelta(hours=direction * hours)
+                if moment.date() != day:
+                    break
+                moon_lon, sky = frame(moment)
+                lon = natal[name] if is_natal else sky[name]
+                if _separation(moon_lon, lon, dict(ASPECTS)[kind]) > orb_limit:
+                    break
+            held += hours
+        # The scan's edge is not the passage's edge — the same trap `window_line()` fell
+        # into once. A tightest point pinned to the first or last minutes of the day, with
+        # the orb still wide, means exactness falls outside the day; say that instead of
+        # printing midnight as if it were the peak.
+        edge = ""
+        if finest > 0.5:
+            if when.hour == 0 and when.minute <= 20:
+                edge = "before"
+            elif when.hour == 23 and when.minute >= 40:
+                edge = "after"
+        out.append({
+            "other": name,
+            "kind": kind,
+            "natal": is_natal,
+            "orb": round(finest, 2),
+            "exact": when.isoformat(timespec="minutes"),
+            "hour": when.hour,
+            "hours": round(min(held, 24.0), 1),
+            "edge": edge,
+        })
+    return sorted(out, key=lambda e: e["exact"])
+
+
+def moon_event_line(e: dict) -> str:
+    """«транзитний Місяць квадратура Венера, точно близько 20:30 (орбіс 0.1°)»."""
+    target = (f"{NATAL_ADJ.get(e['other'], 'натальний')} {e['other']}" if e["natal"]
+              else e["other"])
+    if e.get("edge") == "before":
+        when = "точність була ще до початку доби"
+    elif e.get("edge") == "after":
+        when = "точність уже за північчю"
+    else:
+        when = f"точно близько {e['exact'][11:16]}"
+    return (f"транзитний Місяць {e['kind']} {target}, {when} "
+            f"(орбіс {e['orb']}°, тримається {e['hours']:.0f} год)")
+
+
 def day_focus(day: date) -> dict:
     """Which body is loudest today and which house is the day's arena — computed, not felt.
 
@@ -670,6 +800,11 @@ def facts(day: date) -> list[dict]:
 
     out: list[dict] = []
     limits = conf("astro.facts", {})
+    # The Moon is handled by moon_events() below, across the whole day: taking it from the
+    # noon frame here as well would both duplicate it and keep the evening blind spot
+    # (t1060).
+    sky["transits"] = [a for a in sky["transits"] if a["a"] != "Місяць"]
+    sky["aspects"] = [a for a in sky["aspects"] if "Місяць" not in (a["a"], a["b"])]
     for a in sky["transits"][:int(limits.get("transits", 10))]:
         w = transit_window(a["a"], natal_lon[a["b"]], a["kind"], day)
         target = f"{NATAL_ADJ.get(a['b'], 'натальний')} {a['b']}"
@@ -709,6 +844,12 @@ def facts(day: date) -> list[dict]:
                 "text": (f"Місяць — {sky['moon']['phase']}, освітлення "
                          f"{sky['moon']['illuminated']:.0%}"),
                 "orb": None, "window": {}, "window_text": ""})
+
+    # the Moon's own day, hour by hour rather than one frame at noon (t1060)
+    for i, e in enumerate(moon_events(day), 1):
+        out.append({"id": f"m{i}", "kind": "moon-event", "layer": "moon",
+                    "text": moon_event_line(e), "orb": e["orb"], "window": {},
+                    "window_text": f"тримається {e['hours']:.0f} год сьогодні"})
 
     for a in sky["aspects"][:int(limits.get("sky", 4))]:
         out.append({"id": f"s{a['a']}-{a['b']}", "kind": "sky",
