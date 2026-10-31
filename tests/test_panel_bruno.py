@@ -157,3 +157,47 @@ def test_bruno_page_escapes_everything():
                 "<script>bad()", "<b>n</b>", "<hr>"):
         assert raw not in html
     assert "&lt;img src=x" in html
+
+
+# --- t1073: valid JSON that is not an object must not take the screen down -----------------
+
+def test_topic_file_with_non_object_json_is_a_broken_row(tmp_path):
+    (tmp_path / "наука.json").write_text(json.dumps(
+        {"назва": "Наука", "запит": "science", "джерела": ["nature.com"]},
+        ensure_ascii=False), encoding="utf-8")
+    (tmp_path / "нуль.json").write_text("null", encoding="utf-8")
+    (tmp_path / "список.json").write_text("[1, 2]", encoding="utf-8")
+    got = {t["id"]: t for t in bruno.topics(tmp_path)}
+    assert got["наука"]["name"] == "Наука", "the good file still parses"
+    assert got["нуль"]["broken"] and got["список"]["broken"]
+
+
+def test_topic_sources_that_are_not_a_list_of_strings_still_render(tmp_path):
+    (tmp_path / "рядок.json").write_text(json.dumps(
+        {"назва": "Р", "джерела": "nature.com"}, ensure_ascii=False), encoding="utf-8")
+    (tmp_path / "числа.json").write_text(json.dumps(
+        {"назва": "Ч", "джерела": [42]}, ensure_ascii=False), encoding="utf-8")
+    rows = bruno.topics(tmp_path)
+    html = render.render_bruno(
+        news=[], videos=("", []), dropped=[],
+        stats={"count": 0, "first": "", "last": "", "channels": 0}, found=[], query="",
+        chat={"history": [], "answers_this_hour": 0, "cap": 20, "last_scope": "",
+              "dropped": []},
+        topics=rows, prompts=[])                        # must not raise
+    assert "n, a, t" not in html, "a string must not be joined into its characters"
+    assert "42" in html
+
+
+def test_jsonl_line_that_is_a_valid_scalar_is_skipped_like_a_torn_one(tmp_path, monkeypatch):
+    monkeypatch.setattr(bruno, "STATE", tmp_path)
+    (tmp_path / "news-dropped.jsonl").write_text(
+        json.dumps({"ts": "1", "title": "перший"}) + "\n"
+        + "123\n"                                       # a torn tail that parses as JSON
+        + json.dumps({"ts": "2", "title": "другий"}) + "\n", encoding="utf-8")
+    assert [d["title"] for d in bruno.dropped_news()] == ["другий", "перший"]
+    f = tmp_path / "youtube-archive.jsonl"
+    f.write_text('"рядок"\n' + json.dumps(
+        {"channel": "A", "title": "t", "published": "2026-10-30T00:00:00+00:00"}) + "\n",
+        encoding="utf-8")
+    got = bruno.archive_stats(f)                        # must not raise
+    assert got["count"] == 1 and got["first"] == "2026-10-30"

@@ -35,9 +35,12 @@ def _lines(f: Path) -> list[dict]:
         if not line.strip():
             continue
         try:
-            out.append(json.loads(line))
+            rec = json.loads(line)
         except json.JSONDecodeError:
             continue
+        # a torn tail can parse as a scalar — `123` is valid JSON; only objects are records
+        if isinstance(rec, dict):
+            out.append(rec)
     return out
 
 
@@ -124,10 +127,18 @@ def topics(folder: Path | None = None) -> list[dict]:
         except json.JSONDecodeError as exc:
             out.append({"id": f.stem, "broken": f"не читається: {exc}"})
             continue
+        if not isinstance(t, dict):
+            # `null` or a bare list is valid JSON and json.loads will not complain;
+            # a topic that is not an object costs its row, not the screen
+            out.append({"id": f.stem, "broken": "не обʼєкт, а "
+                        f"{type(t).__name__} — тему не прочитати"})
+            continue
+        sources = t.get("джерела")
         out.append({"id": f.stem, "broken": "",
                     "name": t.get("назва", ""), "about": t.get("опис", ""),
                     "query": t.get("запит", ""),
-                    "sources": t.get("джерела", []) or [],
+                    "sources": [str(s) for s in sources]
+                    if isinstance(sources, list) else [str(sources or "")],
                     "limit": t.get("межа") or t.get("ліміт") or ""})
     return out
 
