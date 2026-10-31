@@ -197,7 +197,15 @@ def natal_text() -> str:
     house table from the call (2026-10-27).
     """
     computed = astro.natal_lines(astro.natal_chart())
-    f = Path(str(astro.subject_conf("natal_file", "status/state/natal.md"))).expanduser()
+    if astro.SUBJECT:
+        # a named subject may only have their OWN portrait: falling back to the owner's
+        # file contaminated their reading with his chart description (t1051)
+        natal_file = conf(f"astro.subjects.{astro.SUBJECT}.natal_file")
+    else:
+        natal_file = astro.subject_conf("natal_file", "status/state/natal.md")
+    if not natal_file:
+        return computed
+    f = Path(str(natal_file)).expanduser()
     if not f.is_absolute():
         f = HOME / f
     if f.is_file():
@@ -248,19 +256,22 @@ def yesterday_block(day: date) -> str:
     if not f.is_file():
         return ""
     text = f.read_text(encoding="utf-8")
-    marks = [m for m in _LOG_DAY_RE.finditer(text) if m.group(1) < day.isoformat()]
-    if not marks:
-        return ""
-    last = marks[-1]
-    end = next((m.start() for m in _LOG_DAY_RE.finditer(text) if m.start() > last.end()), len(text))
-    block = text[last.end():end]
-    final = re.search(r"--- (?:підсумок|прогноз) ---(.*?)(?=\n--- |\Z)", block, re.DOTALL)
-    body = split_blocks(final.group(1)) if final else {}
-    summary = body.get("ПІДСУМОК") or ""
-    if not summary:
-        return ""
-    return (f"Учорашній прогноз ({last.group(1)}) — щоб не суперечити собі й сказати, "
-            f"якщо лінія триває:\n{summary.strip()[:1200]}")
+    all_marks = list(_LOG_DAY_RE.finditer(text))
+    marks = [m for m in all_marks if m.group(1) < day.isoformat()]
+    # Newest first, and keep walking back: a --resume run appends a block holding only
+    # `підсумок (перероблено)`, which the old single-block regex missed, so the morning
+    # after any resume silently lost yesterday's context (t1051).
+    for last in reversed(marks):
+        end = next((m.start() for m in all_marks if m.start() > last.end()), len(text))
+        block = text[last.end():end]
+        final = re.search(r"--- (?:підсумок(?: \(перероблено\))?|прогноз) ---(.*?)(?=\n--- |\Z)",
+                          block, re.DOTALL)
+        body = split_blocks(final.group(1)) if final else {}
+        summary = body.get("ПІДСУМОК") or ""
+        if summary:
+            return (f"Учорашній прогноз ({last.group(1)}) — щоб не суперечити собі й сказати, "
+                    f"якщо лінія триває:\n{summary.strip()[:1200]}")
+    return ""
 
 
 def interpret_facts(natal: str, day: date, facts: list[dict], note=lambda *a: None) -> list[dict]:
@@ -389,13 +400,17 @@ def summary_call(day: date, facts_text: str, moon_text: str,
 
 
 def write_forecast(natal: str, day: date, facts: list[dict], rank: dict,
-                   note=lambda *a: None) -> dict[str, str]:
+                   note=lambda *a: None, partial: dict | None = None) -> dict[str, str]:
     """The last three stages: a detailed draft, a review of it, then the short result.
 
     The owner's shape (2026-10-27): the draft is written long and the review checks *it* —
     not the summary — against the facts, and only then is everything compressed to what
     actually gets sent. Reviewing the short version would be reviewing prose; reviewing the
     long one catches the claim that has no fact behind it.
+
+    `partial`, when given, receives each stage's output as it is produced, so a failed call
+    does not discard the stages already paid for — the caller logs it and --resume can pick
+    the draft up (t1051).
     """
     by_id = {f["id"]: f for f in facts}
     # The Moon always reaches the writing stages, whatever the ranking said: it sets the
@@ -417,6 +432,8 @@ def write_forecast(natal: str, day: date, facts: list[dict], rank: dict,
                                 ЧОМУ=rank["why"], УЧОРА=before),
                            model)
     draft = plain(split_blocks(draft_raw).get("ЧИТАННЯ", "")) or plain(draft_raw)
+    if partial is not None:
+        partial["черновик"] = draft
 
     note("    ревʼю")
     review_raw = run_claude(fill("review.md", ДАТА=day.isoformat(),
@@ -425,6 +442,8 @@ def write_forecast(natal: str, day: date, facts: list[dict], rank: dict,
                                  ЧЕРНОВИК=draft, УЧОРА=before),
                             conf("astro.models.review", ""))
     review = split_blocks(review_raw)
+    if partial is not None:
+        partial["ревʼю"] = review_raw
     fixes = plain(review.get("ПРАВКИ", "")) or "немає"
     note(f"    оцінка: {plain(review.get('ОЦІНКА', ''))[:120]}")
 
@@ -657,11 +676,23 @@ def main() -> int:
     read = read + [x for x in layers if x]
 
     note("3/5 зважування")
-    rank = weigh(natal, day, read)
-    note(f"    основне: {', '.join(rank['main'])}")
-    note(f"    чутливе: {', '.join(rank.get('tender', []))}")
-    note("4/5 черновик → ревʼю → підсумок")
-    forecast = write_forecast(natal, day, read, rank, note)
+    # a transient CLI failure here used to throw away all ~14 completed interpretation
+    # calls with nothing in the log and no --resume possible (t1051)
+    partial = {"факти": fact_lines(read)}
+    try:
+        rank = weigh(natal, day, read)
+        partial["зважування"] = rank["raw"]
+        note(f"    основне: {', '.join(rank['main'])}")
+        note(f"    чутливе: {', '.join(rank.get('tender', []))}")
+        note("4/5 черновик → ревʼю → підсумок")
+        forecast = write_forecast(natal, day, read, rank, note, partial)
+    except Exception:
+        if not args.dry_run:
+            log_run(day, partial)
+            print("збій на пізній стадії — зроблене записано в лог "
+                  f"({', '.join(partial)}); якщо є черновик, допоможе --resume",
+                  file=sys.stderr)
+        raise
     note("5/5 біоритми")
     bio = ({"figures": "", "conclusion": "", "raw": ""} if args.only == "astro"
            else write_biorhythms(day, computed))
