@@ -167,6 +167,22 @@ def test_zirka_page_escapes_free_text():
     assert "&lt;img src=x" in html
 
 
+# --- t1071: /zirka must not grow sys.path on every request ------------------------------
+
+def test_zirka_html_does_not_grow_sys_path(monkeypatch):
+    """The exact defect /changes was cured of the same day (t1067): an unguarded
+    sys.path.append in a per-request function of a 24/7 process."""
+    monkeypatch.setattr(server.zirka, "log_text", lambda: "")
+    monkeypatch.setattr(server.zirka, "rules_text", lambda: ("", ""))
+    monkeypatch.setattr(server.zirka, "feedback", lambda: [])
+    monkeypatch.setattr(server.zirka, "references", lambda: [])
+    monkeypatch.setattr(server.zirka, "parked", lambda: [])
+    server.zirka_html("2026-10-31")                 # may add the status dir once
+    before = list(sys.path)
+    server.zirka_html("2026-10-31")
+    assert sys.path == before
+
+
 def test_zirka_page_carries_the_token_in_every_form():
     html = render.render_zirka(day="2026-10-31", blocks=[], runs=[], facts=[],
                                own_rules="", ref_rules="", feedback=[], refs=[],

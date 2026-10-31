@@ -197,7 +197,11 @@ def zirka_html(day: str = "", message: str = "") -> str:
     summary = runs[0]["summary"] if runs else ""
     own, ref = zirka.rules_text()
     try:
-        sys.path.append(str(HOME / "status"))
+        # Appended, not inserted, and only once: this runs per request in a 24/7 process
+        # (the same guard changes_html carries, t1067).
+        status_dir = str(HOME / "status")
+        if status_dir not in sys.path:
+            sys.path.append(status_dir)
         import astro                                                    # noqa: E402
         facts = [f["text"] + (f"  [{f['window_text']}]" if f.get("window_text") else "")
                  for f in astro.facts(when)]
