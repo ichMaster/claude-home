@@ -68,11 +68,37 @@ def connect():
     """)
     return db
 
+def clear_all(db):
+    """Full wipe for --rebuild. fts is an external-content table, so its rows must be
+    removed with the FTS5 'delete-all' command BEFORE the content rows go — deleting chunks
+    first left stale token mappings and a malformed index (t1049)."""
+    db.execute("INSERT INTO fts(fts) VALUES('delete-all')")
+    db.executescript("DELETE FROM chunks; DELETE FROM files;")
+
+
+def tail_lines(f, done):
+    """New complete lines of `f` past byte offset `done`, plus the offset actually consumed.
+    The file grows while a live session writes: taking stat().st_size as the new offset
+    skipped a line torn mid-write forever and re-read lines appended during the run (t1049).
+    The offset only ever advances past lines that end in a newline."""
+    out = []
+    with open(f, "rb") as fh:
+        fh.seek(done)
+        offset = done
+        while True:
+            raw = fh.readline()
+            if not raw or not raw.endswith(b"\n"):
+                break                      # torn tail: reread it next run
+            offset = fh.tell()
+            out.append(raw.decode("utf-8", "replace"))
+    return out, offset
+
+
 def main():
     rebuild = "--rebuild" in sys.argv
     db = connect()
     if rebuild:
-        db.executescript("DELETE FROM files; DELETE FROM chunks; DELETE FROM fts;")
+        clear_all(db)
     pending = []
     for f in sorted(ROOT.rglob("*.jsonl")):
         size = f.stat().st_size
@@ -80,23 +106,22 @@ def main():
         done = row[0] if row else 0
         if done >= size:
             continue
-        with open(f, encoding="utf-8", errors="replace") as fh:
-            fh.seek(done)
-            for line in fh:
-                try:
-                    rec = json.loads(line)
-                except Exception:
-                    continue
-                if rec.get("type") not in ("user", "assistant"):
-                    continue
-                t = text_of(rec)
-                if not t or len(t.strip()) < 40:
-                    continue
-                for ch in chunks(t):
-                    pending.append((f.parent.name, f.stem, rec.get("timestamp") or "",
-                                    rec.get("type"), ch))
+        lines, offset = tail_lines(f, done)
+        for line in lines:
+            try:
+                rec = json.loads(line)
+            except Exception:
+                continue
+            if rec.get("type") not in ("user", "assistant"):
+                continue
+            t = text_of(rec)
+            if not t or len(t.strip()) < 40:
+                continue
+            for ch in chunks(t):
+                pending.append((f.parent.name, f.stem, rec.get("timestamp") or "",
+                                rec.get("type"), ch))
         db.execute("INSERT INTO files(path,bytes) VALUES(?,?) "
-                   "ON CONFLICT(path) DO UPDATE SET bytes=excluded.bytes", (str(f), size))
+                   "ON CONFLICT(path) DO UPDATE SET bytes=excluded.bytes", (str(f), offset))
     # facts are always reindexed from scratch: few of them, edited often
     facts_dir = Path.home() / "claude-home" / "memory" / "facts"
     if facts_dir.exists():
@@ -138,4 +163,6 @@ def main():
     n = db.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
     print(f"готово: у базі {n} фрагментів, {DB}")
 
-main()
+
+if __name__ == "__main__":
+    main()
