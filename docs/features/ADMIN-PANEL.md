@@ -57,15 +57,71 @@ The screen that justifies the project.
 
 ### 3. Scenarios
 
-Where the scheduled prompts live.
+Where the scheduled prompts live — the ones that belong to no single channel: the digest,
+social, the handoff note, the nightly code review. The horoscope and the content bot each
+have a screen of their own (4 and 5), because each is a pipeline with its own state,
+history and voice, and folding them into a generic prompt list hid exactly the parts worth
+looking at.
 
-- The three prompt files in an editor, each with: **Run now**, **Dry run** (compose and
-  show, send nothing), the schedule that triggers it, and the output of the last three
-  runs with timing and exit status.
+- Each prompt file in an editor, with: **Run now**, **Dry run** (compose and show, send
+  nothing), the schedule that triggers it, and the output of the last three runs with
+  timing and exit status.
 - Output is stored under `status/state/runs/<scenario>/<timestamp>.txt` so the panel can
   show history without a database.
 
-### 4. Memory
+### 4. Zirka — the horoscope
+
+The forecast is seventeen model calls and four accumulating stores, and today the only way
+to see inside it is to read `mood.log` by hand. This screen is that log with a shape.
+
+- **Today's reading** as it was sent: the five blocks, with the character count against
+  each block's budget and whether the compression pass had to run.
+- **The pipeline**, one row per stage — facts, houses, Moon, background, weighing, draft,
+  review, summary, biorhythms — each with its duration, the model it used, and its output
+  behind a fold. A failed stage is red and says what `--resume` would pick up.
+- **The computed facts**, straight from `astro.py`: transits with their windows (in orb
+  from, exact, how many days), the day's focus, the houses table. No model involved, so
+  this is the ground truth every claim above has to rest on.
+- **Calibration**: the rules in force, each with the day it was learned from, and the
+  feedback log beside them — what he said about a day next to what was promised. This is
+  the pair that makes a rule arguable.
+- **References from the real astrologer**: the list with date, author and period, and —
+  the part that earns the screen — **a textarea to paste a new one**. A long reading does
+  not survive Telegram (a long paste becomes a file, a forward can be lost); a textarea
+  has no such limit. Paste, pick the date, save, and the distillation runs on the spot with
+  its new `ПРАВИЛО:` lines shown.
+- **Actions**: run the forecast, dry run, `--resume` the summary, recompute the facts,
+  calibrate a chosen day, ask the evening question now.
+- **Voice**: Зоря's profile — voice, model, stability, style, tempo — with a *Say this*
+  box for testing a line before a morning depends on it.
+- **The chart**: the natal positions, houses and rulers, plus the written portrait; and the
+  other subjects (`astro.subjects`) with their own charts and their own logs.
+
+### 5. Bruno — news and video
+
+The same idea for the content channel: what was chosen, out of what, and why.
+
+- **What was sent**: the last digests' news sections and the evening video picks, each item
+  with its link and the date it went out.
+- **What was dropped as a repeat**: the candidates `news_seen.py` filtered, with the reason
+  — same link, or the headline overlap and the earlier story it matched. The dedup is the
+  piece most likely to be wrong, and it is currently invisible.
+- **The subscription archive**: how many videos, what span of dates it actually covers, and
+  a search box running the same query `search.py` serves Bruno — with the standing caveat
+  that the archive is candidates by recency and the choosing is the model's, not a score.
+- **Topics**: name, description, query, sources, limit, with a *Collect now* that shows the
+  candidate list without sending anything.
+- **The chat**: the last turns in Bruno's own chat, the hourly cap, and the dropped log with
+  the shape of each dropped message — which is how a mis-typed document or a photo gets
+  diagnosed without asking the owner what he sent.
+- **Prompts**: `bruno.md`, `intent.md` and the digest's news section, in an editor beside
+  the output they produced.
+- **Voice**: Бруно's profile and the same *Say this* box.
+
+The 603 channels stay on **Sources** — they are a list to maintain, not a pipeline to watch
+— with a link from here.
+
+### 6. Memory
 
 - **Facts**: table of text, pin level, date added, tags; inline edit, re-pin by dragging
   between levels, delete with a confirmation. A counter against both limits (100 stored,
@@ -74,7 +130,7 @@ Where the scheduled prompts live.
   runs the same hybrid query as `memory/search.sh`, showing date, role, project, and
   fragment.
 
-### 5. Sources
+### 7. Sources
 
 - **YouTube channels**: 603 rows with search, sort by recent activity, a disable switch,
   a priority star (polled every run instead of in rotation), and a *Remove dead* action
@@ -84,7 +140,7 @@ Where the scheduled prompts live.
   shows what the current filter would have kept.
 - **News topics**: name, description, query, sources, limit.
 
-### 6. Rules
+### 8. Rules
 
 - **Configuration as a form**: TTLs, planning window, sleep hours, digest item counts,
   voice settings. Each field shows its default from `config.json` and whether
@@ -98,12 +154,41 @@ Where the scheduled prompts live.
 - **Keys**: a read-only list — `.env.voice` present, `.env.gmail` missing. Never a
   value, never an input field.
 
-### 7. Tasks
+### 9. Tasks
 
 Backlog / today / period / closed as four columns. Drag to change a date, checkbox to
 close, 📌 to request a time block. Events are shown under their task with their calendar
 time; unlinking removes the event. The calendar remains the source of truth for events;
 the board never invents one.
+
+### 10. Changes — what was built and how it was reviewed
+
+The development process (CLAUDE.md § Development process) says: no change without a task, no
+task without a spec and tests, every commit naming its task id, a security reading of every
+staged diff, and a nightly self-review. All of that is true and none of it is *visible* — the
+verdicts live in chat messages that scroll away. This screen is the record.
+
+- **Commits**, newest first: hash, date, subject, the task id parsed out of it, the files
+  touched, and whether the commit is still local or already on the public remote. A commit
+  with no task id is flagged, because the process says there should not be one.
+- **Behind each commit**, one click away: the task's title and state, its spec
+  (`tasks/specs/<id>.md`) with the test cases, the tests that were added, and the suite's
+  result at that commit.
+- **The commit-time security reading.** Today its verdict is spoken once and lost; the panel
+  needs it stored, so the reading is written to `status/state/commit-review/<sha>.md` at
+  commit time — what the diff would expose, what was held back, what was judged safe. The
+  screen shows it beside the commit. A commit with no recorded reading says so plainly rather
+  than looking approved.
+- **The nightly review**, one block per night: the scan's counts by severity and every
+  finding with its file and line, then the fix report — what was fixed, which verification
+  ran, which commit carries it, and what was deliberately left open with the reason.
+- **The standing Low list.** Low findings are reported and never fixed, so they accumulate
+  across nights and nobody sees the pile grow. Here they are one deduplicated list, oldest
+  first, with the night each was first raised — the honest backlog of known-but-ignored.
+- **Push state**: how many commits are ahead of origin, what features they carry, and the
+  morning approval — the same summary that goes to Telegram, kept where it can be re-read.
+- **The change log** in full: `changelog/*.jsonl` with a search and a filter by kind, since
+  Pulse only shows the last twenty. Append-only, so there is nothing to edit here.
 
 ## Design
 
@@ -117,7 +202,7 @@ whitespace: this is an instrument panel, not a landing page.
 `alert`, and nothing else is coloured. If every row is coloured, the board stops working
 — the same reason the watcher stays silent by default.
 
-**Layout.** A fixed left rail with the seven screens, content in a single column capped
+**Layout.** A fixed left rail with the ten screens, content in a single column capped
 at ~1100 px. Every screen answers one question; no dashboard that mixes four.
 
 **Interaction.** Server-rendered HTML with small HTMX-style fragment swaps for the live
