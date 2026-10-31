@@ -49,8 +49,38 @@ sys.path.insert(0, str(HOME / "status"))
 from noosconf import conf, path                                         # noqa: E402
 
 
+INBOX = HOME / "status" / "state" / "astro-reference-inbox"
+
+
 def store() -> Path:
     return Path(str(path("astro.reference", "status/state/astro-reference.jsonl")))
+
+
+def consume(f: Path) -> Path | None:
+    """Move an ingested file out of the inbox, so «чекають на внесення» stays honest.
+
+    Nothing used to consume the inbox: a parked reference stayed listed as waiting after
+    it was ingested, and the panel's «внести» could duplicate the store with every press
+    (t1070). The raw text is kept — losing it was the original complaint (t1059) — it goes
+    to `ingested/`, which the listings do not glob. Only a file that actually lives in the
+    inbox moves; `add --file` on any other path leaves the owner's file where it is.
+    """
+    try:
+        f = f.resolve()
+        if f.parent != INBOX.resolve():
+            return None
+        done = f.parent / "ingested"
+        done.mkdir(parents=True, exist_ok=True)
+        target = done / f.name
+        n = 1
+        while target.exists():
+            target = done / f"{f.stem}.{n}{f.suffix}"
+            n += 1
+        f.rename(target)
+        return target
+    except OSError as e:
+        print(f"файл лишився в inbox ({e})", file=sys.stderr)
+        return None
 
 
 def rules_file() -> Path:
@@ -243,6 +273,12 @@ def main() -> int:
         for when, body in parts:
             add(body, when, args.author, args.period)
             print(f"записано: {when} · {args.author or 'без автора'} · {len(body)} символів")
+        if getattr(args, "file", None):
+            # the store now holds the text, so the inbox copy is no longer "waiting";
+            # moved before --learn, which is an extra on top of a completed ingest
+            moved = consume(Path(args.file).expanduser())
+            if moved:
+                print(f"файл перенесено: {moved.parent.name}/{moved.name}")
         if args.learn:
             # learn from the day that is actually coming: a week of references at once would
             # be a week of calls, and only today's can be compared with our own reading
