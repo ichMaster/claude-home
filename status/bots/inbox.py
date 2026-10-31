@@ -192,12 +192,19 @@ def bruno_context() -> dict[str, str]:
     return {"НОВИНИ": news, "ВІДЕО": video}
 
 
-def intent(message: str) -> dict:
+def intent(message: str, prev_scope: str = "") -> dict:
     """What Bruno is being asked for: a chat turn or a topic search. One cheap call with no
     tools; anything unparseable falls back to chat, because answering as chat is always safe
-    while searching for a mis-parsed query is noise."""
+    while searching for a mis-parsed query is noise.
+
+    `prev_scope` is the area of the previous search. A follow-up that only rephrases the query
+    ("спробуй так …", "давай ще раз але …") without naming an area should keep the previous
+    one — otherwise "search YouTube for X" followed by "try Y instead" silently falls back to
+    both and answers with news (the owner, 2026-10-31: Bruno searched news for a YouTube-only
+    request)."""
     prompt = (PROMPTS / "intent.md").read_text(encoding="utf-8").replace(
-        "{{ПОВІДОМЛЕННЯ}}", message)
+        "{{ПОВІДОМЛЕННЯ}}", message).replace(
+        "{{ПОПЕРЕДНЯ_ОБЛАСТЬ}}", prev_scope or "немає")
     try:
         raw = call_claude(prompt, conf("telegram.inbox.intent_model", "sonnet"), 90)
     except Exception as e:                                               # noqa: BLE001
@@ -213,6 +220,9 @@ def intent(message: str) -> dict:
     if d.get("mode") != "search" or not str(d.get("query", "")).strip():
         return {"mode": "chat"}
     scope = d.get("scope") if d.get("scope") in ("news", "youtube", "both") else "both"
+    # a bare "try this instead" keeps the previous area rather than widening to both
+    if d.get("keep_scope") and prev_scope in ("news", "youtube", "both"):
+        scope = prev_scope
     return {"mode": "search", "scope": scope, "query": str(d["query"]).strip()}
 
 
@@ -443,10 +453,11 @@ def poll(bot: str, dry_run: bool = False) -> int:
             continue
         search = ""
         if bot == "bruno":
-            want = intent(text)
+            want = intent(text, st.get("last_scope", ""))
             if want["mode"] == "search":
                 print(f"{bot}: пошук [{want['scope']}] {want['query']}")
                 search = run_search(want["scope"], want["query"])
+                st["last_scope"] = want["scope"]     # a follow-up inherits this area
         elif bot == "zirka":
             kind = zirka_kind(text)
             if kind["kind"] == "reference":
