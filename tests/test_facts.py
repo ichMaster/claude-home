@@ -29,3 +29,49 @@ def test_the_cli_still_answers():
     """t1081 TC3 — run as a script, the dispatch still works (start.sh depends on it)."""
     out = subprocess.run([PY, FACTS, "prompt"], capture_output=True, text=True, timeout=60)
     assert out.returncode == 0
+
+
+# --- t1082 — rm/pin must not leave the facts directory --------------------------------
+
+def run_cli(*args):
+    return subprocess.run([PY, FACTS, *args], capture_output=True, text=True, timeout=60)
+
+
+def hops_to(p: Path) -> str:
+    """A traversal id: enough `..` to reach / from the facts dir, then the target."""
+    return "/".join([".."] * 12) + str(p)
+
+
+def test_rm_cannot_leave_the_facts_directory(tmp_path):
+    """t1082 TC1 — the id arrives from the panel's unauthenticated form; before the fix
+    this deleted the victim and exited 0."""
+    victim = tmp_path / "victim.md"
+    victim.write_text("не факт", encoding="utf-8")
+    out = run_cli("rm", hops_to(tmp_path / "victim"))
+    assert victim.exists(), "a traversal id deleted a file outside memory/facts"
+    assert out.returncode != 0
+
+
+def test_pin_cannot_leave_the_facts_directory(tmp_path):
+    """t1082 TC2 — same hole: pin rewrote the pin line of an arbitrary .md."""
+    victim = tmp_path / "victim.md"
+    victim.write_text("---\npin: 1\n---\nтекст\n", encoding="utf-8")
+    out = run_cli("pin", hops_to(tmp_path / "victim"), "2")
+    assert victim.read_text(encoding="utf-8").startswith("---\npin: 1")
+    assert out.returncode != 0
+
+
+def test_fact_file_keeps_ids_inside_the_directory():
+    """t1082 TC3."""
+    mod = memory_screen._facts_module()
+    assert mod.fact_file("../escape") is None
+    assert mod.fact_file("a/b") is None
+    got = mod.fact_file("plain-id")
+    assert got is not None and got.name == "plain-id.md"
+
+
+def test_rm_of_a_missing_fact_is_a_clean_refusal():
+    """t1082 TC4 — a message and exit 1, not a traceback."""
+    out = run_cli("rm", "no-such-fact-xyz")
+    assert out.returncode != 0
+    assert "Traceback" not in (out.stderr or "")

@@ -63,6 +63,18 @@ def add(text, pin, tags):
     print(name)
 
 
+def fact_file(fid, base=None):
+    """The file for one fact id — strictly inside the facts directory, or None.
+
+    The id reaches `rm` and `pin` from the panel's form (t1082), and the panel has no
+    authentication: without this check `rm "../../persona"` deleted any `.md` the user
+    can write, anywhere on the disk.
+    """
+    base = Path(base or DIR).resolve()
+    p = (base / f"{fid}.md").resolve()
+    return p if p.parent == base else None
+
+
 def prompt():
     """The pinned block: most important first, trimmed to the prompt budget."""
     facts = sorted([f for f in load() if f["pin"] > 0],
@@ -93,13 +105,17 @@ def main():
     elif cmd == "prompt":
         print(prompt())
     elif cmd == "rm":
-        p = DIR / f"{sys.argv[2]}.md"
+        p = fact_file(sys.argv[2])
+        if p is None or not p.is_file():
+            print(f"немає такого факту: {sys.argv[2]}", file=sys.stderr); sys.exit(1)
         # a deleted fact is the one case where there is no later write to keep a copy for,
         # so the copy is taken here — a wrong `rm` is recoverable with tools/versions.py
         keep_version(p)
         p.unlink(); print(f"видалено {sys.argv[2]}")
     elif cmd == "pin":
-        p = DIR / f"{sys.argv[2]}.md"
+        p = fact_file(sys.argv[2])
+        if p is None or not p.is_file():
+            print(f"немає такого факту: {sys.argv[2]}", file=sys.stderr); sys.exit(1)
         s = p.read_text(encoding="utf-8")
         p.write_text(re.sub(r"^pin: \d+", f"pin: {sys.argv[3]}", s, count=1, flags=re.M),
                      encoding="utf-8")
