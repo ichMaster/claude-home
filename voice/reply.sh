@@ -10,7 +10,7 @@ preset="${3:-${NOOS_MUFFLE:-off}}"
 tmp="$(mktemp --suffix=.mp3)"
 ./voice/el_say.sh "$tmp" "$text" >/dev/null
 if [ "$preset" = off ] || [ "$preset" = none ]; then
-  .venv-voice/bin/python voice/to_ogg.py "$tmp" "$out" >/dev/null
+  .venv-voice/bin/python voice/to_ogg.py "$tmp" "$out" "${NOOS_TEMPO:-1.0}" >/dev/null
 else
   .venv-voice/bin/python voice/muffle.py "$tmp" "$out" "$preset" >/dev/null
 fi

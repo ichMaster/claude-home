@@ -25,6 +25,7 @@ Then:
   silence is the default, not a failure.
 - If there is something, send one short message with `./notify.sh "<text>"`:
   Facebook items by name and what happened, YouTube as channel plus title plus link,
-  at most 4 lines in total. No voice — this is a quiet channel.
+  at most 4 lines in total. Voice comes with it by default — the user listens rather
+  than reads, so do not pass `--no-voice`.
 - Never repeat an item that was already sent: the YouTube probe keeps its own state,
   and for Facebook use the 3-hour window as the boundary.

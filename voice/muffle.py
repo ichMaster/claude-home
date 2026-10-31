@@ -12,10 +12,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from noosconf import conf, path
 
-PRESETS = {           # зріз, порядок фільтра, рівень шуму (dBFS), гул
+# cutoff, filter order, noise level (dBFS), hum strength.
+# A cutoff of 0 means "do not muffle at all": `hum` keeps the voice clear and only
+# lays the fan noise under it, which is what the room actually sounds like.
+PRESETS = {
     "light":  (4500, 2, -36, 0.5),
     "medium": (3200, 3, -30, 1.0),
     "heavy":  (2200, 4, -25, 1.6),
+    "hum":    (0,    0, -20, 1.6),
+    "hum+":   (0,    0, -14, 2.4),
+    "hum++":  (0,    0, -9,  3.0),
 }
 SR = conf("voice.sample_rate", 48000)
 
@@ -63,15 +69,16 @@ src, dst = sys.argv[1], sys.argv[2]
 fc, order, noise_db, hum = PRESETS[sys.argv[3] if len(sys.argv) > 3 else "medium"]
 
 v = decode(src)
-v = spectral(v, 120, 2, "high")      # прибрати низ, як у дрібного динаміка
-v = spectral(v, fc, order, "low")    # власне приглушення
+if fc:                               # fc == 0 -> the voice is left untouched
+    v = spectral(v, 120, 2, "high")  # thin out the bottom, like a small speaker
+    v = spectral(v, fc, order, "low")
 
-# short boxy echo of a ventilation shaft
-wet = np.zeros_like(v)
-for delay_ms, gain in ((11, 0.28), (23, 0.16), (37, 0.08)):
-    d = int(SR * delay_ms / 1000)
-    wet[d:] += v[:-d] * gain
-v = v + spectral(wet, fc * 0.8, 2, "low")
+    # short boxy echo of a ventilation shaft
+    wet = np.zeros_like(v)
+    for delay_ms, gain in ((11, 0.28), (23, 0.16), (37, 0.08)):
+        d = int(SR * delay_ms / 1000)
+        wet[d:] += v[:-d] * gain
+    v = v + spectral(wet, fc * 0.8, 2, "low")
 
 # fan hum: broad low-frequency noise plus a 100 Hz tone
 rng = np.random.default_rng(7)

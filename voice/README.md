@@ -44,6 +44,7 @@ Muffling (`voice/muffle.py`) is **off** by default: the clean voice sounds bette
 
 ## Where this already runs
 
-- `notify.sh --voice` — sends text and voice to Telegram through the Bot API
+- `notify.sh` — sends text and voice to Telegram through the Bot API (voice is the
+  default; `--no-voice` opts out, `--voice-only` drops the text part)
 - `status/digest-headless.sh` — the 08:03 and 20:03 digest, voice via sendVoice
 - the main Noos session — Telegram replies as voice plus text
