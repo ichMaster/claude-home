@@ -52,6 +52,37 @@ def test_a_date_outranks_a_period():
     assert ids.count("t7") == 1
 
 
+# t1077 — the board's own «завтра» button creates a future-dated task; it must land in
+# «Період» (scheduled for later), not read as demoted into «Беклог».
+
+def test_a_future_date_is_period_not_backlog():
+    state = dict(STATE)
+    state["t8"] = {"title": "на завтра перенесена", "status": "open", "due": "2026-11-01"}
+    cols = ts.columns(state, TODAY)
+    assert "t8" in [c["id"] for c in cols["period"]]
+    assert "t8" not in [c["id"] for c in cols["backlog"]]
+
+
+def test_period_column_sorts_by_what_starts_sooner():
+    state = {
+        "a": {"title": "дата пізня", "status": "open", "due": "2026-11-09"},
+        "b": {"title": "вікенд", "status": "open",
+              "period": ["вихідні", "2026-11-07", "2026-11-08"]},
+        "c": {"title": "дата рання", "status": "open", "due": "2026-11-02"},
+    }
+    cols = ts.columns(state, TODAY)
+    assert [c["id"] for c in cols["period"]] == ["c", "b", "a"]
+
+
+def test_a_malformed_period_does_not_crash_the_board():
+    """L2 hardening: a hand-written one-element period must not blank the whole screen."""
+    state = {"x": {"title": "крива", "status": "open", "period": ["вихідні"]},
+             "y": {"title": "ціла", "status": "open",
+                   "period": ["тиждень", "2026-11-02", "2026-11-08"]}}
+    cols = ts.columns(state, TODAY)
+    assert {c["id"] for c in cols["period"]} == {"x", "y"}
+
+
 # --- TC2: what a card shows ---------------------------------------------------------------
 
 def test_card_reports_spent_and_running():

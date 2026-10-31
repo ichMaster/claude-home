@@ -73,13 +73,22 @@ def columns(state: dict, today: date | None = None, closed_days: int = 3) -> dic
             out["closed"].append(c)
         elif c["overdue"] or c["today"]:
             out["today"].append(c)
-        elif c["period"]:
+        elif c["period"] or c["due"]:
+            # a hard future date is scheduled-for-later too — the board's own «завтра»
+            # button makes one, and in «Беклог» it read as demoted and dateless (t1077)
             out["period"].append(c)
         else:
             out["backlog"].append(c)
     out["today"].sort(key=lambda c: (not c["overdue"], c["due"]))
-    out["period"].sort(key=lambda c: (c["period"] or ["", ""])[1] if
-                       isinstance(c["period"], list) else "")
+
+    def starts(c):
+        """What begins sooner comes first: a due date against a period's start. A period
+        shorter than [kind, from, to] sorts last instead of crashing the board (t1077)."""
+        if c["due"]:
+            return c["due"]
+        p = c["period"]
+        return str(p[1]) if isinstance(p, list) and len(p) > 1 else "9999"
+    out["period"].sort(key=starts)
     out["closed"].sort(key=lambda c: c.get("closed_at", ""), reverse=True)
     return out
 
