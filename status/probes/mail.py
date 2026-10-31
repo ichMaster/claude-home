@@ -15,7 +15,7 @@ from email.header import decode_header, make_header
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from noosconf import conf, path
+from noosconf import atomic_write_text, conf, path
 
 HOME = path("paths.home")
 STATE = HOME / "status" / "state" / "mail.json"
@@ -120,9 +120,10 @@ def main():
 
         if batch:
             STATE.parent.mkdir(parents=True, exist_ok=True)
-            STATE.write_text(json.dumps({"last_uid": new_last,
-                                         "checked": datetime.now().isoformat(timespec="seconds")},
-                                        ensure_ascii=False, indent=1))
+            atomic_write_text(STATE, json.dumps(
+                {"last_uid": new_last,
+                 "checked": datetime.now().isoformat(timespec="seconds")},
+                ensure_ascii=False, indent=1))
 
         imp = [i for i in items if i["kind"] == "важливе"]
         ord_ = [i for i in items if i["kind"] == "звичайне"]

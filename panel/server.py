@@ -32,7 +32,9 @@ from noosconf import conf                                               # noqa: 
 import bruno                                                           # noqa: E402
 import changes                                                         # noqa: E402
 import data                                                            # noqa: E402
+import memory_screen                                                   # noqa: E402
 import render                                                          # noqa: E402
+import sources_screen                                                  # noqa: E402
 import tasks_screen                                                    # noqa: E402
 import zirka                                                           # noqa: E402
 
@@ -40,7 +42,7 @@ STATIC = Path(__file__).resolve().parent / "static"
 # screen → the phase that builds it, for the placeholder pages
 SOON = {
     "/prompt": "фаза 5", "/scenarios": "фаза 5",
-    "/memory": "фаза 7", "/sources": "фаза 7", "/rules": "фаза 8",
+    "/rules": "фаза 8",
     "/chat": "фаза 9",
 }
 TITLES = dict(render.SCREENS)
@@ -253,6 +255,88 @@ def tasks_action(form: dict) -> str:
     return "Невідома дія."
 
 
+def memory_html(query: str = "", message: str = "") -> str:
+    """Screen 6."""
+    return render.render_memory(memory_screen.facts(), memory_screen.archive(),
+                                memory_screen.search(query), query, FORM_TOKEN, message)
+
+
+def memory_action(form: dict) -> str:
+    """Facts change through facts.py, which is also what builds the prompt — one writer,
+    one format. Deleting takes a version first (t1080), so a wrong press is recoverable."""
+    what = (form.get("action") or [""])[0]
+    fid = (form.get("id") or [""])[0].strip()
+    py = str(HOME / ".venv-voice" / "bin" / "python")
+    facts_py = str(HOME / "memory" / "facts.py")
+
+    if what == "add":
+        text = (form.get("text") or [""])[0].strip()
+        if not text:
+            return "Порожній факт — нічого додавати."
+        pin = (form.get("pin") or ["1"])[0].strip() or "1"
+        if pin not in ("0", "1", "2"):
+            return "Рівень закріплення буває 0, 1 або 2."
+        ok, said = run_script(py, facts_py, "add", "--pin", pin, text, timeout=60)
+        return said if ok else f"Не вдалося додати: {said}"
+    if not fid:
+        return "Факт не названо."
+    if what == "rm":
+        ok, said = run_script(py, facts_py, "rm", fid, timeout=60)
+        return (said + " — повернути можна через tools/versions.py restore") if ok \
+            else f"Не вдалося видалити: {said}"
+    if what in ("pin_up", "pin_down"):
+        current = next((f for f in memory_screen.facts()["in_prompt"]
+                        + memory_screen.facts()["cut"]
+                        + memory_screen.facts()["unpinned"] if f["id"] == fid), None)
+        if not current:
+            return "Такого факту немає."
+        level = current["pin"] + (1 if what == "pin_up" else -1)
+        level = max(0, min(2, level))
+        ok, said = run_script(py, facts_py, "pin", fid, str(level), timeout=60)
+        return said if ok else f"Не вдалося змінити рівень: {said}"
+    return "Невідома дія."
+
+
+def sources_html(query: str = "", order: str = "activity", message: str = "",
+                 probe: str = "") -> str:
+    """Screen 7."""
+    rows = sources_screen.channels()
+    if query:
+        needle = query.lower()
+        rows = [c for c in rows if needle in c["name"].lower()]
+    rows = sources_screen.sort_channels(rows, order)
+    total = len(rows)
+    return render.render_sources(rows[:int(conf("panel.channels_shown", 200))],
+                                 sources_screen.filters(), bruno.topics(), probe,
+                                 FORM_TOKEN, message, query, order, total)
+
+
+def sources_action(form: dict) -> tuple[str, str]:
+    """Returns (message, probe) — the probe is the filter test's answer, which is not a
+    change and so does not belong in the same line as one."""
+    what = (form.get("action") or [""])[0]
+    name = (form.get("name") or [""])[0]
+    if what == "test":
+        got = sources_screen.classify((form.get("sender") or [""])[0],
+                                      (form.get("subject") or [""])[0],
+                                      sources_screen.filters()["mail"])
+        return "", f"Цей лист пройшов би як: {got}"
+    if what not in ("off", "priority"):
+        return "Невідома дія.", ""
+    if not name:
+        return "Канал не названо.", ""
+    try:
+        if what == "off":
+            said = sources_screen.set_channel(
+                name, off=(form.get("off") or ["1"])[0] == "1")
+        else:
+            said = sources_screen.set_channel(
+                name, priority=(form.get("priority") or ["1"])[0] == "1")
+    except RuntimeError as exc:
+        return str(exc), ""
+    return said, ""
+
+
 def zirka_html(day: str = "", message: str = "") -> str:
     """Screen 4. Reading from disk happens here; the parsing it feeds is pure and tested."""
     try:
@@ -361,6 +445,20 @@ class Handler(BaseHTTPRequestHandler):
                     urllib.parse.urlparse(self.path).query).get("m", [""])[0]
                 return self._send(200, tasks_html(message[:500]).encode("utf-8"),
                                   "text/html; charset=utf-8")
+            if path == "/memory":
+                q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                return self._send(
+                    200, memory_html(q.get("q", [""])[0][:120],
+                                     q.get("m", [""])[0][:300]).encode("utf-8"),
+                    "text/html; charset=utf-8")
+            if path == "/sources":
+                q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                return self._send(
+                    200, sources_html(q.get("q", [""])[0][:80],
+                                      q.get("order", ["activity"])[0][:10],
+                                      q.get("m", [""])[0][:300],
+                                      q.get("p", [""])[0][:300]).encode("utf-8"),
+                    "text/html; charset=utf-8")
             if path == "/zirka":
                 day = urllib.parse.parse_qs(
                     urllib.parse.urlparse(self.path).query).get("day", [""])[0]
@@ -374,6 +472,15 @@ class Handler(BaseHTTPRequestHandler):
             # A panel that 500s with a stack trace is still a panel; one that dies is not.
             traceback.print_exc()
             self._send(500, b"panel error, see the log", "text/plain; charset=utf-8")
+
+    def _redirect(self, where: str) -> None:
+        """Post/Redirect/Get. Every write on this panel goes to an append-only store, so
+        leaving the submission as the browser's current page means one F5 repeats it
+        (t1078) — and an added fact or a closed task cannot be un-repeated."""
+        self.send_response(303)
+        self.send_header("Location", where)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def do_POST(self) -> None:                                           # noqa: N802
         path = self.path.split("?")[0]
@@ -404,6 +511,18 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
+            if path == "/memory":
+                # same reason as /tasks: adding or deleting a fact must not repeat on F5
+                return self._redirect("/memory?m=" +
+                                      urllib.parse.quote(memory_action(form)[:300]))
+            if path == "/sources":
+                message, probe = sources_action(form)
+                where = "/sources?"
+                if message:
+                    where += "m=" + urllib.parse.quote(message[:300]) + "&"
+                if probe:
+                    where += "p=" + urllib.parse.quote(probe[:300]) + "&"
+                return self._redirect(where.rstrip("&?") or "/sources")
             if path == "/zirka":
                 message = zirka_action(form)
                 day = (form.get("day") or [""])[0]

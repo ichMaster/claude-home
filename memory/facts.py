@@ -18,7 +18,7 @@ import sys, re, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from noosconf import conf, path
+from noosconf import atomic_write_text, conf, keep_version, path
 
 DIR = path("memory.facts_dir")
 MAX_FACTS = conf("memory.max_facts", 100)
@@ -57,9 +57,9 @@ def add(text, pin, tags):
     while (DIR / f"{name}.md").exists():
         name = f"{base}-{i}"; i += 1
     today = datetime.date.today().isoformat()
-    (DIR / f"{name}.md").write_text(
-        f"---\npin: {pin}\ntags: {','.join(tags)}\nadded: {today}\n---\n{text.strip()}\n",
-        encoding="utf-8")
+    atomic_write_text(
+        DIR / f"{name}.md",
+        f"---\npin: {pin}\ntags: {','.join(tags)}\nadded: {today}\n---\n{text.strip()}\n")
     print(name)
 
 
@@ -93,6 +93,9 @@ elif cmd == "prompt":
     print(prompt())
 elif cmd == "rm":
     p = DIR / f"{sys.argv[2]}.md"
+    # a deleted fact is the one case where there is no later write to keep a copy for,
+    # so the copy is taken here — a wrong `rm` is recoverable with tools/versions.py
+    keep_version(p)
     p.unlink(); print(f"видалено {sys.argv[2]}")
 elif cmd == "pin":
     p = DIR / f"{sys.argv[2]}.md"

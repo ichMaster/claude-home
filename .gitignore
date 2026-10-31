@@ -50,3 +50,6 @@ docs/chudinov-store-security*
 # runtime handoff notes (generated each restart, contain conversation content)
 memory/handoff.md
 memory/handoff-last.md
+
+# версії незамінних файлів (копії config.local.json, фактів, токенів) — ніколи в репо
+.versions/

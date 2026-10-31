@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from noosconf import conf, path
+from noosconf import atomic_write_text, conf, path
 
 STATE = path("paths.home") / "status" / "state" / "news.json"
 MEMORY_DAYS = conf("digest.news_memory_days", 14)
@@ -43,8 +43,7 @@ def load():
 
 def save(items):
     STATE.parent.mkdir(parents=True, exist_ok=True)
-    STATE.write_text(json.dumps({"sent": items[-500:]}, ensure_ascii=False, indent=1),
-                     encoding="utf-8")
+    atomic_write_text(STATE, json.dumps({"sent": items[-500:]}, ensure_ascii=False, indent=1))
 
 
 def seen_reason(items, url, title=""):

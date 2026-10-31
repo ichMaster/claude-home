@@ -526,6 +526,155 @@ def render_tasks(cols: dict, token: str, message: str = "") -> str:
     return page("Задачі", f"<h1>Задачі</h1>{note}{add}{sections}", "/tasks")
 
 
+def _facts_table(rows: list[dict], token: str, cut: bool = False) -> str:
+    if not rows:
+        return '<p class="empty">Порожньо.</p>'
+    out = [f'<table class="facts{" cut" if cut else ""}">']
+    for f in rows:
+        pin = f'<span class="id">pin {f["pin"]}</span>'
+        out.append(
+            f'<tr><td>{pin}<td class="age">{e(f.get("added"))}'
+            f'<td class="text">{e(f["text"])}'
+            f'<br><span class="dim">{f["chars"]} знаків · {e(f["id"])}</span>'
+            f'<td class="controls">'
+            f'<form method="post" action="/memory" class="inline">'
+            f'<input type="hidden" name="token" value="{e(token)}">'
+            f'<input type="hidden" name="id" value="{e(f["id"])}">'
+            f'<button type="submit" name="action" value="pin_up">вище</button></form>'
+            f'<form method="post" action="/memory" class="inline">'
+            f'<input type="hidden" name="token" value="{e(token)}">'
+            f'<input type="hidden" name="id" value="{e(f["id"])}">'
+            f'<button type="submit" name="action" value="pin_down">нижче</button></form>'
+            f'<form method="post" action="/memory" class="inline" '
+            f'onsubmit="return confirm(\'Видалити факт?\')">'
+            f'<input type="hidden" name="token" value="{e(token)}">'
+            f'<input type="hidden" name="id" value="{e(f["id"])}">'
+            f'<button type="submit" name="action" value="rm">видалити</button></form>'
+            "</tr>")
+    return "".join(out) + "</table>"
+
+
+def render_memory(facts: dict, archive: dict, found: list[dict], query: str,
+                  token: str, message: str = "") -> str:
+    """Screen 6. The section that justifies it is «не влізли»: the facts that are stored
+    and never reach the prompt, which nothing else in the system will tell you."""
+    note = f'<p class="note">{e(message)}</p>' if message else ""
+    counters = (f'<p>{facts["stored"]} фактів у сховищі з {facts["max_stored"]}; '
+                f'у системну підказку йде {len(facts["in_prompt"])} з '
+                f'{facts["max_in_prompt"]}, кожен до {facts["max_chars"]} знаків.</p>')
+    cut_note = ('<p class="empty">Усе закріплене влізло.</p>' if not facts["cut"] else
+                f'<p class="warn">{len(facts["cut"])} закріплених фактів не влізли '
+                f'в підказку — сесія їх не бачить.</p>')
+    add = ('<form method="post" action="/memory" class="search">'
+           f'<input type="hidden" name="token" value="{e(token)}">'
+           '<input type="hidden" name="action" value="add">'
+           '<input name="text" placeholder="новий факт">'
+           '<input name="pin" value="1" size="2" title="рівень закріплення">'
+           '<button type="submit">додати</button></form>')
+    arc = (f'<p>Індекс: {archive["chunks"]} фрагментів із {archive["files"]} файлів, '
+           f'{archive["size"] // 1024} КБ, найсвіжіший запис {e(archive["last"]) or "—"}.'
+           + (f' <span class="alert">{e(archive["error"])}</span>'
+              if archive.get("error") else "") + "</p>"
+           if archive.get("exists") else
+           '<p class="empty">Індексу ще немає.</p>')
+    search = (f'<form method="get" class="search">'
+              f'<input name="q" value="{e(query)}" placeholder="пошук по архіву розмов">'
+              f'<button type="submit">знайти</button></form>'
+              '<p class="dim">Повнотекстовий пошук. Гібридний, як у search.sh, тут не '
+              'робиться: модель ембедінгів важить 240 МБ, і сторінка чекала б пів хвилини.</p>')
+    hits = "".join(
+        f'<tr><td class="age">{e(h["ts"])}<td class="id">{e(h["project"])}'
+        f'<td class="text">{e(h["text"])}</tr>' for h in found)
+    body = (
+        f"<h1>Памʼять</h1>{note}"
+        f"<section><h2>Факти</h2>{counters}{add}"
+        f"{_facts_table(facts['in_prompt'], token)}</section>"
+        f"<section><h2>Не влізли в підказку</h2>{cut_note}"
+        f"{_facts_table(facts['cut'], token, cut=True) if facts['cut'] else ''}</section>"
+        f"<section><h2>Не закріплені</h2>"
+        f"{_facts_table(facts['unpinned'], token, cut=True)}</section>"
+        f"<section><h2>Архів розмов</h2>{arc}{search}"
+        + (f'<table class="sent">{hits}</table>' if hits else
+           ('<p class="empty">Нічого не знайшлось.</p>' if query else "")) + "</section>")
+    return page("Памʼять", body, "/memory")
+
+
+def _channels_table(rows: list[dict], token: str) -> str:
+    if not rows:
+        return '<p class="empty">Каналів немає.</p>'
+    out = ['<table class="channels"><tr><th>канал<th>останнє відео<th></tr>']
+    for c in rows:
+        star = "★" if c["priority"] else "☆"
+        state = ' <span class="stale">вимкнений</span>' if c["off"] else ""
+        out.append(
+            f'<tr><td class="text">{e(c["name"])}{state}'
+            f'<br><span class="dim">{e(c["id"] or c["handle"])}</span>'
+            f'<td class="age">{e(c["last"]) or "—"}'
+            f'<td class="controls">'
+            f'<form method="post" action="/sources" class="inline">'
+            f'<input type="hidden" name="token" value="{e(token)}">'
+            f'<input type="hidden" name="name" value="{e(c["name"])}">'
+            f'<input type="hidden" name="priority" value="{"0" if c["priority"] else "1"}">'
+            f'<button type="submit" name="action" value="priority">{star}</button></form>'
+            f'<form method="post" action="/sources" class="inline">'
+            f'<input type="hidden" name="token" value="{e(token)}">'
+            f'<input type="hidden" name="name" value="{e(c["name"])}">'
+            f'<input type="hidden" name="off" value="{"0" if c["off"] else "1"}">'
+            f'<button type="submit" name="action" value="off">'
+            f'{"увімкнути" if c["off"] else "вимкнути"}</button></form>'
+            "</tr>")
+    return "".join(out) + "</table>"
+
+
+def _count(shown: int, total: int | None) -> str:
+    """«200 з 603» — a board that prints the size of the slice as if it were the whole
+    list is the same lie as an unknown push state rendered as "everything pushed"."""
+    if total is None or total == shown:
+        return str(shown)
+    return f"{shown} з {total}"
+
+
+def render_sources(channels: list[dict], filters: dict, topics: list[dict], probe: str,
+                   token: str, message: str = "", query: str = "",
+                   order: str = "activity", total: int | None = None) -> str:
+    """Screen 7 — the lists. Writes land in config.local.json, which has no copy anywhere,
+    so each one goes through the versioned atomic path (t1080)."""
+    note = f'<p class="note">{e(message)}</p>' if message else ""
+    find = (f'<form method="get" class="search">'
+            f'<input name="q" value="{e(query)}" placeholder="канал за назвою">'
+            f'<input type="hidden" name="order" value="{e(order)}">'
+            f'<button type="submit">знайти</button></form>'
+            f'<p class="dim">Сортування: '
+            f'<a href="/sources?order=activity&q={e(query)}">за активністю</a> · '
+            f'<a href="/sources?order=name&q={e(query)}">за назвою</a></p>')
+    test = ('<form method="post" action="/sources" class="search">'
+            f'<input type="hidden" name="token" value="{e(token)}">'
+            '<input type="hidden" name="action" value="test">'
+            '<input name="sender" placeholder="відправник">'
+            '<input name="subject" placeholder="тема">'
+            '<button type="submit">як би класифікувалось</button></form>'
+            + (f'<p class="note">{e(probe)}</p>' if probe else ""))
+    lists = "".join(
+        f'<h3 class="stage">{e(name)}</h3><p class="dim">{e(", ".join(items)) or "—"}</p>'
+        for name, items in (
+            ("пошта — шум", filters["mail"].get("шум") or []),
+            ("пошта — важливе", filters["mail"].get("важливе") or []),
+            ("LinkedIn — особисте", filters["linkedin_personal"]),
+            ("LinkedIn — шум", filters["linkedin_noise"]),
+            ("Facebook", filters["facebook"])))
+    tops = "".join(f'<tr><td class="id">{e(t.get("name") or t.get("id"))}'
+                   f'<td class="text dim">{e(t.get("query"))}</tr>' for t in topics)
+    body = (
+        f"<h1>Джерела</h1>{note}"
+        f'<section><h2>Канали ({_count(len(channels), total)})</h2>{find}'
+        f"{_channels_table(channels, token)}</section>"
+        f"<section><h2>Фільтри</h2>{test}{lists}</section>"
+        f"<section><h2>Теми новин</h2>"
+        + (f'<table class="topics">{tops}</table>' if tops
+           else '<p class="empty">Тем немає.</p>') + "</section>")
+    return page("Джерела", body, "/sources")
+
+
 def render_soon(title: str, href: str, phase: str) -> str:
     """A screen that has its place in the rail but not its code yet. Saying which phase
     builds it beats a dead link or a blank page."""
