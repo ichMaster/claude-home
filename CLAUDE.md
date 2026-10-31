@@ -850,19 +850,19 @@ Repository: `git@github.com:ichMaster/claude-home.git`, branch `main`, **public*
   security review, and send him the feature list plus the review verdict for a yes/no. A
   bigger or urgent change can still prompt an out-of-band ask, but the default is one daily
   morning push.
-- **IMPORTANT — every push passes a security review first** (the owner, 2026-10-31). Before
-  any push, review the whole outgoing diff as a publication, not just grep it: walk every
-  changed and every new file (`git diff --stat origin/main`, then the diff itself), and for
-  each ask what it exposes — secrets, tokens, keys, personal data, internal paths, anyone
-  else's data. A file that is private or sensitive does not go out; it goes to `.gitignore`
-  instead. The floor of that review is a scan — run `status/tools/presim_scan.py` (no args: it
-  checks exactly what the push would publish — commits ahead of `origin/main` plus working
-  changes) — which looks for secrets AND personal/sensitive data: tokens, API keys, private
-  keys, emails, phone numbers, coordinates, birth dates, calendar ids (the owner added the
-  private-data sweep on 2026-10-31). It exits non-zero on any hit, prints file+line, flags
-  binary files for a manual look, and is a floor rather than a verdict: it surfaces candidates
-  — placeholders and public addresses included — and the review judges each. The bare grep
-  stays as a quick cross-check:
+- **IMPORTANT — the security & privacy review happens at COMMIT time, by LLM judgment, not a
+  script** (the owner, 2026-10-31: «нехай ті правила про секуріті і приватність діють на
+  комміти», «не треба це розпізнавати скриптом, ти це роби через ЛЛМ»). Before every commit,
+  the committing agent reads its own staged diff (`git diff --cached`) and judges, file by
+  file, what it would expose — secrets, tokens, keys, passwords, personal data (emails, phones,
+  birth dates, home coordinates), calendar ids, internal paths, anyone else's data. A secret
+  keeps a commit from happening until it is removed; a private or sensitive file does not get
+  staged at all — it goes to `.gitignore`. This is a reading, not a regex: a human-written
+  judgment of whether this content is safe to publish, which catches what a pattern misses and
+  does not block on a false positive (a header named `xi-api-key`, a `${VAR}` reference, a
+  public service address). Keeping the check at commit time means a secret never enters the
+  history in the first place, where it would be hard to purge even if removed before the push.
+  The optional `git grep` below is a quick memory-jogger, never the review itself:
   `git grep -nIE "(sk-[A-Za-z0-9]{20,}|bot[0-9]{6,}:|[0-9]{8,10}:AA[A-Za-z0-9_-]{30,}|@gmail\.com|AIza[0-9A-Za-z_-]{25,})" HEAD -- .`
   State the review's outcome to the user — what is going out and what was held back — and
   push only after that. A push that cannot be reviewed does not happen.

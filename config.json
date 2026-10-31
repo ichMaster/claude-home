@@ -182,6 +182,7 @@
       "intent_model": "sonnet",
       "search_min_score": 0.5,
       "fetch_workers": 4,
+      "max_document_bytes": 262144,
       "feedback_min_chars": 25
     },
     "bots": {

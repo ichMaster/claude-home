@@ -134,6 +134,30 @@ def transcribe(token: str, file_id: str) -> str:
         tmp.unlink(missing_ok=True)
 
 
+def read_document(token: str, doc: dict) -> str:
+    """A large paste arrives as a .txt document, not as message text — Telegram's client turns
+    a long paste into a file (the owner, 2026-10-31: Zirka could not take the reference, «може
+    тому що меседж дуже великий»). Download it and read it as the message, if it is text and
+    not too big to hold in memory."""
+    name = (doc.get("file_name") or "").lower()
+    mime = doc.get("mime_type") or ""
+    size = int(doc.get("file_size") or 0)
+    if size > int(conf("telegram.inbox.max_document_bytes", 262144)):
+        return ""
+    texty = mime.startswith("text/") or name.endswith((".txt", ".md", ".csv", ".log"))
+    if not texty and mime:                           # a real non-text file: not for us
+        return ""
+    info = api(token, "getFile", file_id=doc["file_id"])
+    if not info.get("ok"):
+        return ""
+    remote = info["result"]["file_path"]
+    try:
+        with urllib.request.urlopen(f"{API}/file/bot{token}/{remote}", timeout=60) as r:
+            return r.read().decode("utf-8", "replace").strip()
+    except Exception:                                 # noqa: BLE001
+        return ""
+
+
 def zirka_context() -> dict[str, str]:
     f = Path(str(path("astro.state", "status/state/mood.json")))
     if not f.exists():
@@ -401,6 +425,10 @@ def poll(bot: str, dry_run: bool = False) -> int:
             text = transcribe(token, msg["voice"]["file_id"])
             if text:
                 print(f"{bot}: голосове розпізнано: {text[:80]}")
+        if not text and msg.get("document"):
+            text = read_document(token, msg["document"])
+            if text:
+                print(f"{bot}: документ прочитано: {len(text)} символів")
         if not text:
             log_dropped(bot, "без тексту", upd)
             continue
