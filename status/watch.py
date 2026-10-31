@@ -15,7 +15,7 @@ import json, subprocess, sys, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from noosconf import conf, path
+from noosconf import atomic_write_text, conf, path
 
 HOME = path("paths.home")
 STATE = HOME / "status" / "state" / "watch.json"
@@ -40,41 +40,63 @@ def signature(p):
         return str(len((v.get("items") or [])))
     return p.get("text", "")[:120]
 
-raw = subprocess.run([str(HOME / "status" / "run.sh"), *PROBES],
-                     capture_output=True, text=True).stdout
-probes = json.loads(raw) if raw.strip() else []
+def load_state():
+    """Torn state (kill mid-write) must not stop the watcher forever — alerts matter more
+    than one run's dedup memory (t1046)."""
+    try:
+        return json.loads(STATE.read_text()) if STATE.exists() else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
 
-state = json.loads(STATE.read_text()) if STATE.exists() else {}
-now = time.time()
-send, newstate = [], {}
 
-for p in probes:
-    pid = p.get("id", "?")
-    sev = p.get("severity", "info")
-    sig = signature(p)
-    prev = state.get(pid, {})
-    changed = prev.get("sig") != sig
-    stale = now - prev.get("sent", 0) > REMIND_AFTER
+def save_state(st):
+    STATE.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(STATE, json.dumps(st, ensure_ascii=False, indent=1))
 
-    if sev == "alert" and (changed or stale):
-        send.append(("🔴", p))
-    elif sev == "warn" and changed:
-        send.append(("🟡", p))
-    elif sev == "info" and changed and prev.get("sev") in ("warn", "alert"):
-        send.append(("✅", p))            # повернулось у норму — теж новина
 
-    newstate[pid] = {"sig": sig, "sev": sev,
-                     "sent": now if any(x[1] is p for x in send) else prev.get("sent", 0)}
+def main():
+    raw = subprocess.run([str(HOME / "status" / "run.sh"), *PROBES],
+                         capture_output=True, text=True).stdout
+    probes = json.loads(raw) if raw.strip() else []
 
-STATE.parent.mkdir(parents=True, exist_ok=True)
-STATE.write_text(json.dumps(newstate, ensure_ascii=False, indent=1))
+    state = load_state()
+    now = time.time()
+    send, newstate = [], {}
 
-if not send:
-    print("тихо")
-    sys.exit(0)
+    for p in probes:
+        pid = p.get("id", "?")
+        sev = p.get("severity", "info")
+        sig = signature(p)
+        prev = state.get(pid, {})
+        changed = prev.get("sig") != sig
+        stale = now - prev.get("sent", 0) > REMIND_AFTER
 
-body = "\n".join(f"{mark} {p.get('text','')}" for mark, p in send)
-voice = any(p.get("severity") == "alert" for _, p in send)
-cmd = [str(HOME / "notify.sh")] + (["--voice"] if voice else []) + [body]
-subprocess.run(cmd)
-print(body)
+        if sev == "alert" and (changed or stale):
+            send.append(("🔴", p))
+        elif sev == "warn" and changed:
+            send.append(("🟡", p))
+        elif sev == "info" and changed and prev.get("sev") in ("warn", "alert"):
+            send.append(("✅", p))            # повернулось у норму — теж новина
+
+        newstate[pid] = {"sig": sig, "sev": sev,
+                         "sent": now if any(x[1] is p for x in send) else prev.get("sent", 0)}
+
+    if not send:
+        save_state(newstate)
+        print("тихо")
+        return
+
+    body = "\n".join(f"{mark} {p.get('text','')}" for mark, p in send)
+    voice = any(p.get("severity") == "alert" for _, p in send)
+    cmd = [str(HOME / "notify.sh")] + (["--voice"] if voice else []) + [body]
+    # state is persisted only after a delivered send: warn fires on signature change alone,
+    # so recording an undelivered one would silence that alert forever (t1046)
+    if subprocess.run(cmd).returncode == 0:
+        save_state(newstate)
+    else:
+        print("notify.sh не вдався — стан не записую, повторю наступного разу")
+    print(body)
+
+
+if __name__ == "__main__":
+    main()
