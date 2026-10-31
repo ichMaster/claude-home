@@ -285,13 +285,16 @@ def memory_action(form: dict) -> str:
         return (said + " — повернути можна через tools/versions.py restore") if ok \
             else f"Не вдалося видалити: {said}"
     if what in ("pin_up", "pin_down"):
-        current = next((f for f in memory_screen.facts()["in_prompt"]
-                        + memory_screen.facts()["cut"]
-                        + memory_screen.facts()["unpinned"] if f["id"] == fid), None)
+        rows = memory_screen.facts()
+        current = next((f for f in rows["in_prompt"] + rows["cut"] + rows["unpinned"]
+                        if f["id"] == fid), None)
         if not current:
             return "Такого факту немає."
-        level = current["pin"] + (1 if what == "pin_up" else -1)
-        level = max(0, min(2, level))
+        # the prompt ranks ascending — pin 1 is critical and first, 2 fits if room is
+        # left, 0 never enters — so «вище» walks 0→2→1, not +1 (t1084: +1 demoted a
+        # pin-1 fact and on a pin-2 fact clamped into doing nothing at all)
+        pin = current["pin"] if current["pin"] in (0, 1, 2) else 1
+        level = ({0: 2, 2: 1, 1: 1} if what == "pin_up" else {1: 2, 2: 0, 0: 0})[pin]
         ok, said = run_script(py, facts_py, "pin", fid, str(level), timeout=60)
         return said if ok else f"Не вдалося змінити рівень: {said}"
     return "Невідома дія."
