@@ -134,7 +134,9 @@ def run_script(*cmd: str, timeout: int = 300) -> tuple[bool, str]:
     try:
         out = subprocess.run(list(cmd), capture_output=True, text=True,
                              timeout=timeout, cwd=str(HOME))
-    except subprocess.SubprocessError as exc:
+    except (OSError, subprocess.SubprocessError) as exc:
+        # OSError too: execve raises it directly — E2BIG on an oversized argument, a
+        # missing interpreter — and uncaught it became the handler's bare 500 (t1079)
         return False, f"не вдалося запустити: {exc}"
     ok = out.returncode == 0
     said = (out.stdout or "").strip() or (out.stderr or "").strip()

@@ -171,6 +171,16 @@ def test_unknown_action_changes_nothing(monkeypatch):
     assert seen == [] and "невідом" in msg.lower()
 
 
+def test_run_script_returns_an_exec_failure_instead_of_raising(monkeypatch):
+    """t1079: E2BIG on a huge add text (or a missing interpreter) must become a message
+    on the board, not the handler's bare 500."""
+    def boom(*a, **kw):
+        raise OSError(7, "Argument list too long")
+    monkeypatch.setattr(subprocess, "run", boom)
+    ok, said = server.run_script("/bin/echo", "x")
+    assert ok is False and "не вдалося запустити" in said
+
+
 def test_action_without_an_id_runs_nothing(monkeypatch):
     seen = runs(monkeypatch)
     msg = server.tasks_action({"action": ["done"], "id": [""]})
