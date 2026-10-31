@@ -154,6 +154,41 @@ def test_missing_report_dir(tmp_path):
     assert changes.review_nights(tmp_path / "nope") == []
 
 
+# --- t1065: torn files must not 500 the page -------------------------------------------------
+
+def test_a_torn_report_does_not_raise(tmp_path):
+    """t1065: the nightly review writes multi-byte Ukrainian while the panel reads — a read
+    landing mid-character must cost a replacement char, not the whole screen."""
+    (tmp_path / "2026-10-30-scan.md").write_bytes("## Low\n### Б".encode("utf-8")[:-1])
+    nights = changes.review_nights(tmp_path)
+    assert len(nights) == 1 and nights[0]["date"] == "2026-10-30"
+
+
+def test_a_torn_security_reading_does_not_raise(monkeypatch, tmp_path):
+    monkeypatch.setattr(changes, "SPECS", tmp_path)
+    monkeypatch.setattr(changes, "TESTS", tmp_path)
+    monkeypatch.setattr(changes, "COMMIT_REVIEW", tmp_path / "review")
+    (tmp_path / "review").mkdir()
+    (tmp_path / "review" / f"{'a' * 40}.md").write_bytes("нічого".encode("utf-8")[:-1])
+    got = changes.commit_detail({"sha": "a" * 40, "task": ""})
+    assert got["review"]                               # present, even if torn
+
+
+def test_an_unreadable_security_reading_is_absent_not_fatal(monkeypatch, tmp_path):
+    monkeypatch.setattr(changes, "SPECS", tmp_path)
+    monkeypatch.setattr(changes, "TESTS", tmp_path)
+    monkeypatch.setattr(changes, "COMMIT_REVIEW", tmp_path / "review")
+    (tmp_path / "review").mkdir()
+    f = tmp_path / "review" / f"{'a' * 40}.md"
+    f.write_text("x", encoding="utf-8")
+    f.chmod(0)
+    try:
+        got = changes.commit_detail({"sha": "a" * 40, "task": ""})
+    finally:
+        f.chmod(0o644)
+    assert got["review"] is None
+
+
 # --- TC5: the standing Low list ------------------------------------------------------------
 
 def test_lows_accumulate_and_keep_the_first_night(tmp_path):

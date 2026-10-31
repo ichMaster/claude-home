@@ -91,11 +91,19 @@ def commit_detail(row: dict, tasks: dict | None = None) -> dict:
     if task_id and TESTS.is_dir():
         for f in sorted(TESTS.glob("test_*.py")):
             try:
-                if task_id in f.read_text(encoding="utf-8"):
+                if task_id in f.read_text(encoding="utf-8", errors="replace"):
                     tests.append(f.name)
             except OSError:
                 continue
+    # The committing session writes the reading while the panel may be reading it; a read
+    # landing mid-character must cost a replacement char, not a 500 on the whole screen.
+    review_text = None
     review = COMMIT_REVIEW / f"{row['sha']}.md"
+    if review.is_file():
+        try:
+            review_text = review.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            review_text = None                    # unreadable = not recorded, never invented
     title = ""
     if tasks and task_id in tasks:
         title = tasks[task_id].get("title", "")
@@ -103,7 +111,7 @@ def commit_detail(row: dict, tasks: dict | None = None) -> dict:
         "task_title": title,
         "spec": str(spec.relative_to(HOME)) if spec and spec.is_file() else None,
         "tests": tests,
-        "review": review.read_text(encoding="utf-8") if review.is_file() else None,
+        "review": review_text,
     }
 
 
@@ -147,7 +155,7 @@ def review_nights(report_dir: Path | None = None) -> list[dict]:
             continue
         key = name.rsplit("-", 1)[0]
         try:
-            text = f.read_text(encoding="utf-8")
+            text = f.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
         night = nights.setdefault(key, {"key": key, "date": key[:10], "scan": "",
