@@ -75,6 +75,14 @@ def fact_file(fid, base=None):
     return p if p.parent == base else None
 
 
+def set_pin(p, level):
+    """Rewrite one fact's pin level through the versioned atomic write: a fact file is
+    precious (t1080), so the copy comes for free — the raw rewrite this replaces kept
+    nothing and a crash mid-write could tear the file (t1083)."""
+    s = p.read_text(encoding="utf-8")
+    atomic_write_text(p, re.sub(r"^pin: \d+", f"pin: {level}", s, count=1, flags=re.M))
+
+
 def prompt():
     """The pinned block: most important first, trimmed to the prompt budget."""
     facts = sorted([f for f in load() if f["pin"] > 0],
@@ -116,9 +124,7 @@ def main():
         p = fact_file(sys.argv[2])
         if p is None or not p.is_file():
             print(f"немає такого факту: {sys.argv[2]}", file=sys.stderr); sys.exit(1)
-        s = p.read_text(encoding="utf-8")
-        p.write_text(re.sub(r"^pin: \d+", f"pin: {sys.argv[3]}", s, count=1, flags=re.M),
-                     encoding="utf-8")
+        set_pin(p, sys.argv[3])
         print(f"{sys.argv[2]} → pin {sys.argv[3]}")
     else:
         facts = load()

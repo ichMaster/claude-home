@@ -75,3 +75,36 @@ def test_rm_of_a_missing_fact_is_a_clean_refusal():
     out = run_cli("rm", "no-such-fact-xyz")
     assert out.returncode != 0
     assert "Traceback" not in (out.stderr or "")
+
+
+# --- t1083 — pin goes through the versioned atomic write -------------------------------
+
+def test_repin_keeps_a_version_and_the_text(monkeypatch, tmp_path):
+    """t1083 TC1/TC2 — a fact file is precious (t1080); repinning must keep the
+    pre-change content as a version and touch only the pin line. Before the fix the
+    rewrite was a raw write_text: no version, tearable."""
+    import noosconf
+    root = tmp_path / "repo"
+    (root / "facts").mkdir(parents=True)
+    store = tmp_path / "versions"
+    monkeypatch.setattr(noosconf, "ROOT", root)
+    real_conf = noosconf.conf
+
+    def fake(key, default=None):
+        if key == "versions.dir":
+            return str(store)
+        if key == "versions.files":
+            return ["facts"]
+        return real_conf(key, default)
+    monkeypatch.setattr(noosconf, "conf", fake)
+
+    f = root / "facts" / "one.md"
+    f.write_text("---\npin: 1\ntags: \nadded: 2026-11-01\n---\nважливий текст\n",
+                 encoding="utf-8")
+    memory_screen._facts_module().set_pin(f, "2")
+
+    got = f.read_text(encoding="utf-8")
+    assert "pin: 2" in got and "важливий текст" in got
+    copies = list(store.rglob("*.bin"))
+    assert len(copies) == 1, "the pre-change content must be kept as a version"
+    assert "pin: 1" in copies[0].read_text(encoding="utf-8")
