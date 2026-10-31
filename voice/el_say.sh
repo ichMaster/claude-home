@@ -27,7 +27,7 @@ print(json.dumps({"text":sys.argv[1],"model_id":sys.argv[2],
                     "style":float(sys.argv[5]),"speed":float(sys.argv[4]),
                     "use_speaker_boost":True}}))' \
   "$text" "$model" "$stab" "$speed" "$style")
-code=$(curl -sS -o "$out" -w '%{http_code}' \
+code=$(curl -sS --connect-timeout 10 --max-time 120 -o "$out" -w '%{http_code}' \
   -X POST "https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}?output_format=mp3_44100_128" \
   -H "xi-api-key: ${ELEVENLABS_API_KEY}" -H 'Content-Type: application/json' \
   -d "$body")

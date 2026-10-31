@@ -14,7 +14,7 @@ else
   src="$f"
 fi
 trap 'rm -f "$padded"' EXIT
-resp=$(curl -sS -X POST \
+resp=$(curl -sS --connect-timeout 10 --max-time 120 -X POST \
   "https://api.deepgram.com/v1/listen?model=${model}&language=${lang}&smart_format=true&punctuate=true" \
   -H "Authorization: Token ${DEEPGRAM_API_KEY}" \
   -H 'Content-Type: audio/ogg' \
