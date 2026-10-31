@@ -200,6 +200,41 @@ def test_lows_accumulate_and_keep_the_first_night(tmp_path):
     assert lows[0]["nights"] == 2
 
 
+# --- t1066: the change-log search -------------------------------------------------------------
+
+def test_search_matches_only_what_the_table_shows():
+    """t1066: the record also carries cwd and session, where '/home/ich' and hex ids make
+    every common needle match every row."""
+    rows = [{"ts": "2026-10-31T10:00:00", "kind": "bash", "target": "restart.sh",
+             "detail": "перезапуск", "session": "deadbeef", "cwd": "/home/ich/claude-home"}]
+    assert changes.filter_changes(rows, "ich") == []
+    assert changes.filter_changes(rows, "deadbeef") == []
+    assert changes.filter_changes(rows, "RESTART") == rows
+    assert changes.filter_changes(rows, "перезапуск") == rows
+    assert changes.filter_changes(rows, "") == rows
+
+
+def test_search_miss_is_named_not_disguised_as_an_empty_day():
+    """t1066: nothing matching a query is «нічого не знайдено», not «записів немає»."""
+    html = render.render_changes([], {}, [], [], 0, [], query="xyz")
+    assert "Нічого не знайдено" in html and "записів немає" not in html
+    assert "записів немає" in render.render_changes([], {}, [], [], 0, [], query="")
+
+
+def test_search_reads_a_wider_window_than_the_plain_view(monkeypatch):
+    """t1066: one day already holds 484 records; a search over 200 silently lies."""
+    import server
+    calls = []
+    monkeypatch.setattr(server.data, "recent_changes",
+                        lambda n: calls.append(n) or [])
+    monkeypatch.setattr(server.changes, "git", lambda *a: "")
+    monkeypatch.setattr(server.changes, "ahead_hashes", lambda: set())
+    monkeypatch.setattr(server.changes, "review_nights", lambda: [])
+    server.changes_html("щось")
+    server.changes_html("")
+    assert calls[0] >= 5 * calls[1], "a query must search far beyond the display window"
+
+
 # --- TC6: rendering --------------------------------------------------------------------------
 
 def test_changes_page_escapes_everything():

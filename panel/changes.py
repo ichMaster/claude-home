@@ -115,6 +115,20 @@ def commit_detail(row: dict, tasks: dict | None = None) -> dict:
     }
 
 
+# What the change-log table renders; the record also carries `cwd` and `session`, where
+# "/home/ich" and hex ids would make every common needle match every single row.
+SEARCH_FIELDS = ("ts", "kind", "target", "detail")
+
+
+def filter_changes(rows: list[dict], query: str) -> list[dict]:
+    """Case-insensitive match over the fields the table actually shows."""
+    needle = (query or "").strip().lower()
+    if not needle:
+        return rows
+    return [r for r in rows
+            if any(needle in str(r.get(f) or "").lower() for f in SEARCH_FIELDS)]
+
+
 def files_of(sha: str) -> list[str]:
     return [f for f in git("show", "--name-only", "--format=", sha).splitlines() if f.strip()]
 

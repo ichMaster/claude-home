@@ -207,13 +207,17 @@ def render_changes(rows: list[dict], details: dict[str, dict], nights: list[dict
     search = (f'<form method="get" class="search">'
               f'<input name="q" value="{e(query)}" placeholder="пошук у журналі змін">'
               f'<button type="submit">знайти</button></form>')
+    # A search that matched nothing is not an empty day — the default empty state would
+    # read as "no such change was ever made".
+    log_block = ('<p class="empty">Нічого не знайдено.</p>' if query and not changes
+                 else _changes_list(changes))
     body = (
         "<h1>Зміни й ревʼю</h1>"
         f"<section><h2>Пуш</h2>{push}</section>"
         "<section><h2>Коміти</h2>" + _commit_table(rows, details) + "</section>"
         "<section><h2>Нічні ревʼю</h2>" + _nights_block(nights) + "</section>"
         "<section><h2>Накопичені Low</h2>" + _lows_block(lows) + "</section>"
-        "<section><h2>Журнал змін</h2>" + search + _changes_list(changes) + "</section>")
+        "<section><h2>Журнал змін</h2>" + search + log_block + "</section>")
     return page("Зміни", body, "/changes")
 
 

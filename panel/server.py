@@ -14,7 +14,6 @@ that builds them, so the rail is honest rather than full of dead links.
 from __future__ import annotations
 
 import argparse
-import json
 import subprocess
 import sys
 import traceback
@@ -71,10 +70,11 @@ def changes_html(query: str = "") -> str:
         pass                                                            # titles are a nicety
     details = {r["sha"]: changes.commit_detail(r, tasks) for r in rows}
     nights = changes.review_nights()
-    log = data.recent_changes(int(conf("panel.changes_full", 200)))
-    if query:
-        needle = query.lower()
-        log = [r for r in log if needle in json.dumps(r, ensure_ascii=False).lower()]
+    # A query searches weeks of the log, not the display window: one day already produces
+    # hundreds of records, and a miss over a truncated window reads as "never happened".
+    limit = int(conf("panel.changes_search", 5000)) if query else \
+        int(conf("panel.changes_full", 200))
+    log = changes.filter_changes(data.recent_changes(limit), query)
     return render.render_changes(rows, details, nights, changes.open_lows(nights),
                                  len(ahead) if ahead is not None else None,
                                  log[:60], query)

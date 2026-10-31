@@ -237,6 +237,7 @@
     "refresh_sec": 30,
     "changes": 20,
     "changes_full": 200,
+    "changes_search": 5000,
     "commits": 40,
     "probes": ["loe", "alarm", "weather", "host", "services", "tasks", "usage", "mood", "bio"]
   },
