@@ -79,36 +79,43 @@ def prompt():
     return "\n".join(lines)
 
 
-cmd = sys.argv[1] if len(sys.argv) > 1 else "list"
-if cmd == "add":
-    args = sys.argv[2:]
-    pin, tags, text = 1, [], []
-    i = 0
-    while i < len(args):
-        if args[i] == "--pin": pin = int(args[i + 1]); i += 2
-        elif args[i] == "--tag": tags.append(args[i + 1]); i += 2
-        else: text.append(args[i]); i += 1
-    add(" ".join(text), pin, tags)
-elif cmd == "prompt":
-    print(prompt())
-elif cmd == "rm":
-    p = DIR / f"{sys.argv[2]}.md"
-    # a deleted fact is the one case where there is no later write to keep a copy for,
-    # so the copy is taken here — a wrong `rm` is recoverable with tools/versions.py
-    keep_version(p)
-    p.unlink(); print(f"видалено {sys.argv[2]}")
-elif cmd == "pin":
-    p = DIR / f"{sys.argv[2]}.md"
-    s = p.read_text(encoding="utf-8")
-    p.write_text(re.sub(r"^pin: \d+", f"pin: {sys.argv[3]}", s, count=1, flags=re.M),
-                 encoding="utf-8")
-    print(f"{sys.argv[2]} → pin {sys.argv[3]}")
-else:
-    facts = load()
-    show_all = "--all" in sys.argv
-    for f in sorted(facts, key=lambda f: (f["pin"] == 0, f["pin"], f["id"])):
-        if f["pin"] == 0 and not show_all:
-            continue
-        t = " ".join(f["text"].split())
-        print(f"[pin {f['pin']}] {f['id']:34} {t[:90]}")
-    print(f"\nвсього {len(facts)} з {MAX_FACTS}; у підказку йде до {MAX_IN_PROMPT}")
+def main():
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "list"
+    if cmd == "add":
+        args = sys.argv[2:]
+        pin, tags, text = 1, [], []
+        i = 0
+        while i < len(args):
+            if args[i] == "--pin": pin = int(args[i + 1]); i += 2
+            elif args[i] == "--tag": tags.append(args[i + 1]); i += 2
+            else: text.append(args[i]); i += 1
+        add(" ".join(text), pin, tags)
+    elif cmd == "prompt":
+        print(prompt())
+    elif cmd == "rm":
+        p = DIR / f"{sys.argv[2]}.md"
+        # a deleted fact is the one case where there is no later write to keep a copy for,
+        # so the copy is taken here — a wrong `rm` is recoverable with tools/versions.py
+        keep_version(p)
+        p.unlink(); print(f"видалено {sys.argv[2]}")
+    elif cmd == "pin":
+        p = DIR / f"{sys.argv[2]}.md"
+        s = p.read_text(encoding="utf-8")
+        p.write_text(re.sub(r"^pin: \d+", f"pin: {sys.argv[3]}", s, count=1, flags=re.M),
+                     encoding="utf-8")
+        print(f"{sys.argv[2]} → pin {sys.argv[3]}")
+    else:
+        facts = load()
+        show_all = "--all" in sys.argv
+        for f in sorted(facts, key=lambda f: (f["pin"] == 0, f["pin"], f["id"])):
+            if f["pin"] == 0 and not show_all:
+                continue
+            t = " ".join(f["text"].split())
+            print(f"[pin {f['pin']}] {f['id']:34} {t[:90]}")
+        print(f"\nвсього {len(facts)} з {MAX_FACTS}; у підказку йде до {MAX_IN_PROMPT}")
+
+
+# the guard matters: the panel loads this file as a module to borrow load(), and an
+# unguarded dispatch printed the whole fact store into the journal per page view (t1081)
+if __name__ == "__main__":
+    main()
