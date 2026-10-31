@@ -4,8 +4,11 @@ about which column a task lands in and which verb a button runs.
 import subprocess
 import sys
 import types
+import urllib.parse
 from datetime import date, datetime, timedelta
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "panel"))
@@ -172,6 +175,58 @@ def test_action_without_an_id_runs_nothing(monkeypatch):
     seen = runs(monkeypatch)
     msg = server.tasks_action({"action": ["done"], "id": [""]})
     assert seen == [] and msg
+
+
+# --- t1078: refresh must not re-fire the last action (Post/Redirect/Get) ---------------
+
+@pytest.fixture
+def live_panel(monkeypatch):
+    """The real handler on a real socket; the action and the board are stubbed so no
+    subprocess runs and the real log is never read."""
+    import threading
+    from http.server import ThreadingHTTPServer
+    fired = []
+
+    def fake_action(form):
+        fired.append(form.get("action"))
+        return "зроблено ✔"
+    monkeypatch.setattr(server, "tasks_action", fake_action)
+    monkeypatch.setattr(server, "tasks_html",
+                        lambda message="": f"<html>дошка: {message}</html>")
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    yield httpd.server_address[1], fired
+    httpd.shutdown()
+
+
+def post_tasks(port, body):
+    import http.client
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    conn.request("POST", "/tasks", urllib.parse.urlencode(body),
+                 {"Content-Type": "application/x-www-form-urlencoded"})
+    return conn, conn.getresponse()
+
+
+def test_post_redirects_so_refresh_cannot_rewrite(live_panel):
+    """TC1+TC2: the page left in the browser must be a GET, never the form submission."""
+    port, fired = live_panel
+    conn, r = post_tasks(port, {"token": server.FORM_TOKEN,
+                                "action": "add", "text": "нова"})
+    assert r.status == 303, "a 200 here means F5 re-fires the action into the log"
+    location = r.getheader("Location")
+    assert location and location.startswith("/tasks?m=")
+    r.read()
+    assert fired == [["add"]]
+    conn.request("GET", location)
+    shown = conn.getresponse().read().decode("utf-8")
+    assert "зроблено ✔" in shown, "the action's message must survive the redirect"
+    assert fired == [["add"]], "the GET after the redirect must not act"
+
+
+def test_post_without_the_token_is_still_refused(live_panel):
+    port, fired = live_panel
+    conn, r = post_tasks(port, {"action": "done", "id": "t1"})
+    assert r.status == 403 and fired == []
 
 
 # --- TC5, TC6: the page -------------------------------------------------------------------------

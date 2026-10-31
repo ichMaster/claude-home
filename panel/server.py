@@ -355,7 +355,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, bruno_html(query[:80]).encode("utf-8"),
                                   "text/html; charset=utf-8")
             if path == "/tasks":
-                return self._send(200, tasks_html().encode("utf-8"),
+                message = urllib.parse.parse_qs(
+                    urllib.parse.urlparse(self.path).query).get("m", [""])[0]
+                return self._send(200, tasks_html(message[:500]).encode("utf-8"),
                                   "text/html; charset=utf-8")
             if path == "/zirka":
                 day = urllib.parse.parse_qs(
@@ -390,8 +392,16 @@ class Handler(BaseHTTPRequestHandler):
             # /bruno is read-only in phase 4 — it has no form, so a POST to it is not
             # a page of ours and falls through to 404 below.
             if path == "/tasks":
-                return self._send(200, tasks_html(tasks_action(form)).encode("utf-8"),
-                                  "text/html; charset=utf-8")
+                # Post/Redirect/Get: these buttons write to the append-only task log, and
+                # a 200 here leaves the submission as the browser's current page — one F5
+                # and the add runs twice, uncleanably (t1078). The result rides the query.
+                message = tasks_action(form)
+                self.send_response(303)
+                self.send_header("Location",
+                                 "/tasks?m=" + urllib.parse.quote(message[:500]))
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             if path == "/zirka":
                 message = zirka_action(form)
                 day = (form.get("day") or [""])[0]
