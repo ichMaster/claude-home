@@ -329,26 +329,35 @@ def recompute_forecast(day) -> str:
     return "перерахунок запущено — нове читання прийде сюди хвилин за вісім"
 
 
-def take_reference(message: str, meta: dict) -> str:
-    """Store another astrologer's reading and distil rules out of it right away, so the next
-    morning already reads differently (the owner, 2026-10-30). Returns what was learned, for
-    the reply."""
+def park_reference(message: str, meta: dict) -> str:
+    """Keep another astrologer's reading; do not learn from it here.
+
+    The owner split the work (2026-10-31): the horoscope is calibrated through the session,
+    and Zirka only explains the reading she produced and takes his account of the day. So a
+    reference arriving in her chat is stored and handed over, not distilled — three
+    decisions (is this a reference, whose, for which day) belong where there is judgement
+    behind them.
+
+    Stored before anything else, because losing the text was the original complaint: three
+    references were dropped on 2026-10-31 before they reached anything at all.
+    """
     day = datetime.now().date() + timedelta(days=1 if meta.get("day") == "tomorrow" else 0)
     text = (meta.get("clean") or message).strip()
-    cmd = [str(HOME / ".venv-voice" / "bin" / "python"), str(HOME / "status" / "astro_learn.py"),
-           "add", text, "--day", day.isoformat(), "--period", meta.get("period") or "день",
-           "--learn"]
-    if meta.get("author"):
-        cmd += ["--author", str(meta["author"])]
-    out = subprocess.run(cmd, capture_output=True, text=True, timeout=600, cwd=str(HOME))
-    if out.returncode != 0:
-        return f"(записати не вдалось: {out.stderr.strip()[:200]})"
-    learned = out.stdout.strip()
-    # A reference about today must change today, not only tomorrow morning: the rules it
-    # yields are useless to him if the reading he already has stays as it was (t1033).
-    if day == datetime.now().date():
-        learned += "\n\nПерерахунок: " + recompute_forecast(day)
-    return learned
+    inbox_dir = HOME / "status" / "state" / "astro-reference-inbox"
+    inbox_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    f = inbox_dir / f"{stamp}-{day.isoformat()}.txt"
+    f.write_text(text, encoding="utf-8")
+
+    author = str(meta.get("author") or "").strip()
+    note = (f"Еталон від астролога надійшов у чат Зірки — {len(text)} символів, "
+            f"на {day.isoformat()}" + (f", автор {author}" if author else "") + ".\n"
+            f"Лежить у {f}. Вчитись на ньому — через цей чат: скажи, і я внесу "
+            f"(astro_learn.py add --file).")
+    subprocess.run([str(HOME / "notify.sh"), "--no-voice", note],
+                   check=False, cwd=str(HOME), timeout=120)
+    return (f"Еталон збережено ({len(text)} символів, на {day.isoformat()}). "
+            "Навчання й калібрування — через головний чат, не тут.")
 
 
 def run_search(scope: str, query: str) -> str:
@@ -523,8 +532,8 @@ def handle_update(bot: str, token: str, owner: str, st: dict, upd: dict,
     elif bot == "zirka":
         kind = zirka_kind(text)
         if kind["kind"] == "reference":
-            print(f"{bot}: прогноз астролога ({kind.get('period')}) — вчусь")
-            search = take_reference(text, kind)
+            print(f"{bot}: прогноз астролога ({kind.get('period')}) — кладу, не вчусь")
+            search = park_reference(text, kind)
         elif kind["kind"] == "recalc":
             # asked for from her own chat, so he does not have to reach a terminal to get
             # the day re-read (the owner, 2026-10-31). Started here, not by the model.

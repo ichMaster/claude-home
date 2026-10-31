@@ -206,7 +206,10 @@ def main() -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p_add = sub.add_parser("add", help="записати еталонний прогноз")
-    p_add.add_argument("text")
+    # `--file` so a reference parked by inbox.py (t1059) can be ingested without pushing a
+    # few thousand characters through a command line
+    p_add.add_argument("text", nargs="?", default="")
+    p_add.add_argument("--file", help="взяти текст із файлу замість аргументу")
     p_add.add_argument("--day")
     p_add.add_argument("--author", default="")
     p_add.add_argument("--period", default="день")
@@ -227,7 +230,16 @@ def main() -> int:
     day = date.fromisoformat(args.day) if getattr(args, "day", None) else date.today()
 
     if args.cmd == "add":
-        parts = split_days(args.text, day) if args.split else [(day, args.text)]
+        text = args.text
+        if getattr(args, "file", None):
+            f = Path(args.file).expanduser()
+            if not f.is_file():
+                sys.exit(f"немає файлу {f}")
+            text = f.read_text(encoding="utf-8")
+        if not text.strip():
+            sys.exit("порожній текст — нічого записувати")
+        args.text = text
+        parts = split_days(text, day) if args.split else [(day, text)]
         for when, body in parts:
             add(body, when, args.author, args.period)
             print(f"записано: {when} · {args.author or 'без автора'} · {len(body)} символів")

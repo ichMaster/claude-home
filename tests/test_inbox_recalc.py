@@ -24,23 +24,20 @@ def systemd_calls(calls):
     return [c for c in calls if c and c[0] == "systemd-run"]
 
 
-def test_reference_for_today_recomputes(monkeypatch):
-    """TC4: a reading about today has to change today, not only tomorrow morning."""
+def test_recalc_runs_for_the_day_asked_for(monkeypatch):
+    """Asked from her chat, the day is re-read — the point of t1033, so he never has to
+    reach a terminal for it."""
     calls = fake_run(monkeypatch, [])
-    out = inbox.take_reference("календар", {"day": "today", "period": "день"})
-    assert "Перерахунок" in out
+    out = inbox.recompute_forecast(date.today())
+    assert "перерахунок запущено" in out
     started = systemd_calls(calls)
     assert len(started) == 1
-    assert "--day" in started[0]
     assert started[0][started[0].index("--day") + 1] == date.today().isoformat()
 
 
-def test_reference_for_tomorrow_does_not_recompute(monkeypatch):
-    """TC4: tomorrow's reading is stored and learned from; nothing is re-run."""
-    calls = fake_run(monkeypatch, [])
-    out = inbox.take_reference("календар", {"day": "tomorrow", "period": "день"})
-    assert "Перерахунок" not in out
-    assert systemd_calls(calls) == []
+# A reference used to trigger this too (t1033). t1059 took that away: references are
+# parked and calibration happens through the session, so only an explicit request
+# re-reads the day. That is covered in tests/test_inbox_reference.py.
 
 
 def test_second_recalc_while_running_is_refused(monkeypatch):
