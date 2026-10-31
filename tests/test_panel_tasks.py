@@ -1,0 +1,154 @@
+"""t1074 — admin panel, phase 6. The board writes through store.py, so the tests are
+about which column a task lands in and which verb a button runs.
+"""
+import subprocess
+import sys
+import types
+from datetime import date, datetime, timedelta
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "panel"))
+
+import render                                                           # noqa: E402
+import server                                                           # noqa: E402
+import tasks_screen as ts                                               # noqa: E402
+
+TODAY = date(2026, 10, 31)
+
+STATE = {
+    "t1": {"title": "прострочена", "status": "open", "due": "2026-10-25", "estimate": 30},
+    "t2": {"title": "на сьогодні", "status": "open", "due": "2026-10-31", "block": True},
+    "t3": {"title": "на вихідні", "status": "open", "due": None,
+           "period": ["вихідні", "2026-10-31", "2026-11-01"]},
+    "t4": {"title": "беклог", "status": "open", "due": None, "period": None},
+    "t5": {"title": "закрита", "status": "done", "closed": "2026-10-31T10:00:00+02:00"},
+    "t6": {"title": "закрита давно", "status": "done", "closed": "2026-01-01T10:00:00+02:00"},
+    "t7": {"title": "і дата, і період", "status": "open", "due": "2026-10-20",
+           "period": ["тиждень", "2026-10-26", "2026-11-01"]},
+}
+
+
+# --- TC1: columns ---------------------------------------------------------------------
+
+def test_each_task_lands_in_one_column():
+    cols = ts.columns(STATE, TODAY)
+    assert [c["id"] for c in cols["today"]] == ["t7", "t1", "t2"]
+    assert [c["id"] for c in cols["period"]] == ["t3"]
+    assert [c["id"] for c in cols["backlog"]] == ["t4"]
+    assert [c["id"] for c in cols["closed"]] == ["t5"], "an old closure is not today's work"
+
+
+def test_overdue_comes_first_and_is_flagged():
+    cols = ts.columns(STATE, TODAY)
+    assert cols["today"][0]["overdue"] is True
+    assert cols["today"][-1]["overdue"] is False
+
+
+def test_a_date_outranks_a_period():
+    """A card in two columns gets done twice or not at all."""
+    cols = ts.columns(STATE, TODAY)
+    ids = [c["id"] for col in cols.values() for c in col]
+    assert ids.count("t7") == 1
+
+
+# --- TC2: what a card shows ---------------------------------------------------------------
+
+def test_card_reports_spent_and_running():
+    now = datetime.now().astimezone()
+    t = {"title": "йде", "status": "open",
+         "runs": [{"from": (now - timedelta(minutes=40)).isoformat(), "to": None}],
+         "running": True}
+    c = ts.card("t9", t, TODAY)
+    assert c["running"] is True and 39 <= c["spent"] <= 41
+
+
+def test_card_separates_plan_from_fact():
+    t = {"title": "з подіями", "status": "open", "events": [
+        {"event": "a", "start": "2026-10-31T10:00", "end": "", "kind": "plan"},
+        {"event": "b", "start": "2026-10-31T14:00", "end": "", "kind": "fact"}]}
+    c = ts.card("t9", t, TODAY)
+    assert [e["event"] for e in c["plan"]] == ["a"]
+    assert [e["event"] for e in c["fact"]] == ["b"]
+
+
+def test_card_survives_a_broken_run_entry():
+    t = {"title": "крива", "status": "open", "runs": [{"from": "не дата", "to": None}]}
+    assert ts.card("t9", t, TODAY)["spent"] == 0
+
+
+def test_period_is_readable():
+    assert ts.period_text(["вихідні", "2026-10-31", "2026-11-01"]) == "вихідні 31.10-01.11"
+    assert ts.period_text(None) == ""
+
+
+# --- TC3, TC4: the actions ------------------------------------------------------------------
+
+def runs(monkeypatch):
+    seen = []
+
+    def run(cmd, **kw):
+        seen.append(list(cmd))
+        return types.SimpleNamespace(returncode=0, stdout="зроблено", stderr="")
+    monkeypatch.setattr(subprocess, "run", run)
+    return seen
+
+
+def store_call(seen):
+    return [c for c in seen if any(str(p).endswith("store.py") for p in c)][0]
+
+
+def test_close_runs_done(monkeypatch):
+    seen = runs(monkeypatch)
+    server.tasks_action({"action": ["done"], "id": ["t1"]})
+    cmd = store_call(seen)
+    assert cmd[-2:] == ["done", "t1"]
+
+
+def test_defer_passes_the_phrase(monkeypatch):
+    seen = runs(monkeypatch)
+    server.tasks_action({"action": ["defer"], "id": ["t1"], "when": ["завтра"]})
+    cmd = store_call(seen)
+    assert cmd[-3:] == ["defer", "t1", "завтра"]
+
+
+def test_block_toggles(monkeypatch):
+    seen = runs(monkeypatch)
+    server.tasks_action({"action": ["block"], "id": ["t2"], "on": ["off"]})
+    assert store_call(seen)[-3:] == ["block", "t2", "off"]
+
+
+def test_add_passes_the_text_as_one_argument(monkeypatch):
+    seen = runs(monkeypatch)
+    server.tasks_action({"action": ["add"], "text": ["помити машину завтра"]})
+    cmd = store_call(seen)
+    assert cmd[-2:] == ["add", "помити машину завтра"]
+
+
+def test_empty_add_runs_nothing(monkeypatch):
+    seen = runs(monkeypatch)
+    msg = server.tasks_action({"action": ["add"], "text": ["   "]})
+    assert seen == [] and "порожн" in msg.lower()
+
+
+def test_unknown_action_changes_nothing(monkeypatch):
+    seen = runs(monkeypatch)
+    msg = server.tasks_action({"action": ["вигадана"], "id": ["t1"]})
+    assert seen == [] and "невідом" in msg.lower()
+
+
+def test_action_without_an_id_runs_nothing(monkeypatch):
+    seen = runs(monkeypatch)
+    msg = server.tasks_action({"action": ["done"], "id": [""]})
+    assert seen == [] and msg
+
+
+# --- TC5, TC6: the page -------------------------------------------------------------------------
+
+def test_page_escapes_titles_and_carries_the_token():
+    cols = ts.columns({"t1": {"title": "<img src=x onerror=bad()>", "status": "open",
+                              "due": "2026-10-31", "project": "<b>p</b>"}}, TODAY)
+    html = render.render_tasks(cols, token="SECRET", message="")
+    assert "<img src=x" not in html and "<b>p</b>" not in html
+    assert "&lt;img src=x" in html
+    assert html.count('name="token" value="SECRET"') >= 2

@@ -265,3 +265,35 @@ h3.stage {
 .dropped td.warn { white-space: nowrap; font-size: 12px; }
 .sent td, .chat td, .topics td { vertical-align: top; }
 .chat td.id { color: var(--dim); }
+
+/* --- screen 9: tasks -------------------------------------------------------------- */
+
+.card {
+  padding: 8px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.card.over .t { color: var(--amber); }
+.card .t { margin-bottom: 2px; }
+.card .meta { font-size: 12px; }
+.card .ev { font-size: 12px; font-family: var(--mono); }
+
+.card .controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+form.inline { display: inline; margin: 0; }
+
+.card .controls button {
+  padding: 2px 8px;
+  border: 1px solid var(--rule);
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.card .controls button:hover { color: var(--ink); border-color: var(--amber); }

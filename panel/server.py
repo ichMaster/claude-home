@@ -33,12 +33,13 @@ import bruno                                                           # noqa: E
 import changes                                                         # noqa: E402
 import data                                                            # noqa: E402
 import render                                                          # noqa: E402
+import tasks_screen                                                    # noqa: E402
 import zirka                                                           # noqa: E402
 
 STATIC = Path(__file__).resolve().parent / "static"
 # screen → the phase that builds it, for the placeholder pages
 SOON = {
-    "/prompt": "фаза 5", "/scenarios": "фаза 5", "/tasks": "фаза 6",
+    "/prompt": "фаза 5", "/scenarios": "фаза 5",
     "/memory": "фаза 7", "/sources": "фаза 7", "/rules": "фаза 8",
     "/chat": "фаза 9",
 }
@@ -196,6 +197,60 @@ def bruno_html(query: str = "") -> str:
         chat=bruno.bruno_chat(), topics=bruno.topics(), prompts=bruno.prompts())
 
 
+def task_state() -> dict:
+    """The task log, through store.py — one reader, one validator. Appended to sys.path
+    once, never per request (the leak t1067 and t1071 were both about)."""
+    d = str(HOME / "tasks")
+    if d not in sys.path:
+        sys.path.append(d)
+    from store import state                                             # noqa: E402
+    return state()
+
+
+def tasks_html(message: str = "") -> str:
+    """Screen 9."""
+    try:
+        cols = tasks_screen.columns(task_state())
+    except Exception as exc:                                            # noqa: BLE001
+        cols = {"today": [], "period": [], "backlog": [], "closed": []}
+        message = (message + f" Журнал задач не прочитався: {exc}").strip()
+    return render.render_tasks(cols, FORM_TOKEN, message)
+
+
+def tasks_action(form: dict) -> str:
+    """One button → one `store.py` verb. The log stays append-only and its validation
+    stays in the one place that already has it."""
+    what = (form.get("action") or [""])[0]
+    tid = (form.get("id") or [""])[0].strip()
+    py = str(HOME / ".venv-voice" / "bin" / "python")
+    store = str(HOME / "tasks" / "store.py")
+
+    if what == "add":
+        text = (form.get("text") or [""])[0].strip()
+        if not text:
+            return "Порожній рядок — задачу не додано."
+        ok, said = run_script(py, store, "add", text, timeout=60)
+        return said if ok else f"Не вдалося додати: {said}"
+    if what in ("done", "start", "stop", "cancel"):
+        if not tid:
+            return "Задачу не названо."
+        ok, said = run_script(py, store, what, tid, timeout=60)
+        return said if ok else f"Не вдалося: {said}"
+    if what == "defer":
+        when = (form.get("when") or [""])[0].strip()
+        if not tid or not when:
+            return "Задачу або дату не названо."
+        ok, said = run_script(py, store, "defer", tid, when, timeout=60)
+        return said if ok else f"Не вдалося перенести: {said}"
+    if what == "block":
+        on = (form.get("on") or ["on"])[0]
+        if not tid:
+            return "Задачу не названо."
+        ok, said = run_script(py, store, "block", tid, on, timeout=60)
+        return said if ok else f"Не вдалося: {said}"
+    return "Невідома дія."
+
+
 def zirka_html(day: str = "", message: str = "") -> str:
     """Screen 4. Reading from disk happens here; the parsing it feeds is pure and tested."""
     try:
@@ -299,6 +354,9 @@ class Handler(BaseHTTPRequestHandler):
                     urllib.parse.urlparse(self.path).query).get("q", [""])[0]
                 return self._send(200, bruno_html(query[:80]).encode("utf-8"),
                                   "text/html; charset=utf-8")
+            if path == "/tasks":
+                return self._send(200, tasks_html().encode("utf-8"),
+                                  "text/html; charset=utf-8")
             if path == "/zirka":
                 day = urllib.parse.parse_qs(
                     urllib.parse.urlparse(self.path).query).get("day", [""])[0]
@@ -331,6 +389,9 @@ class Handler(BaseHTTPRequestHandler):
                                   "text/plain; charset=utf-8")
             # /bruno is read-only in phase 4 — it has no form, so a POST to it is not
             # a page of ours and falls through to 404 below.
+            if path == "/tasks":
+                return self._send(200, tasks_html(tasks_action(form)).encode("utf-8"),
+                                  "text/html; charset=utf-8")
             if path == "/zirka":
                 message = zirka_action(form)
                 day = (form.get("day") or [""])[0]

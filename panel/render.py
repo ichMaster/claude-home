@@ -450,6 +450,82 @@ def render_bruno(news: list[dict], videos: tuple[str, list[dict]], dropped: list
     return page("Бруно", body, "/bruno")
 
 
+def _task_card(c: dict, token: str) -> str:
+    bits = []
+    if c.get("project"):
+        bits.append(f'[{e(c["project"])}]')
+    if c.get("estimate"):
+        bits.append(f'~{c["estimate"]} хв')
+    if c.get("spent"):
+        bits.append(("▶ " if c.get("running") else "⏱ ") + f'{c["spent"]} хв')
+    if c.get("block"):
+        bits.append("📌")
+    if c.get("period"):
+        bits.append(e(_period(c["period"])))
+    if c.get("due"):
+        mark = "warn" if c.get("overdue") else "dim"
+        bits.append(f'<span class="{mark}">{e(c["due"])}</span>')
+    if c.get("closed_at"):
+        bits.append(f'закрито {e(c["closed_at"][:10])}')
+    events = "".join(
+        f'<div class="ev dim">{"🗓" if ev.get("kind", "plan") == "plan" else "✔"} '
+        f'{e(str(ev.get("start"))[:16].replace("T", " "))}</div>'
+        for ev in (c.get("plan") or []) + (c.get("fact") or []))
+
+    def button(action: str, label: str, **extra) -> str:
+        hidden = "".join(f'<input type="hidden" name="{e(k)}" value="{e(v)}">'
+                         for k, v in extra.items())
+        return (f'<form method="post" action="/tasks" class="inline">'
+                f'<input type="hidden" name="token" value="{e(token)}">'
+                f'<input type="hidden" name="id" value="{e(c["id"])}">{hidden}'
+                f'<button type="submit" name="action" value="{e(action)}">{e(label)}</button>'
+                "</form>")
+
+    controls = ""
+    if c.get("status") == "open":
+        controls = (button("done", "закрити")
+                    + button("stop" if c.get("running") else "start",
+                             "зупинив" if c.get("running") else "почав")
+                    + button("defer", "сьогодні", when="сьогодні")
+                    + button("defer", "завтра", when="завтра")
+                    + button("defer", "вихідні", when="на вихідних")
+                    + button("block", "📌", on="off" if c.get("block") else "on"))
+    return (f'<div class="card{" over" if c.get("overdue") else ""}">'
+            f'<div class="t"><span class="id">{e(c["id"])}</span> {e(c["title"])}</div>'
+            f'<div class="meta dim">{" · ".join(bits)}</div>{events}'
+            f'<div class="controls">{controls}</div></div>')
+
+
+def _period(period) -> str:
+    if not isinstance(period, list) or len(period) < 3:
+        return str(period or "")
+    return f"{period[0]} {str(period[1])[8:10]}.{str(period[1])[5:7]}" \
+           f"-{str(period[2])[8:10]}.{str(period[2])[5:7]}"
+
+
+def render_tasks(cols: dict, token: str, message: str = "") -> str:
+    """Screen 9 — four columns over the same append-only log the session reads.
+
+    No drag and drop: the design asks for it, but it needs a client framework the same
+    design forbids, and three buttons do the job on a page that must work with no
+    internet. The deviation is a decision, written down in tasks/specs/t1074.md.
+    """
+    note = f'<p class="note">{e(message)}</p>' if message else ""
+    add = ('<form method="post" action="/tasks" class="search">'
+           f'<input type="hidden" name="token" value="{e(token)}">'
+           '<input type="hidden" name="action" value="add">'
+           '<input name="text" placeholder="нова задача — дату можна писати словами">'
+           '<button type="submit">додати</button></form>')
+    titles = {"today": "Сьогодні", "period": "Період", "backlog": "Беклог",
+              "closed": "Закриті"}
+    sections = ""
+    for key in ("today", "period", "backlog", "closed"):
+        cards = "".join(_task_card(c, token) for c in cols.get(key, []))
+        sections += (f'<section><h2>{titles[key]} ({len(cols.get(key, []))})</h2>'
+                     + (cards or '<p class="empty">Порожньо.</p>') + "</section>")
+    return page("Задачі", f"<h1>Задачі</h1>{note}{add}{sections}", "/tasks")
+
+
 def render_soon(title: str, href: str, phase: str) -> str:
     """A screen that has its place in the rail but not its code yet. Saying which phase
     builds it beats a dead link or a blank page."""
