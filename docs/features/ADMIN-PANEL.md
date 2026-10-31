@@ -230,6 +230,80 @@ already has Telegram, which is the better interface for intent.
 - The panel never calls the model. Everything intelligent is either a script or a
   scenario run in a headless session.
 
+## Phases
+
+Ten screens is not one sitting. The order below is chosen so that **every phase ships
+something usable on its own**, and so that the risky part — writing to the files the whole
+system reads — comes last, after the panel has proved it can read them correctly.
+
+Each phase becomes its own task with its own spec and tests when it is started; `t1037` is
+the umbrella. The hour figures are estimates with no measured basis — nothing comparable has
+been built here, and `store.py similar` has nothing to compare against — so treat them as
+the order of magnitude, not a promise.
+
+**Phase 1 — the shell, and Pulse.** (~3 h)
+One `panel/` package: `server.py` on `127.0.0.1:8091`, the left rail, one CSS file, the
+systemd unit. Then the Pulse screen, read-only: probes with their age against TTL, timers
+with next and last run, the queues, the last twenty change-log lines, refreshing itself.
+*Ships:* the answer to "is it alive and did anything happen" without an SSH session.
+*Risk:* none — nothing is written.
+
+**Phase 2 — Changes and review.** (~3 h)
+Screen 10. Commits with their task id, the spec and tests behind each, the nightly scan and
+fix reports, the standing Low list, push state, the full change log with search. Needs one
+addition outside the panel: the commit-time security reading has to start being written to
+`status/state/commit-review/<sha>.md`, or there is nothing to show.
+*Ships:* the development record he asked for, and it is all read-only git and files.
+*Risk:* none.
+
+**Phase 3 — Zirka.** (~4 h)
+Screen 4: today's reading against its budgets, the pipeline stage by stage, the computed
+facts, calibration beside the feedback, the reference list — and the **paste textarea**,
+which is the first write and the one that solves a problem that exists today. Then the
+action buttons, which are subprocess calls to scripts that already exist.
+*Ships:* a way to feed a long reference in and re-read the day without Telegram or a
+terminal.
+*Risk:* low — writes go through `astro_learn.py` and `mood.py`, not by hand.
+
+**Phase 4 — Bruno.** (~3 h)
+Screen 5: what was sent, what the dedup dropped and why, the archive with its real span and
+the search, topics with *Collect now*, the chat and its dropped log, the prompts, the voice.
+*Ships:* the first look inside the news dedup, which is the piece most likely to be wrong.
+*Risk:* low.
+
+**Phase 5 — Prompt and Scenarios.** (~4 h)
+Screens 2 and 3: the assembled system prompt with the facts that did not fit, `persona.md`
+and `CLAUDE.md` in an editor with a diff and the restart banner, the scenario prompts with
+run and dry-run.
+*Ships:* the thing that justified the project — showing the assistant to itself.
+*Risk:* real for the first time. These files change the running session, so: explicit save,
+a diff before it, and the banner saying a restart is needed.
+
+**Phase 6 — Tasks.** (~3 h)
+Screen 9: the four columns, drag to change a date, close, request a block. Writes go through
+`store.py`, so the append-only log stays the only store.
+*Ships:* the board for what is currently a list in a chat message.
+*Risk:* low, bounded by `store.py`'s own validation.
+
+**Phase 7 — Memory and Sources.** (~4 h)
+Screens 6 and 7: facts with their two limits, the archive with reindex and search; the 603
+channels with search, disable, priority and *Remove dead*; the mail and social filters with
+*Test on the last 24 h*.
+*Ships:* the lists that are painful precisely because they are lists.
+*Risk:* moderate — the channel list lives in `config.local.json`, so every write is atomic
+(t1043) and the file is backed up before a bulk action.
+
+**Phase 8 — Rules.** (~3 h)
+Screen 8: configuration as a form with defaults and overrides visible, permissions as
+switches, the timer schedule, the read-only key list.
+*Ships:* the last screen, and the one that makes the panel authoritative.
+*Risk:* the highest in the project — a bad write here breaks every probe and timer at once.
+It goes last on purpose: by then the panel has been reading these files for weeks, and the
+atomic-write path is proven.
+
+**Not a phase:** authentication, remote access, mobile beyond Pulse. If the panel ever needs
+to be reachable from outside this machine, that is a version of its own.
+
 ## Out of scope
 
 - Chat with the assistant: Telegram and the terminal already do it.
