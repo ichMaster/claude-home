@@ -195,3 +195,67 @@ details pre {
 }
 
 .search button:hover { color: var(--ink); border-color: var(--amber); }
+
+/* --- screen 4: Zirka -------------------------------------------------------------- */
+
+.note {
+  margin: 0 0 14px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--amber);
+  background: var(--panel);
+}
+
+h3.stage {
+  margin: 12px 0 4px;
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.paste { margin-top: 14px; }
+
+.paste textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--rule);
+  background: var(--panel);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 13px;
+  resize: vertical;
+}
+
+.paste .row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  margin-top: 8px;
+  color: var(--dim);
+  font-size: 13px;
+}
+
+.paste input[type="date"], .paste input[name="author"] {
+  padding: 4px 6px;
+  border: 1px solid var(--rule);
+  background: var(--panel);
+  color: var(--ink);
+  font-family: var(--mono);
+}
+
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.actions button, .paste button, .parked button {
+  padding: 5px 12px;
+  border: 1px solid var(--rule);
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.actions button:hover, .paste button:hover, .parked button:hover {
+  color: var(--ink);
+  border-color: var(--amber);
+}

@@ -221,6 +221,120 @@ def render_changes(rows: list[dict], details: dict[str, dict], nights: list[dict
     return page("Зміни", body, "/changes")
 
 
+def _blocks_table(blocks: list[dict]) -> str:
+    if not blocks:
+        return '<p class="empty">Читання на цей день немає.</p>'
+    out = ['<table class="blocks"><tr><th>блок<th>знаків<th>текст</tr>']
+    for b in blocks:
+        if b["missing"]:
+            size = '<span class="warn">немає</span>'
+            text = '<span class="dim">блок відсутній</span>'
+        else:
+            mark = "warn" if b["over"] else "dim"
+            size = f'<span class="{mark}">{b["chars"]} / {b["budget"]}</span>'
+            text = e(b["text"])
+        out.append(f'<tr><td class="id">{e(b["name"])}<td class="age">{size}'
+                   f'<td class="text">{text}</tr>')
+    return "".join(out) + "</table>"
+
+
+def _runs_block(runs: list[dict]) -> str:
+    if not runs:
+        return '<p class="empty">Прогонів за цей день у лозі немає.</p>'
+    out = []
+    for n, run in enumerate(runs, 1):
+        names = ", ".join(s["name"] for s in run["stages"]) or "порожньо"
+        out.append(f'<details><summary>прогін {n} — {e(names)}</summary>')
+        for s in run["stages"]:
+            out.append(f'<h3 class="stage">{e(s["name"])}</h3><pre>{e(s["text"])}</pre>')
+        out.append("</details>")
+    return "".join(out)
+
+
+def _refs_block(refs: list[dict], parked: list[dict], token: str) -> str:
+    out = []
+    if parked:
+        out.append('<h3 class="stage">Чекають на внесення (з чату Зірки)</h3>'
+                   '<table class="parked">')
+        for p in parked:
+            out.append(
+                f'<tr><td class="age">{e(p["day"])}<td class="age">{p["chars"]} зн.'
+                f'<td class="text dim">{e(p["head"][:160])}…'
+                f'<td><form method="post" action="/zirka">'
+                f'<input type="hidden" name="token" value="{e(token)}">'
+                f'<input type="hidden" name="action" value="ingest">'
+                f'<input type="hidden" name="file" value="{e(p["name"])}">'
+                f'<button type="submit">внести</button></form></tr>')
+        out.append("</table>")
+    if refs:
+        out.append('<h3 class="stage">У сховищі</h3><table class="refs">')
+        for r in refs:
+            out.append(f'<tr><td class="age">{e(r.get("day"))}'
+                       f'<td class="id">{e(r.get("author") or "без автора")}'
+                       f'<td class="age">{len(r.get("text") or "")} зн.'
+                       f'<td class="text dim">{e((r.get("text") or "")[:120])}…</tr>')
+        out.append("</table>")
+    elif not parked:
+        out.append('<p class="empty">Еталонів ще немає.</p>')
+    return "".join(out)
+
+
+def _paste_form(token: str, day: str) -> str:
+    """The write that earns the screen: a long reading survives a textarea where it does
+    not survive Telegram."""
+    return (
+        '<form method="post" action="/zirka" class="paste">'
+        f'<input type="hidden" name="token" value="{e(token)}">'
+        '<input type="hidden" name="action" value="reference">'
+        '<textarea name="text" rows="10" placeholder="вставити прогноз астролога"></textarea>'
+        '<div class="row">'
+        f'<label>день <input type="date" name="day" value="{e(day)}"></label>'
+        '<label>автор <input name="author" placeholder="необовʼязково"></label>'
+        '<label><input type="checkbox" name="learn" value="1" checked> одразу витягти правила</label>'
+        '<button type="submit">зберегти</button>'
+        "</div></form>")
+
+
+def _actions(token: str, day: str) -> str:
+    buttons = [("recalc", "перерахувати день"), ("ask", "спитати про день зараз"),
+               ("calibrate", "калібрувати цей день")]
+    out = ['<form method="post" action="/zirka" class="actions">',
+           f'<input type="hidden" name="token" value="{e(token)}">',
+           f'<input type="hidden" name="day" value="{e(day)}">']
+    for value, label in buttons:
+        out.append(f'<button type="submit" name="action" value="{value}">{e(label)}</button>')
+    return "".join(out) + "</form>"
+
+
+def render_zirka(day: str, blocks: list[dict], runs: list[dict], facts: list[str],
+                 own_rules: str, ref_rules: str, feedback: list[dict], refs: list[dict],
+                 parked: list[dict], token: str, message: str = "") -> str:
+    """Screen 4 — the forecast pipeline, and the one form that solves a problem today."""
+    note = f'<p class="note">{e(message)}</p>' if message else ""
+    picker = (f'<form method="get" class="search"><label>день '
+              f'<input type="date" name="day" value="{e(day)}"></label>'
+              f'<button type="submit">показати</button></form>')
+    fb = "".join(f'<tr><td class="age">{e(str(r.get("ts"))[:16].replace("T", " "))}'
+                 f'<td class="text">{e(r.get("text"))}</tr>' for r in feedback)
+    body = (
+        f"<h1>Зірка — {e(day)}</h1>{note}{picker}"
+        f"<section><h2>Дії</h2>{_actions(token, day)}</section>"
+        f"<section><h2>Читання проти лімітів</h2>{_blocks_table(blocks)}</section>"
+        f"<section><h2>Конвеєр</h2>{_runs_block(runs)}</section>"
+        "<section><h2>Пораховані факти</h2><pre>"
+        + e("\n".join(facts)) + "</pre></section>"
+        "<section><h2>Правила з його днів</h2><pre>" + e(own_rules or "ще немає")
+        + "</pre></section>"
+        "<section><h2>Правила з прогнозів астролога</h2><pre>" + e(ref_rules or "ще немає")
+        + "</pre></section>"
+        "<section><h2>Відгуки про дні</h2>"
+        + (f'<table class="feedback">{fb}</table>' if fb
+           else '<p class="empty">Відгуків немає.</p>') + "</section>"
+        f"<section><h2>Еталони</h2>{_refs_block(refs, parked, token)}"
+        f"{_paste_form(token, day)}</section>")
+    return page("Зірка", body, "/zirka")
+
+
 def render_soon(title: str, href: str, phase: str) -> str:
     """A screen that has its place in the rail but not its code yet. Saying which phase
     builds it beats a dead link or a blank page."""

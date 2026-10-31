@@ -182,8 +182,11 @@ def test_static_cannot_escape_its_directory(attack):
 
 
 def test_unknown_screens_name_their_phase():
-    html = render.render_soon("Зірка", "/zirka", server.SOON["/zirka"])
-    assert "фаза 3" in html and "Зірка" in html
+    """A screen that is not built yet says which phase builds it — honest beats blank.
+    Zirka left this list when phase 3 built it (t1068); Bruno is next."""
+    html = render.render_soon("Бруно", "/bruno", server.SOON["/bruno"])
+    assert "фаза 4" in html and "Бруно" in html
+    assert "/zirka" not in server.SOON, "a built screen must not keep a placeholder"
 
 
 # --- t1056: probes_now stamps `checked` from the cache mtime --------------------------------

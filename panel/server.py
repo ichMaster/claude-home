@@ -14,10 +14,12 @@ that builds them, so the rail is honest rather than full of dead links.
 from __future__ import annotations
 
 import argparse
+import secrets
 import subprocess
 import sys
 import traceback
 import urllib.parse
+from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -29,11 +31,12 @@ from noosconf import conf                                               # noqa: 
 import changes                                                         # noqa: E402
 import data                                                            # noqa: E402
 import render                                                          # noqa: E402
+import zirka                                                           # noqa: E402
 
 STATIC = Path(__file__).resolve().parent / "static"
 # screen → the phase that builds it, for the placeholder pages
 SOON = {
-    "/zirka": "фаза 3", "/bruno": "фаза 4",
+    "/bruno": "фаза 4",
     "/prompt": "фаза 5", "/scenarios": "фаза 5", "/tasks": "фаза 6",
     "/memory": "фаза 7", "/sources": "фаза 7", "/rules": "фаза 8",
     "/chat": "фаза 9",
@@ -84,6 +87,60 @@ def changes_html(query: str = "") -> str:
                                  log[:60], query)
 
 
+# Minted once per process and required on every POST. This is not authentication and does
+# not pretend to be: it stops a page on some other origin — anything the owner opens while
+# on this network — from driving the panel, which matters precisely because there is no
+# login and these buttons start eight-minute pipelines (t1068).
+FORM_TOKEN = secrets.token_urlsafe(24)
+
+
+def check_token(value: str) -> bool:
+    return bool(value) and secrets.compare_digest(value, FORM_TOKEN)
+
+
+def run_script(*cmd: str, timeout: int = 300) -> tuple[bool, str]:
+    """Run one of the project's own scripts. A failure is returned, never swallowed."""
+    try:
+        out = subprocess.run(list(cmd), capture_output=True, text=True,
+                             timeout=timeout, cwd=str(HOME))
+    except subprocess.SubprocessError as exc:
+        return False, f"не вдалося запустити: {exc}"
+    ok = out.returncode == 0
+    said = (out.stdout or "").strip() or (out.stderr or "").strip()
+    return ok, said[:600]
+
+
+def save_reference(text: str, day: str, author: str, learn: bool) -> str:
+    """Store a pasted reference and hand it to `astro_learn.py`.
+
+    The text is written to the same inbox Zirka's chat parks into, so there is one place
+    where references live whichever door they came through, and the script reads it with
+    `--file` — a few thousand characters have no business on a command line.
+    """
+    if not text.strip():
+        return "Порожній текст — нічого зберігати."
+    try:
+        when = date.fromisoformat(day) if day else date.today()
+    except ValueError:
+        return f"Не зрозумів дату «{day}»."
+    folder = HOME / "status" / "state" / "astro-reference-inbox"
+    folder.mkdir(parents=True, exist_ok=True)
+    f = folder / f"{datetime.now():%Y%m%d-%H%M%S}-{when.isoformat()}.txt"
+    f.write_text(text, encoding="utf-8")
+
+    cmd = [str(HOME / ".venv-voice" / "bin" / "python"),
+           str(HOME / "status" / "astro_learn.py"), "add", "--file", str(f),
+           "--day", when.isoformat(), "--period", "день"]
+    if author.strip():
+        cmd += ["--author", author.strip()]
+    if learn:
+        cmd.append("--learn")
+    ok, said = run_script(*cmd, timeout=900)
+    if not ok:
+        return f"Текст збережено у {f.name}, але внести не вдалося: {said}"
+    return f"Еталон записано ({len(text)} символів, на {when.isoformat()}). {said}"
+
+
 def static_file(path: str) -> tuple[bytes, str] | None:
     """Serve one file out of `panel/static`, or nothing.
 
@@ -97,6 +154,71 @@ def static_file(path: str) -> tuple[bytes, str] | None:
             "svg": "image/svg+xml"}.get(target.suffix.lstrip("."),
                                         "application/octet-stream")
     return target.read_bytes(), kind
+
+
+def zirka_html(day: str = "", message: str = "") -> str:
+    """Screen 4. Reading from disk happens here; the parsing it feeds is pure and tested."""
+    try:
+        when = date.fromisoformat(day) if day else zirka.today()
+    except ValueError:
+        when = zirka.today()
+    log = zirka.log_text()
+    runs = zirka.day_runs(log, when)
+    summary = runs[0]["summary"] if runs else ""
+    own, ref = zirka.rules_text()
+    try:
+        sys.path.append(str(HOME / "status"))
+        import astro                                                    # noqa: E402
+        facts = [f["text"] + (f"  [{f['window_text']}]" if f.get("window_text") else "")
+                 for f in astro.facts(when)]
+    except Exception as exc:                                            # noqa: BLE001
+        facts = [f"факти не порахувались: {exc}"]
+    return render.render_zirka(
+        day=when.isoformat(), blocks=zirka.reading_blocks(summary), runs=runs,
+        facts=facts, own_rules=own, ref_rules=ref, feedback=zirka.feedback(),
+        refs=zirka.references(), parked=zirka.parked(), token=FORM_TOKEN,
+        message=message)
+
+
+def zirka_action(form: dict) -> str:
+    """One POST → one action, each a call to a script that already exists."""
+    what = (form.get("action") or [""])[0]
+    day = (form.get("day") or [""])[0] or zirka.today().isoformat()
+    py = str(HOME / ".venv-voice" / "bin" / "python")
+
+    if what == "reference":
+        return save_reference((form.get("text") or [""])[0], day,
+                              (form.get("author") or [""])[0],
+                              bool(form.get("learn")))
+    if what == "ingest":
+        name = (form.get("file") or [""])[0]
+        folder = HOME / "status" / "state" / "astro-reference-inbox"
+        f = (folder / name).resolve()
+        # the name comes from a form field, so it is not trusted to stay in its folder
+        if folder.resolve() not in f.parents or not f.is_file():
+            return "Такого файлу немає."
+        ok, said = run_script(py, str(HOME / "status" / "astro_learn.py"), "add",
+                              "--file", str(f), "--day", f.stem.split("-", 2)[-1],
+                              "--period", "день", "--learn", timeout=900)
+        return (f"Внесено: {said}" if ok else f"Внести не вдалося: {said}")
+    if what == "recalc":
+        unit = str(conf("astro.recalc_unit", "noos-mood-recalc"))
+        ok, said = run_script("systemd-run", "--user", f"--unit={unit}", "--collect",
+                              "--setenv", f"HOME={HOME.parent}", py,
+                              str(HOME / "status" / "mood.py"), "--day", day, timeout=60)
+        if not ok and "exists" in said:
+            return "Перерахунок уже йде."
+        return ("Перерахунок запущено — читання прийде в чат Зірки хвилин за вісім."
+                if ok else f"Не запустилось: {said}")
+    if what == "ask":
+        ok, said = run_script(py, str(HOME / "status" / "mood_feedback.py"), "ask",
+                              "--force", timeout=300)
+        return "Питання надіслано." if ok else f"Не вдалося: {said}"
+    if what == "calibrate":
+        ok, said = run_script(py, str(HOME / "status" / "mood_feedback.py"), "calibrate",
+                              "--day", day, timeout=600)
+        return (f"Калібрування за {day}: {said}" if ok else f"Не вдалося: {said}")
+    return "Невідома дія."
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -125,12 +247,39 @@ class Handler(BaseHTTPRequestHandler):
                     urllib.parse.urlparse(self.path).query).get("q", [""])[0]
                 return self._send(200, changes_html(query[:200]).encode("utf-8"),
                                   "text/html; charset=utf-8")
+            if path == "/zirka":
+                day = urllib.parse.parse_qs(
+                    urllib.parse.urlparse(self.path).query).get("day", [""])[0]
+                return self._send(200, zirka_html(day[:10]).encode("utf-8"),
+                                  "text/html; charset=utf-8")
             if path in SOON:
                 html = render.render_soon(TITLES.get(path, path), path, SOON[path])
                 return self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
             self._send(404, b"not found", "text/plain; charset=utf-8")
         except Exception:                                                # noqa: BLE001
             # A panel that 500s with a stack trace is still a panel; one that dies is not.
+            traceback.print_exc()
+            self._send(500, b"panel error, see the log", "text/plain; charset=utf-8")
+
+    def do_POST(self) -> None:                                           # noqa: N802
+        path = self.path.split("?")[0]
+        try:
+            length = min(int(self.headers.get("Content-Length") or 0),
+                         int(conf("panel.max_post_bytes", 1_000_000)))
+            body = self.rfile.read(length).decode("utf-8", "replace")
+            form = urllib.parse.parse_qs(body, keep_blank_values=True)
+            if not check_token((form.get("token") or [""])[0]):
+                # no login guards this port, so an unrecognised form is the only signal
+                # that the request did not come from a page this process served
+                return self._send(403, "Форма не з цієї панелі.".encode("utf-8"),
+                                  "text/plain; charset=utf-8")
+            if path == "/zirka":
+                message = zirka_action(form)
+                day = (form.get("day") or [""])[0]
+                return self._send(200, zirka_html(day[:10], message).encode("utf-8"),
+                                  "text/html; charset=utf-8")
+            self._send(404, b"not found", "text/plain; charset=utf-8")
+        except Exception:                                                # noqa: BLE001
             traceback.print_exc()
             self._send(500, b"panel error, see the log", "text/plain; charset=utf-8")
 
