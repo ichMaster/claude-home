@@ -54,6 +54,31 @@ BOTS = {
     "bruno": ("news", "news", "bruno.md"),
 }
 
+# Mimes that cannot be text, so the file is refused before it is downloaded. Everything
+# else — including the application/octet-stream Telegram gives a long paste — is fetched
+# and judged on its bytes by `as_text()` (t1054).
+BINARY_MIME_PREFIXES = ("image/", "audio/", "video/", "font/")
+BINARY_MIMES = {"application/pdf", "application/zip", "application/gzip",
+                "application/x-tar", "application/x-7z-compressed",
+                "application/octet-stream+binary", "application/msword",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
+
+
+def as_text(blob: bytes) -> str:
+    """The file's text, or "" when it is not text after all.
+
+    A NUL byte means binary, always. Otherwise strict UTF-8 first; a lenient decode is
+    accepted only when the replacement characters are a small fraction, so a mis-labelled
+    text file still reads while binary never reaches the model as mojibake.
+    """
+    if b"\x00" in blob:
+        return ""
+    try:
+        return blob.decode("utf-8").strip()
+    except UnicodeDecodeError:
+        text = blob.decode("utf-8", "replace")
+        return text.strip() if text.count("�") <= max(2, len(text) // 100) else ""
+
 
 def env_telegram() -> dict[str, str]:
     """Read `.env.telegram` as plain KEY=VALUE. Not sourced through a shell on purpose: a
@@ -102,16 +127,36 @@ def save_state(bot: str, st: dict) -> None:
     state_file(bot).write_text(json.dumps(st, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
+def message_shape(msg: dict) -> dict:
+    """What kind of message this was — the keys it carried, and a document's metadata.
+
+    «без тексту» on its own says nothing: a photo, a voice note that transcribed to
+    silence and a document with an unexpected mime all look the same in the log, and
+    telling them apart cost a round trip through the owner (t1054). Metadata only — the
+    content is not copied here.
+    """
+    skip = {"chat", "from", "date", "message_id", "entities", "caption_entities"}
+    shape = {"keys": sorted(k for k in msg if k not in skip)}
+    doc = msg.get("document") or {}
+    if doc:
+        shape["document"] = {"mime": doc.get("mime_type") or "",
+                             "name": doc.get("file_name") or "",
+                             "size": doc.get("file_size")}
+    return shape
+
+
 def log_dropped(bot: str, why: str, update: dict) -> None:
     """Anything not answered is written down — a stranger writing to a public bot is worth
     knowing about, and a silent drop looks like a bug."""
     f = STATE / "dropped.jsonl"
     f.parent.mkdir(parents=True, exist_ok=True)
+    msg = update.get("message") or update.get("edited_message") or {}
     rec = {"ts": datetime.now().astimezone().isoformat(timespec="seconds"),
            "bot": bot, "why": why,
-           "chat": (update.get("message") or {}).get("chat", {}).get("id"),
-           "from": (update.get("message") or {}).get("from", {}).get("id"),
-           "text": ((update.get("message") or {}).get("text") or "")[:200]}
+           "chat": msg.get("chat", {}).get("id"),
+           "from": msg.get("from", {}).get("id"),
+           "shape": message_shape(msg),
+           "text": (msg.get("text") or "")[:200]}
     with f.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
@@ -139,13 +184,16 @@ def read_document(token: str, doc: dict) -> str:
     a long paste into a file (the owner, 2026-10-31: Zirka could not take the reference, «може
     тому що меседж дуже великий»). Download it and read it as the message, if it is text and
     not too big to hold in memory."""
-    name = (doc.get("file_name") or "").lower()
-    mime = doc.get("mime_type") or ""
+    mime = (doc.get("mime_type") or "").lower()
     size = int(doc.get("file_size") or 0)
     if size > int(conf("telegram.inbox.max_document_bytes", 262144)):
         return ""
-    texty = mime.startswith("text/") or name.endswith((".txt", ".md", ".csv", ".log"))
-    if not texty and mime:                           # a real non-text file: not for us
+    # Judge by the bytes, not by the label. Telegram picks the mime itself and gives a long
+    # paste something like application/octet-stream with no extension; the old whitelist
+    # (text/* or .txt/.md/.csv/.log) refused exactly those, so a forwarded reference was
+    # dropped as «без тексту» (t1054). Only mimes that are certainly binary are refused
+    # here — everything else is fetched and decided on content.
+    if mime.startswith(BINARY_MIME_PREFIXES) or mime in BINARY_MIMES:
         return ""
     info = api(token, "getFile", file_id=doc["file_id"])
     if not info.get("ok"):
@@ -153,7 +201,7 @@ def read_document(token: str, doc: dict) -> str:
     remote = info["result"]["file_path"]
     try:
         with urllib.request.urlopen(f"{API}/file/bot{token}/{remote}", timeout=60) as r:
-            return r.read().decode("utf-8", "replace").strip()
+            return as_text(r.read())
     except Exception:                                 # noqa: BLE001
         return ""
 
