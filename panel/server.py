@@ -29,6 +29,7 @@ sys.path.insert(0, str(HOME))
 sys.path.insert(0, str(HOME / "panel"))
 
 from noosconf import conf                                               # noqa: E402
+import bruno                                                           # noqa: E402
 import changes                                                         # noqa: E402
 import data                                                            # noqa: E402
 import render                                                          # noqa: E402
@@ -37,7 +38,6 @@ import zirka                                                           # noqa: E
 STATIC = Path(__file__).resolve().parent / "static"
 # screen → the phase that builds it, for the placeholder pages
 SOON = {
-    "/bruno": "фаза 4",
     "/prompt": "фаза 5", "/scenarios": "фаза 5", "/tasks": "фаза 6",
     "/memory": "фаза 7", "/sources": "фаза 7", "/rules": "фаза 8",
     "/chat": "фаза 9",
@@ -186,6 +186,16 @@ def static_file(path: str) -> tuple[bytes, str] | None:
     return target.read_bytes(), kind
 
 
+def bruno_html(query: str = "") -> str:
+    """Screen 5. Read-only: phase 4 adds no button, because nothing here needs pressing
+    yet and an action on this screen can wait for a reason to exist."""
+    return render.render_bruno(
+        news=bruno.sent_news(), videos=bruno.sent_videos(),
+        dropped=bruno.dropped_news(), stats=bruno.archive_stats(),
+        found=bruno.archive_search(query), query=query,
+        chat=bruno.bruno_chat(), topics=bruno.topics(), prompts=bruno.prompts())
+
+
 def zirka_html(day: str = "", message: str = "") -> str:
     """Screen 4. Reading from disk happens here; the parsing it feeds is pure and tested."""
     try:
@@ -284,6 +294,11 @@ class Handler(BaseHTTPRequestHandler):
                     urllib.parse.urlparse(self.path).query).get("q", [""])[0]
                 return self._send(200, changes_html(query[:200]).encode("utf-8"),
                                   "text/html; charset=utf-8")
+            if path == "/bruno":
+                query = urllib.parse.parse_qs(
+                    urllib.parse.urlparse(self.path).query).get("q", [""])[0]
+                return self._send(200, bruno_html(query[:80]).encode("utf-8"),
+                                  "text/html; charset=utf-8")
             if path == "/zirka":
                 day = urllib.parse.parse_qs(
                     urllib.parse.urlparse(self.path).query).get("day", [""])[0]
@@ -314,6 +329,8 @@ class Handler(BaseHTTPRequestHandler):
                 # that the request did not come from a page this process served
                 return self._send(403, "Форма не з цієї панелі.".encode("utf-8"),
                                   "text/plain; charset=utf-8")
+            # /bruno is read-only in phase 4 — it has no form, so a POST to it is not
+            # a page of ours and falls through to 404 below.
             if path == "/zirka":
                 message = zirka_action(form)
                 day = (form.get("day") or [""])[0]

@@ -335,6 +335,121 @@ def render_zirka(day: str, blocks: list[dict], runs: list[dict], facts: list[str
     return page("Зірка", body, "/zirka")
 
 
+def _dropped_table(rows: list[dict]) -> str:
+    """The section the Bruno screen exists for: what the dedup threw away, and against
+    what. A story silently absent from a digest is indistinguishable from one that never
+    existed — until here."""
+    if not rows:
+        return ('<p class="empty">Нічого не відкидалось — або дайджест ще не ходив '
+                'відтоді, як це почали записувати.</p>')
+    out = ['<table class="dropped"><tr><th>коли<th>причина<th>кандидат<th>збіглось із</tr>']
+    for r in rows:
+        why = r.get("reason", "")
+        label = {"link": "той самий лінк",
+                 "overlap": f'перетин заголовків {r.get("score", "")}'}.get(why, why)
+        out.append(f'<tr><td class="age">{e(str(r.get("ts"))[5:16].replace("T", " "))}'
+                   f'<td class="warn">{e(label)}'
+                   f'<td class="text">{e(r.get("title"))}'
+                   f'<td class="text dim">{e(r.get("matched"))}</tr>')
+    return "".join(out) + "</table>"
+
+
+def _sent_block(news: list[dict], videos: tuple[str, list[dict]]) -> str:
+    out = []
+    if news:
+        out.append('<h3 class="stage">Новини</h3><table class="sent">')
+        for n in news:
+            out.append(f'<tr><td class="age">{e(str(n.get("ts"))[:10])}'
+                       f'<td class="text">{e(n.get("title"))}'
+                       f'<td class="dim">{e(str(n.get("url"))[:60])}</tr>')
+        out.append("</table>")
+    when, items = videos
+    if items:
+        out.append(f'<h3 class="stage">Відео — добірка від {e(when[:16].replace("T", " "))}'
+                   "</h3><table class=\"sent\">")
+        for v in items:
+            out.append(f'<tr><td class="id">{e(v.get("channel"))}'
+                       f'<td class="text">{e(v.get("title"))}'
+                       f'<td class="dim">{e(str(v.get("link"))[:50])}</tr>')
+        out.append("</table>")
+    return "".join(out) or '<p class="empty">Нічого ще не надсилалось.</p>'
+
+
+def _archive_block(stats: dict, found: list[dict], query: str) -> str:
+    head = (f'<p>{stats["count"]} відео з {stats["channels"]} каналів'
+            + (f', з {e(stats["first"])} по {e(stats["last"])}' if stats["first"] else "")
+            + ".</p>")
+    form = (f'<form method="get" class="search">'
+            f'<input name="q" value="{e(query)}" placeholder="слово в заголовку">'
+            f'<button type="submit">знайти</button></form>')
+    if query and not found:
+        body = '<p class="empty">Нічого з таким словом в архіві немає.</p>'
+    elif found:
+        rows = "".join(f'<tr><td class="age">{e(str(r.get("published"))[:10])}'
+                       f'<td class="id">{e(r.get("channel"))}'
+                       f'<td class="text">{e(r.get("title"))}'
+                       f'<td class="dim">{e(str(r.get("link"))[:50])}</tr>' for r in found)
+        body = f'<table class="sent">{rows}</table>'
+    else:
+        body = ""
+    return head + form + body
+
+
+def _chat_block(chat: dict) -> str:
+    turns = "".join(
+        f'<tr><td class="id">{"він" if t.get("role") == "user" else "Бруно"}'
+        f'<td class="text">{e(t.get("text"))}</tr>' for t in chat.get("history", []))
+    drops = "".join(
+        f'<tr><td class="age">{e(str(d.get("ts"))[5:16].replace("T", " "))}'
+        f'<td class="warn">{e(d.get("why"))}'
+        f'<td class="dim">{e(", ".join((d.get("shape") or {}).get("keys", [])) or "—")}</tr>'
+        for d in chat.get("dropped", []))
+    cap = (f'<p>Відповідей за останню годину: {chat.get("answers_this_hour", 0)} '
+           f'із {chat.get("cap", 0)}.'
+           + (f' Остання область пошуку: {e(chat["last_scope"])}.'
+              if chat.get("last_scope") else "") + "</p>")
+    return (cap
+            + (f'<table class="chat">{turns}</table>' if turns
+               else '<p class="empty">Розмови ще не було.</p>')
+            + (f'<h3 class="stage">Відкинуті повідомлення</h3>'
+               f'<table class="dropped">{drops}</table>' if drops else ""))
+
+
+def _topics_table(rows: list[dict]) -> str:
+    if not rows:
+        return '<p class="empty">Тем немає.</p>'
+    out = ['<table class="topics"><tr><th>тема<th>запит<th>джерела</tr>']
+    for t in rows:
+        if t.get("broken"):
+            out.append(f'<tr><td class="id">{e(t["id"])}'
+                       f'<td class="alert" colspan="2">{e(t["broken"])}</tr>')
+            continue
+        out.append(f'<tr><td class="id">{e(t["name"] or t["id"])}'
+                   f'<br><span class="dim">{e(t.get("about"))}</span>'
+                   f'<td class="text dim">{e(t.get("query"))}'
+                   f'<td class="dim">{e(", ".join(t.get("sources") or []))}</tr>')
+    return "".join(out) + "</table>"
+
+
+def render_bruno(news: list[dict], videos: tuple[str, list[dict]], dropped: list[dict],
+                 stats: dict, found: list[dict], query: str, chat: dict,
+                 topics: list[dict], prompts: list[dict]) -> str:
+    """Screen 5 — what the content channel chose, out of what, and why. Read-only."""
+    prompt_blocks = "".join(
+        f'<details><summary>{e(p["name"])}</summary><pre>{e(p["text"])}</pre></details>'
+        for p in prompts)
+    body = (
+        "<h1>Бруно</h1>"
+        f"<section><h2>Що відкинуто як повтор</h2>{_dropped_table(dropped)}</section>"
+        f"<section><h2>Що надіслано</h2>{_sent_block(news, videos)}</section>"
+        f"<section><h2>Архів підписок</h2>{_archive_block(stats, found, query)}</section>"
+        f"<section><h2>Його чат</h2>{_chat_block(chat)}</section>"
+        f"<section><h2>Теми</h2>{_topics_table(topics)}</section>"
+        f'<section><h2>Промпти</h2><p class="dim">Тільки читання — редагування з дифом '
+        f'і банером перезапуску приходить у фазі 5.</p>{prompt_blocks}</section>')
+    return page("Бруно", body, "/bruno")
+
+
 def render_soon(title: str, href: str, phase: str) -> str:
     """A screen that has its place in the rail but not its code yet. Saying which phase
     builds it beats a dead link or a blank page."""

@@ -259,3 +259,9 @@ h3.stage {
   color: var(--ink);
   border-color: var(--amber);
 }
+
+/* --- screen 5: Bruno -------------------------------------------------------------- */
+
+.dropped td.warn { white-space: nowrap; font-size: 12px; }
+.sent td, .chat td, .topics td { vertical-align: top; }
+.chat td.id { color: var(--dim); }
