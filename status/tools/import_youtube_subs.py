@@ -14,7 +14,7 @@ import csv, json, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from noosconf import ROOT
+from noosconf import ROOT, atomic_write_text
 
 src = Path(sys.argv[1]).expanduser() if len(sys.argv) > 1 else None
 if not src or not src.exists():
@@ -43,5 +43,5 @@ if limit:
 local = ROOT / "config.local.json"
 data = json.loads(local.read_text(encoding="utf-8")) if local.exists() else {}
 data.setdefault("probes", {}).setdefault("youtube", {})["channels"] = channels
-local.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+atomic_write_text(local, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
 print(f"записано {len(channels)} каналів у {local}")

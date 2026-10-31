@@ -45,6 +45,20 @@ def conf(dotted, default=None):
     return node
 
 
+def atomic_write_text(target, text, encoding="utf-8"):
+    """Write via a temp file in the same directory + os.replace, so a crash mid-write can
+    never leave the target torn. Keeps the target's permissions (config.local.json is 600)."""
+    target = Path(target)
+    tmp = target.with_name(f"{target.name}.tmp{os.getpid()}")
+    try:
+        tmp.write_text(text, encoding=encoding)
+        if target.exists():
+            os.chmod(tmp, target.stat().st_mode & 0o7777)
+        os.replace(tmp, target)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def path(dotted, default=None):
     """Same as conf(), but returns an absolute Path (~ expanded, relative to ROOT)."""
     value = conf(dotted, default)

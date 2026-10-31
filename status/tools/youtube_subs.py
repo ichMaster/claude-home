@@ -25,7 +25,7 @@ from pathlib import Path
 
 HOME = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(HOME))
-from noosconf import conf, path                                         # noqa: E402
+from noosconf import atomic_write_text, conf, path                      # noqa: E402
 
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 SUBS_URL = "https://www.googleapis.com/youtube/v3/subscriptions"
@@ -103,7 +103,8 @@ def append_channels(new: list[dict]) -> None:
     for n in new:
         if n["id"] not in have:
             chans.append({"name": n["name"], "id": n["id"]})
-    f.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    # atomic: a torn write here would destroy the only copy of the personal config (t1043)
+    atomic_write_text(f, json.dumps(data, ensure_ascii=False, indent=2))
 
 
 def main() -> int:
