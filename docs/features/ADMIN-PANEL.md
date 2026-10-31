@@ -202,7 +202,7 @@ whitespace: this is an instrument panel, not a landing page.
 `alert`, and nothing else is coloured. If every row is coloured, the board stops working
 — the same reason the watcher stays silent by default.
 
-**Layout.** A fixed left rail with the ten screens, content in a single column capped
+**Layout.** A fixed left rail with the eleven screens, content in a single column capped
 at ~1100 px. Every screen answers one question; no dashboard that mixes four.
 
 **Interaction.** Server-rendered HTML with small HTMX-style fragment swaps for the live
@@ -240,6 +240,32 @@ already has Telegram, which is the better interface for intent.
   `facts.py`), never by hand-editing JSON — so validation lives in one place.
 - The panel never calls the model. Everything intelligent is either a script or a
   scenario run in a headless session.
+
+### 11. Chat
+
+Added on the owner's request (2026-10-31), reversing the original "out of scope: chat with
+the assistant". The reason it earns a place: while he is *looking at* a screen — a probe gone
+amber, a dedup decision that looks wrong, a forecast stage that failed — the question is
+about what is on the screen, and switching to Telegram to ask it loses the context and the
+moment. "I am here, I can see it, do something about it."
+
+**The panel still never calls the model** (§ The one hard rule stands). It is not a second
+assistant; it is a window onto the same conversation:
+
+- **Send** writes the message into the main Telegram chat through the Bot API — one HTTP
+  call, no model — so the live session receives it exactly as if it had been typed into
+  Telegram, with all of its context and tools.
+- **Read** comes from a transcript the session already produces: `notify.sh` appends every
+  outgoing message to `status/state/chat-log.jsonl`, and the panel renders that beside what
+  it sent. So the thread shown is the real conversation, not a copy with its own state.
+- The box carries the screen it was sent from, as one line of context the session can see
+  («з екрану Зірка»), because a question asked while looking at the pipeline usually means
+  that pipeline.
+- Voice is not rendered here. He listens in Telegram; on the panel he is reading.
+
+The honest limitation, which belongs in the UI and not only in this document: a reply takes
+as long as the session takes, and the panel is polling a log rather than holding a socket
+open. A pending message says "надіслано, чекаю" and nothing pretends to be faster than it is.
 
 ## Phases
 
@@ -312,12 +338,25 @@ switches, the timer schedule, the read-only key list.
 It goes last on purpose: by then the panel has been reading these files for weeks, and the
 atomic-write path is proven.
 
+**Phase 9 — Chat.** (~3 h)
+Screen 11, last because it is the only one that writes *outward*. The send box posts into
+the main Telegram chat through the Bot API; the thread is read from the transcript
+`notify.sh` writes to `status/state/chat-log.jsonl`, which has to be added first. Carries
+the current screen as one line of context.
+*Ships:* asking for something while looking at the thing you are asking about, without
+switching to the phone and losing the context.
+*Risk:* low in mechanism — no model is called here, and the only thing the panel can do is
+say something to the session, which is exactly what Telegram already allows. The real
+caution is scope creep: the moment this box starts accepting commands rather than sentences,
+it has become an unauthenticated remote control, and it must not.
+
 **Not a phase:** authentication, remote access, mobile beyond Pulse. If the panel ever needs
-to be reachable from outside this machine, that is a version of its own.
+to be reachable from outside a trusted network, that is a version of its own.
 
 ## Out of scope
 
-- Chat with the assistant: Telegram and the terminal already do it.
+- A second assistant: the chat screen (11) is a window onto the Telegram conversation, not
+  a model the panel talks to on its own.
 - Secret values in any form.
 - Remote access, accounts, roles.
 - Charts and analytics beyond token spend per day; a graph is not an answer.

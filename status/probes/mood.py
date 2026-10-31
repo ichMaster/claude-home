@@ -29,10 +29,14 @@ try:
                "value": {"day": st.get("day"), "fresh": False},
                "text": "Прогноз на сьогодні ще не читався", "ttl": TTL}
     else:
-        body = st.get("summary") or st.get("bio_reading") or ""
+        # Astrology only. The biorhythms have their own probe (`bio`, t1061): appending the
+        # three figures here was the one place in the system that merged the two readings
+        # back into one, which is exactly what the owner asked not to happen — merged, it
+        # stops being visible which claim came from where.
+        body = (st.get("summary") or "").strip()
         out = {"id": "mood", "ok": True, "severity": "info",
-               "value": {"day": st["day"], "fresh": True, "biorhythms": st.get("biorhythms", "")},
-               "text": f"{body}\n\nПоказники: {st.get('biorhythms', '')}".strip(), "ttl": TTL}
+               "value": {"day": st["day"], "fresh": bool(body)},
+               "text": body or "Прогноз на сьогодні ще не читався", "ttl": TTL}
 except Exception as e:
     out = {"id": "mood", "ok": False, "severity": "warn", "value": None,
            "text": f"Прогноз недоступний: {e}", "ttl": 300}

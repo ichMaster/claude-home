@@ -191,7 +191,7 @@ the session is alive.
 | `/restart` | `restart` — перезапуск з естафетною запискою (типовий) |
 | `/restart_continue` | `restart-continue` — зі збереженням усієї розмови |
 | `/restart_clean` | `restart-clean` — перезапуск з чистого аркуша |
-| `/mood` | `./status/send.sh mood` (нічого не читалося — `status/mood.py`) |
+| `/mood` | `./status/send.sh --split mood bio` — два повідомлення, бо це два різні прогнози (нічого не читалося — `status/mood.py`) |
 | `/feel <text>` | `status/mood_feedback.py add "<text>"` — як відчувався день |
 | `/usage` | `./status/send.sh usage` |
 | `/changes` | `./status/changes-send.sh` |
@@ -675,7 +675,11 @@ than leaving the reading alone.
   summary, biorhythms. Append-only, one `===== YYYY-MM-DD =====` block a day, so any claim
   can be traced back to the fact it came from — and the next day reads its own past there.
 - The summaries are cached in `status/state/mood.json`, which is what the `mood` probe and
-  `/mood` show, so repeating the day's forecast costs nothing.
+  `/mood` show, so repeating the day's forecast costs nothing. **Two probes read it, not
+  one**: `mood` is the astrology and `bio` is the biorhythms (t1061). The single probe used
+  to append the three figures to the astrology summary, which was the one place in the whole
+  system that merged the two readings back into one — everything else keeps them apart, and
+  merged it stops being visible which claim came from where.
 - `config.json` (`astro`): house system, per-aspect orbs, window length, fact caps, the
   model per stage (`models.fact`/`layer` default to Sonnet, the rest to the session model),
   parallelism, file paths, the send time.

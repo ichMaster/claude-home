@@ -236,7 +236,7 @@
     "port": 8091,
     "refresh_sec": 30,
     "changes": 20,
-    "probes": ["loe", "alarm", "weather", "host", "services", "tasks", "usage", "mood"]
+    "probes": ["loe", "alarm", "weather", "host", "services", "tasks", "usage", "mood", "bio"]
   },
   "astro": {
     "_": "The daily mood: the chart is computed locally (status/astro.py, Swiss Ephemeris / Moshier). Birth data is personal and lives in config.local.json under astro.birth.",
