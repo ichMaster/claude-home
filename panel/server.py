@@ -14,9 +14,11 @@ that builds them, so the rail is honest rather than full of dead links.
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 import traceback
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -25,15 +27,17 @@ sys.path.insert(0, str(HOME))
 sys.path.insert(0, str(HOME / "panel"))
 
 from noosconf import conf                                               # noqa: E402
+import changes                                                         # noqa: E402
 import data                                                            # noqa: E402
 import render                                                          # noqa: E402
 
 STATIC = Path(__file__).resolve().parent / "static"
 # screen → the phase that builds it, for the placeholder pages
 SOON = {
-    "/changes": "фаза 2", "/zirka": "фаза 3", "/bruno": "фаза 4",
+    "/zirka": "фаза 3", "/bruno": "фаза 4",
     "/prompt": "фаза 5", "/scenarios": "фаза 5", "/tasks": "фаза 6",
     "/memory": "фаза 7", "/sources": "фаза 7", "/rules": "фаза 8",
+    "/chat": "фаза 9",
 }
 TITLES = dict(render.SCREENS)
 
@@ -49,6 +53,30 @@ def pulse_html() -> str:
     return render.render_pulse(probes, timers, data.queues(),
                                data.recent_changes(int(conf("panel.changes", 20))),
                                int(conf("panel.refresh_sec", 30)))
+
+
+def changes_html(query: str = "") -> str:
+    """Screen 10. The git calls live here; the parsing they feed is pure and tested."""
+    rows = changes.commit_rows(
+        git_log := changes.git("log", f"--format={changes.LOG_FORMAT}",
+                               f"-{int(conf('panel.commits', 40))}"),
+        changes.ahead_hashes())
+    del git_log
+    tasks = {}
+    try:
+        sys.path.insert(0, str(HOME / "tasks"))
+        from store import state as task_state                           # noqa: E402
+        tasks = task_state()
+    except Exception:                                                   # noqa: BLE001
+        pass                                                            # titles are a nicety
+    details = {r["sha"]: changes.commit_detail(r, tasks) for r in rows}
+    nights = changes.review_nights()
+    log = data.recent_changes(int(conf("panel.changes_full", 200)))
+    if query:
+        needle = query.lower()
+        log = [r for r in log if needle in json.dumps(r, ensure_ascii=False).lower()]
+    return render.render_changes(rows, details, nights, changes.open_lows(nights),
+                                 len(changes.ahead_hashes()), log[:60], query)
 
 
 def static_file(path: str) -> tuple[bytes, str] | None:
@@ -86,6 +114,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, found[0], found[1])
             if path == "/":
                 return self._send(200, pulse_html().encode("utf-8"),
+                                  "text/html; charset=utf-8")
+            if path == "/changes":
+                query = urllib.parse.parse_qs(
+                    urllib.parse.urlparse(self.path).query).get("q", [""])[0]
+                return self._send(200, changes_html(query[:200]).encode("utf-8"),
                                   "text/html; charset=utf-8")
             if path in SOON:
                 html = render.render_soon(TITLES.get(path, path), path, SOON[path])

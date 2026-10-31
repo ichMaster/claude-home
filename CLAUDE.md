@@ -884,6 +884,12 @@ Repository: `git@github.com:ichMaster/claude-home.git`, branch `main`, **public*
   `git grep -nIE "(sk-[A-Za-z0-9]{20,}|bot[0-9]{6,}:|[0-9]{8,10}:AA[A-Za-z0-9_-]{30,}|@gmail\.com|AIza[0-9A-Za-z_-]{25,})" HEAD -- .`
   State the review's outcome to the user — what is going out and what was held back — and
   push only after that. A push that cannot be reviewed does not happen.
+- **Write the reading down.** Spoken once into a chat, a verdict is gone by morning, and a
+  commit with no record looks exactly like a commit that was never checked. After
+  committing, append the reading to `status/state/commit-review/<sha>.md` (git-ignored,
+  like the nightly reports): what the diff would expose, what was held back, what was
+  judged safe to publish. The panel's Changes screen reads that directory and says
+  «не записано» where a file is missing, so the gap is visible rather than silent (t1062).
 - Personal and secret material never enters the repository — the list is in
   `.gitignore`, and it is verified with `git status --ignored`, not by eye.
 

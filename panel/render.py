@@ -23,6 +23,7 @@ SCREENS = [
     ("/sources", "Джерела"),
     ("/rules", "Правила"),
     ("/tasks", "Задачі"),
+    ("/chat", "Чат"),
 ]
 
 
@@ -130,6 +131,84 @@ def render_pulse(probes: list[dict], timers: list[dict], q: dict,
         "<section><h2>Черги</h2>" + _queue_list(q) + "</section>"
         "<section><h2>Останні зміни</h2>" + _changes_list(changes) + "</section>")
     return page("Пульс", body, "/", refresh)
+
+
+def _commit_table(rows: list[dict], details: dict[str, dict]) -> str:
+    if not rows:
+        return '<p class="empty">Комітів немає.</p>'
+    out = ['<table class="commits"><tr><th>коміт<th>дата<th>що<th>задача'
+           '<th>ревʼю безпеки</tr>']
+    for r in rows:
+        d = details.get(r["sha"]) or {}
+        task = (f'<span class="id">{e(r["task"])}</span>' if r["task"]
+                else '<span class="warn">без задачі</span>')
+        if d.get("task_title"):
+            task += f'<br><span class="dim">{e(d["task_title"])}</span>'
+        extra = []
+        if d.get("spec"):
+            extra.append(f'<span class="dim">спека</span>')
+        elif r["task"]:
+            extra.append('<span class="warn">спеки нема</span>')
+        if d.get("tests"):
+            extra.append(f'<span class="dim">тести: {e(", ".join(d["tests"]))}</span>')
+        elif r["task"]:
+            extra.append('<span class="warn">тестів нема</span>')
+        # An absent reading and a clean reading must never look the same: a blank cell
+        # would read as "nothing found" when it means "nobody wrote it down".
+        review = ('<span class="dim">є</span>' if d.get("review")
+                  else '<span class="warn">не записано</span>')
+        local = ' <span class="stale">локальний</span>' if r["local"] else ""
+        out.append(f'<tr><td class="id">{e(r["short"])}{local}'
+                   f'<td class="age">{e(r["date"])}'
+                   f'<td class="text">{e(r["subject"])}'
+                   + (f'<br><span class="dim">{" · ".join(extra)}</span>' if extra else "")
+                   + f'<td>{task}<td>{review}</tr>')
+    return "".join(out) + "</table>"
+
+
+def _nights_block(nights: list[dict]) -> str:
+    if not nights:
+        return '<p class="empty">Ревʼю ще не було.</p>'
+    out = []
+    for n in nights:
+        counts = n.get("counts") or {}
+        summary = ", ".join(f"{k}: {v}" for k, v in
+                            sorted(counts.items(), key=lambda kv: kv[0])) or "не розібрано"
+        out.append(f'<details><summary>{e(n["key"])} — {e(summary)}</summary>'
+                   f'<pre>{e(n.get("scan", ""))}</pre>'
+                   + (f'<pre>{e(n["fixes"])}</pre>' if n.get("fixes") else
+                      '<p class="empty">Звіту про фікси немає.</p>')
+                   + "</details>")
+    return "".join(out)
+
+
+def _lows_block(lows: list[dict]) -> str:
+    if not lows:
+        return '<p class="empty">Накопичених Low немає.</p>'
+    out = ['<table class="lows"><tr><th>з якої ночі<th>ночей<th>знахідка</tr>']
+    for low in sorted(lows, key=lambda x: x["since"]):
+        out.append(f'<tr><td class="age">{e(low["since"])}<td class="age">{low["nights"]}'
+                   f'<td class="text">{e(low["title"])}</tr>')
+    return "".join(out) + "</table>"
+
+
+def render_changes(rows: list[dict], details: dict[str, dict], nights: list[dict],
+                   lows: list[dict], ahead: int, changes: list[dict],
+                   query: str = "") -> str:
+    """Screen 10 — what was built and how it was reviewed. Read-only, like all of phase 2."""
+    push = (f'<p><b class="warn">{ahead}</b> комітів попереду origin — чекають на ранковий '
+            f'пуш.</p>' if ahead else '<p class="dim">Усе запушено.</p>')
+    search = (f'<form method="get" class="search">'
+              f'<input name="q" value="{e(query)}" placeholder="пошук у журналі змін">'
+              f'<button type="submit">знайти</button></form>')
+    body = (
+        "<h1>Зміни й ревʼю</h1>"
+        f"<section><h2>Пуш</h2>{push}</section>"
+        "<section><h2>Коміти</h2>" + _commit_table(rows, details) + "</section>"
+        "<section><h2>Нічні ревʼю</h2>" + _nights_block(nights) + "</section>"
+        "<section><h2>Накопичені Low</h2>" + _lows_block(lows) + "</section>"
+        "<section><h2>Журнал змін</h2>" + search + _changes_list(changes) + "</section>")
+    return page("Зміни", body, "/changes")
 
 
 def render_soon(title: str, href: str, phase: str) -> str:

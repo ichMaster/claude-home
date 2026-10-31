@@ -148,3 +148,50 @@ tr.quiet .text { color: var(--dim); }
   main { padding: 16px; }
   .age { white-space: normal; }
 }
+
+/* --- screen 10: changes and review ------------------------------------------------ */
+
+details { margin-bottom: 6px; }
+
+details summary {
+  cursor: pointer;
+  padding: 4px 0;
+  border-top: 1px solid var(--rule);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+details pre {
+  max-height: 420px;
+  overflow: auto;
+  margin: 6px 0;
+  padding: 10px;
+  border: 1px solid var(--rule);
+  background: var(--panel);
+  color: var(--dim);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.search { display: flex; gap: 8px; margin-bottom: 10px; }
+
+.search input {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid var(--rule);
+  background: var(--panel);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.search button {
+  padding: 5px 12px;
+  border: 1px solid var(--rule);
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.search button:hover { color: var(--ink); border-color: var(--amber); }
