@@ -246,3 +246,28 @@ def test_the_board_renders_with_every_collector_empty():
     for heading in ("Пробники", "Таймери", "Черги", "Останні зміни"):
         assert heading in html
     assert "Пробники не відповіли" in html and "Таймерів не знайдено" in html
+
+
+# --- t1058: where the panel listens ---------------------------------------------------
+
+def test_resolve_host_passes_a_literal_address_through():
+    assert server.resolve_host("127.0.0.1") == "127.0.0.1"
+    assert server.resolve_host("0.0.0.0") == "0.0.0.0"
+
+
+def test_resolve_host_asks_tailscale(monkeypatch):
+    """`tailscale` is resolved at start, never written into the config: a hardcoded tailnet
+    IP becomes a unit that will not boot the day the address changes."""
+    import types
+    monkeypatch.setattr(server.subprocess, "run",
+                        lambda *a, **k: types.SimpleNamespace(
+                            returncode=0, stdout="100.96.66.17\n", stderr=""))
+    assert server.resolve_host("tailscale") == "100.96.66.17"
+
+
+def test_resolve_host_falls_back_to_loopback(monkeypatch):
+    """Tailscale down must not keep the panel from starting — it listens somewhere safe."""
+    def boom(*a, **k):
+        raise OSError("tailscale not installed")
+    monkeypatch.setattr(server.subprocess, "run", boom)
+    assert server.resolve_host("tailscale") == "127.0.0.1"

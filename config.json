@@ -231,8 +231,8 @@
     "projection_min_days": 5
   },
   "panel": {
-    "_": "The admin panel (panel/server.py, noos-panel.service). Loopback only and no authentication by design — it is reached over an SSH tunnel; 8090 belongs to the matrix-agora panel. See docs/features/ADMIN-PANEL.md.",
-    "host": "127.0.0.1",
+    "_": "The admin panel (panel/server.py, noos-panel.service). 8090 belongs to the matrix-agora panel. There is no authentication, so `host` decides who can reach it: 127.0.0.1 (an SSH tunnel only), `tailscale` (the owner's own devices), or 0.0.0.0 (every device on the local network). The owner chose the last one on 2026-10-31 — he works from another machine on the same Wi-Fi — knowing the board is unauthenticated. See docs/features/ADMIN-PANEL.md.",
+    "host": "0.0.0.0",
     "port": 8091,
     "refresh_sec": 30,
     "changes": 20,

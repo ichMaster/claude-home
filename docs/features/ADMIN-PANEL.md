@@ -221,9 +221,20 @@ already has Telegram, which is the better interface for intent.
 
 - One Python process, standard library plus the existing venv; a single `panel/` package
   with `server.py`, templates, and one CSS file.
-- Listens on `127.0.0.1:8091` (8090 belongs to the matrix-agora panel). Reached over an
-  SSH tunnel or Tailscale. **No authentication**, because it is not exposed; if it ever
-  needs to be, that is a version of its own and not a checkbox.
+- Listens on port 8091 (8090 belongs to the matrix-agora panel). `panel.host` decides who
+  can reach it: `127.0.0.1` (an SSH tunnel only), `tailscale` (the owner's own devices,
+  resolved at start so a changed tailnet address cannot stop the unit booting), or
+  `0.0.0.0` (every device on the local network). It runs on `0.0.0.0` since 2026-10-31 —
+  the owner works from another machine on the same Wi-Fi, and loopback made the panel
+  unreachable for the only person it is for. **No authentication**: the trust boundary is
+  the network, and if the panel ever needs to be reachable beyond a trusted one, that is a
+  version of its own and not a checkbox.
+- **`ufw` must be told about the port.** The firewall is enabled on this machine and drops
+  inbound 8091 silently — *timed out*, not *refused*, which is why it reads as the panel
+  being broken rather than blocked. The agora panel on 8090 is reachable only because
+  Docker publishes it and Docker writes its rules past ufw; a plain Python process gets no
+  such help. Every port this project opens needs an explicit `sudo ufw allow <port>/tcp`
+  (t1058).
 - A systemd user unit `noos-panel.service`, restart on failure, no timer.
 - Writes go through the same helpers the scripts use (`noosconf`, `store.py`,
   `facts.py`), never by hand-editing JSON — so validation lives in one place.

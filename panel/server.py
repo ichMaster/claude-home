@@ -14,6 +14,7 @@ that builds them, so the rail is honest rather than full of dead links.
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -99,12 +100,40 @@ class Handler(BaseHTTPRequestHandler):
         sys.stderr.write("panel %s\n" % (fmt % args))
 
 
+def resolve_host(host: str) -> str:
+    """`panel.host`, with `tailscale` meaning this machine's address on the tailnet.
+
+    The owner works from another computer, so loopback alone makes the panel unreachable
+    for the only person it is for (2026-10-31). The tailnet is the narrowest network that
+    still solves that: his own devices, nothing else — binding to 0.0.0.0 would publish an
+    unauthenticated board to the whole home Wi-Fi, which is a different decision.
+
+    The address is resolved at start rather than written into the config, because a
+    hardcoded tailnet IP turns into a service that will not start the day it changes. If
+    Tailscale is not up, we fall back to loopback and say so: a panel listening somewhere
+    safe beats a unit that refuses to boot.
+    """
+    if host != "tailscale":
+        return host
+    try:
+        out = subprocess.run(["tailscale", "ip", "-4"], capture_output=True, text=True,
+                             timeout=10)
+        found = (out.stdout or "").strip().splitlines()
+        if out.returncode == 0 and found:
+            return found[0].strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    print("tailscale не відповів — слухаю лише 127.0.0.1", file=sys.stderr)
+    return "127.0.0.1"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="адмін-панель Нооса")
     ap.add_argument("--port", type=int, default=int(conf("panel.port", 8091)))
     ap.add_argument("--host", default=str(conf("panel.host", "127.0.0.1")))
     ap.add_argument("--once", action="store_true", help="віддати одну відповідь і вийти")
     args = ap.parse_args()
+    args.host = resolve_host(args.host)
 
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"панель на http://{args.host}:{args.port}")
