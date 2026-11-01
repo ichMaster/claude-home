@@ -297,3 +297,29 @@ form.inline { display: inline; margin: 0; }
 }
 
 .card .controls button:hover { color: var(--ink); border-color: var(--amber); }
+
+/* --- screen 8: rules (read-only) -------------------------------------------------- */
+
+.settings td, .perms td, .schedule td, .keys td { vertical-align: top; }
+.settings td.id { font-size: 12px; white-space: normal; word-break: break-all; }
+.settings td.text { width: auto; }
+.perms td.id { white-space: normal; }
+.schedule td.text { width: auto; font-size: 12px; }
+.schedule tr td .dim { font-size: 12px; }
+.keys td.text { width: auto; font-size: 12px; }
+.keys td:last-child { font-family: var(--mono); font-size: 12px; }
+
+pre.journal {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  max-height: 22em;
+  overflow: auto;
+  border: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+a.on { color: var(--amber); }

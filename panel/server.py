@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import ipaddress
+import json
 import secrets
 import subprocess
 import sys
@@ -34,6 +35,7 @@ import changes                                                         # noqa: E
 import data                                                            # noqa: E402
 import memory_screen                                                   # noqa: E402
 import render                                                          # noqa: E402
+import rules_screen                                                    # noqa: E402
 import sources_screen                                                  # noqa: E402
 import tasks_screen                                                    # noqa: E402
 import zirka                                                           # noqa: E402
@@ -42,7 +44,6 @@ STATIC = Path(__file__).resolve().parent / "static"
 # screen → the phase that builds it, for the placeholder pages
 SOON = {
     "/prompt": "фаза 5", "/scenarios": "фаза 5",
-    "/rules": "фаза 8",
     "/chat": "фаза 9",
 }
 TITLES = dict(render.SCREENS)
@@ -409,6 +410,76 @@ def zirka_action(form: dict) -> str:
     return "Невідома дія."
 
 
+def journal_text(unit: str, limit: int | None = None) -> str:
+    """The tail of one unit's journal, for a unit systemd itself named.
+
+    The unit arrives in a query string, so it is never trusted into a command line: the
+    only accepted names are the timers `systemctl` reported and their services. Without
+    that check this link is an argument injection into `journalctl` on a port with no
+    login — `-u` is not the only flag it would take.
+    """
+    allowed = set()
+    for t in data.timer_units():
+        allowed.add(t)
+        allowed.add(t.replace(".timer", ".service"))
+    if unit not in allowed:
+        return f"Не знаю юніта «{unit}» — показую лише свої таймери та їхні сервіси."
+    n = int(limit or conf("panel.journal_lines", 40))
+    ok, said = run_script("journalctl", "--user", "-u", unit, "-n", str(n),
+                          "--no-pager", "--output=short-iso", timeout=30)
+    return said if ok else f"Журнал не прочитався: {said}"
+
+
+def _raw_config() -> tuple[dict, dict]:
+    """`config.json` and `config.local.json` unmerged — the screen's whole point is
+    showing which of the two won, which the merged view cannot say."""
+    out = []
+    for name in ("config.json", "config.local.json"):
+        try:
+            out.append(json.loads((HOME / name).read_text(encoding="utf-8")))
+        except (OSError, json.JSONDecodeError):
+            out.append({})
+    return out[0], out[1]
+
+
+def _settings_files() -> list[tuple[str, dict]]:
+    """Where a permission allow/deny list could live. All four are absent on this machine,
+    and saying so is the point (t1090)."""
+    found = []
+    for label, f in (("~/.claude/settings.json", Path.home() / ".claude/settings.json"),
+                     ("~/.claude/settings.local.json",
+                      Path.home() / ".claude/settings.local.json"),
+                     (".claude/settings.json", HOME / ".claude/settings.json"),
+                     (".claude/settings.local.json", HOME / ".claude/settings.local.json")):
+        try:
+            found.append((label, json.loads(f.read_text(encoding="utf-8"))))
+        except (OSError, json.JSONDecodeError):
+            continue
+    return found
+
+
+def rules_html(unit: str = "") -> str:
+    """Screen 8. Read-only — no form, no write path, nothing to press but a journal link."""
+    default, local = _raw_config()
+    try:
+        start = (HOME / "start.sh").read_text(encoding="utf-8")
+    except OSError:
+        start = ""
+    timers = [(u,
+               data.show(u, "Unit,Description,TimersCalendar,Persistent,"
+                            "NextElapseUSecRealtime,LastTriggerUSec,ActiveState"),
+               data.show(u.replace(".timer", ".service"),
+                         "Description,ExecStart,Result,ExecMainStatus,ActiveState"))
+              for u in data.timer_units()]
+    return render.render_rules(
+        rules_screen.setting_rows(default, local, rules_screen.masked_keys()),
+        rules_screen.permissions(start, _settings_files(),
+                                 conf("telegram.inbox", {}) or {}),
+        rules_screen.schedule_rows(timers),
+        rules_screen.key_rows(rules_screen.key_files()),
+        journal_text(unit) if unit else "", unit)
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "noos-panel"
 
@@ -474,6 +545,13 @@ class Handler(BaseHTTPRequestHandler):
                 day = urllib.parse.parse_qs(
                     urllib.parse.urlparse(self.path).query).get("day", [""])[0]
                 return self._send(200, zirka_html(day[:10]).encode("utf-8"),
+                                  "text/html; charset=utf-8")
+            if path == "/rules":
+                # GET only: phase 8 reads. A POST falls through to the 404 below, which is
+                # the honest answer — this screen has no form to have submitted.
+                unit = urllib.parse.parse_qs(
+                    urllib.parse.urlparse(self.path).query).get("unit", [""])[0]
+                return self._send(200, rules_html(unit[:80]).encode("utf-8"),
                                   "text/html; charset=utf-8")
             if path in SOON:
                 html = render.render_soon(TITLES.get(path, path), path, SOON[path])

@@ -682,3 +682,134 @@ def render_soon(title: str, href: str, phase: str) -> str:
             f'<p class="empty">Цей екран ще не побудований — {e(phase)}.<br>'
             'Опис: <code>docs/features/ADMIN-PANEL.md</code>.</p>')
     return page(title, body, href)
+
+
+# --- screen 8: Rules (read-only) ------------------------------------------------------------
+
+def _settings_table(rows: list[dict], query: str = "") -> str:
+    if not rows:
+        return '<p class="empty">Налаштувань не видно.</p>'
+    out = ['<table class="settings"><tr><th>ключ<th>чинне<th>типове<th>звідки</tr>']
+    for r in rows:
+        if r["hidden"]:
+            source = '<span class="dim">приховано</span>'
+        elif r["local_only"]:
+            source = '<span class="warn">лише локально</span>'
+        elif r["overridden"]:
+            source = '<span class="warn">перевизначено</span>'
+        else:
+            source = '<span class="dim">типове</span>'
+        out.append(f'<tr><td class="id">{e(r["key"])}'
+                   f'<td class="text">{e(r["value"])}'
+                   f'<td class="text dim">{e(r["default"]) or "—"}'
+                   f'<td>{source}</tr>')
+    return "".join(out) + "</table>"
+
+
+def _permissions_block(p: dict) -> str:
+    mode = (f'<p>Режим дозволів сесії: <b>{e(p["mode"])}</b> '
+            f'<span class="dim">({e(p["mode_source"])})</span></p>')
+    if p["lists"]:
+        rows = []
+        for lst in p["lists"]:
+            for kind, items in (("дозволено", lst["allow"]), ("спитати", lst["ask"]),
+                                ("заборонено", lst["deny"])):
+                if items:
+                    rows.append(f'<tr><td class="id">{e(lst["file"])}'
+                                f'<td class="id">{e(kind)}'
+                                f'<td class="text">{e(", ".join(items))}</tr>')
+        lists = '<table class="perms">' + "".join(rows) + "</table>"
+    else:
+        # «0 правил» would read as "nothing is allowed", which is the opposite of `auto`
+        lists = ('<p class="warn">Налаштованих списків дозволів немає — ні в проєкті, '
+                 'ні в користувацьких налаштуваннях. Обмежує лише режим вище '
+                 'і правила нижче.</p>')
+    inbox = (f'<p>Боти: не більше {int(p["inbox"]["max_per_hour"])} відповідей на годину '
+             f'на бота, лише в чат власника, без інструментів.</p>')
+    rules = "".join(
+        f'<tr><td class="text">{e(r["rule"])}'
+        f'<td class="id dim">{e(r["source"])}</tr>' for r in p["rules"])
+    return (mode + lists + inbox +
+            '<h3 class="stage">Правила, які діють текстом</h3>'
+            f'<table class="perms">{rules}</table>'
+            '<p class="dim">Змінюються лише з терміналу: панель не має підпису, '
+            'під яким можна було б дозволити собі більше.</p>')
+
+
+def _schedule_table(rows: list[dict], unit: str = "") -> str:
+    if not rows:
+        return '<p class="empty">Таймерів не знайдено.</p>'
+    out = ['<table class="schedule"><tr><th>юніт<th>розклад<th>наступний<th>останній'
+           '<th>як пройшов<th>журнал</tr>']
+    for r in rows:
+        verdict = "—"
+        if r["failed"]:
+            verdict = (f'<span class="alert">{e(r["result"])}'
+                       + (f' ({e(r["exit"])})' if r["exit"] else "") + "</span>")
+        elif r["result"]:
+            verdict = "успішно"
+        off = "" if r["enabled"] else ' <span class="stale">вимкнений</span>'
+        catch_up = ' <span class="dim">наздоганяє</span>' if r["persistent"] else ""
+        schedules = "<br>".join(e(s) for s in r["schedules"]) or "—"
+        service = r["service"] or r["unit"].replace(".timer", ".service")
+        here = ' class="on"' if unit == service else ""
+        out.append(
+            f'<tr><td class="id">{e(r["unit"])}{off}<br>'
+            f'<span class="dim">{e(r["description"])}</span><br>'
+            f'<span class="dim">{e(r["command"])}</span>'
+            f'<td class="text">{schedules}{catch_up}'
+            f'<td class="age">{e(r["next"])}'
+            f'<td class="age">{e(r["last"])}'
+            f'<td>{verdict}'
+            f'<td><a{here} href="/rules?unit={e(service)}">показати</a></tr>')
+    return "".join(out) + "</table>"
+
+
+def _keys_table(rows: list[dict]) -> str:
+    if not rows:
+        return '<p class="empty">Файлів ключів не названо.</p>'
+    out = []
+    for r in rows:
+        if r["present"]:
+            names = ", ".join(
+                f'{e(v["name"])}' + ("" if v["set"] else " <span class=\"warn\">порожнє</span>")
+                for v in r["vars"]) or '<span class="dim">змінних не знайдено</span>'
+            loose = (' <span class="alert">права надто широкі</span>' if r["loose"]
+                     else "")
+            state = (f'<span class="ok">є</span> · права {e(r["mode"])}{loose} · '
+                     f'{r["size"]} Б · {e(r["mtime"])}')
+        else:
+            names = ('<span class="dim">скопіювати з ' + e(r["example"]) + "</span>"
+                     if r["example_present"] else
+                     '<span class="dim">зразка немає</span>')
+            state = '<span class="alert">немає</span>'
+        out.append(f'<tr><td class="id">{e(r["file"])}'
+                   f'<td class="text dim">{e(r["what"])}'
+                   f'<td class="text">{state}'
+                   f'<td class="text">{names}</tr>')
+    return ('<table class="keys"><tr><th>файл<th>для чого<th>стан<th>змінні</tr>'
+            + "".join(out) + "</table>"
+            + '<p class="dim">Значень тут не буває — ні на екрані, ні в HTML. '
+              'Лише імена змінних.</p>')
+
+
+def render_rules(settings: list[dict], perms: dict, schedule: list[dict],
+                 keys: list[dict], journal: str = "", unit: str = "") -> str:
+    """Screen 8 — what governs the assistant. Reads only: this page carries no form, and
+    that is the phase's whole decision (the owner, 2026-11-01). Editing is phase 10, after
+    the panel has authentication — until then a write here would be made with the owner's
+    rights and nobody's signature."""
+    overridden = sum(1 for r in settings if r["overridden"] or r["local_only"])
+    counters = (f'<p>{len(settings)} налаштувань, з них {overridden} задані локально. '
+                'Чинне значення — те, якому підкоряються пробники.</p>')
+    log = (f'<h3 class="stage">Журнал · {e(unit)}</h3><pre class="journal">{e(journal)}</pre>'
+           if journal else "")
+    body = (
+        "<h1>Правила</h1>"
+        '<p class="note">Цей екран лише показує. Редагування — окрема фаза, '
+        'після того як панель отримає автентифікацію.</p>'
+        f"<section><h2>Налаштування</h2>{counters}{_settings_table(settings)}</section>"
+        f"<section><h2>Дозволи</h2>{_permissions_block(perms)}</section>"
+        f"<section><h2>Розклад</h2>{_schedule_table(schedule, unit)}{log}</section>"
+        f"<section><h2>Ключі</h2>{_keys_table(keys)}</section>")
+    return page("Правила", body, "/rules")

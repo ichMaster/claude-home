@@ -1,6 +1,7 @@
 # Admin panel — functionality and design
 
-Status: specification, nothing built. Target: v5 of [ROADMAP.md](../ROADMAP.md).
+Status: phases 1-4 and 6-8 built; 5 deferred, 9 next, 10 blocked on authentication.
+Target: v5 of [ROADMAP.md](../ROADMAP.md).
 
 ## Why a panel at all
 
@@ -142,17 +143,36 @@ The 603 channels stay on **Sources** — they are a list to maintain, not a pipe
 
 ### 8. Rules
 
-- **Configuration as a form**: TTLs, planning window, sleep hours, digest item counts,
-  voice settings. Each field shows its default from `config.json` and whether
-  `config.local.json` overrides it.
-- **Permissions as switches**, replacing prose in `CLAUDE.md`: send mail — *ask* /
-  *never* / *free*; create calendar events — *free*; edit the owner's events — *never*;
-  delete files — *ask*. The panel writes them into `config.json`; the session reads them
-  as part of its instructions.
-- **Schedule**: the five timers with editable times; saving rewrites the unit and runs
-  `daemon-reload`.
-- **Keys**: a read-only list — `.env.voice` present, `.env.gmail` missing. Never a
-  value, never an input field.
+**This screen reads and never writes** (the owner, 2026-11-01). The four kinds of state
+that govern the assistant, each invisible today without a terminal. Editing them is
+screen 8's second half and a phase of its own — see *Phase 10* below.
+
+- **Configuration**: every setting as a dotted key, with the default from `config.json`,
+  the effective value, and whether `config.local.json` overrode it. The effective column
+  is the merge `noosconf` performs, so it is what the probes actually obey.
+  Values are **masked** for the keys listed in `panel.rules_masked` — birth data, the
+  calendar id, the owner's name, the ElevenLabs voice ids. The panel listens on the local
+  network with no authentication; that an override exists is useful, the value is nobody's
+  business. A list renders as its length, so 603 channels do not bury the page.
+- **Permissions**, as they actually are rather than as switches. There is nothing to
+  toggle: the session starts with `--permission-mode auto` and **no allow/deny list is
+  configured anywhere** — which the screen says in those words, because rendering an empty
+  list as "0 rules" would read as "nothing is allowed", the exact opposite. Then the bot
+  limits, and the standing rules that do the real constraining, each quoted in the panel's
+  words beside the file it stands on. A test re-reads every one of those files: a rule
+  deleted from `CLAUDE.md` breaks the suite instead of staying on screen as a promise
+  nobody keeps.
+- **Schedule**: all 15 systemd user timers — unit, description, the command it actually
+  runs, every `OnCalendar` line (the digest has two) or the interval for the four timers
+  that have none, whether it catches up a missed run, next, last, and the result with the
+  exit status. One link per unit tails its journal, which is the answer to "why did the
+  digest stay silent". The unit name is validated against the list systemd itself
+  reported, because it arrives in a query string and `journalctl` takes more flags
+  than `-u`.
+- **Keys**: which `.env` files exist, their permissions, size and date, and the **names**
+  of the variables inside — never a value, on screen or in the HTML. A missing file names
+  the example to copy. This is how `.env.gmail` and `.env.calendar` being absent became
+  visible at all: the mail and calendar probes have been warning instead of answering.
 
 ### 9. Tasks
 
@@ -334,13 +354,27 @@ channels with search, disable, priority and *Remove dead*; the mail and social f
 *Risk:* moderate — the channel list lives in `config.local.json`, so every write is atomic
 (t1043) and the file is backed up before a bulk action.
 
-**Phase 8 — Rules.** (~3 h)
-Screen 8: configuration as a form with defaults and overrides visible, permissions as
-switches, the timer schedule, the read-only key list.
-*Ships:* the last screen, and the one that makes the panel authoritative.
-*Risk:* the highest in the project — a bad write here breaks every probe and timer at once.
-It goes last on purpose: by then the panel has been reading these files for weeks, and the
-atomic-write path is proven.
+**Phase 8 — Rules, reading.** (~3 h) — **done**
+Screen 8 as described above: the merged configuration with overrides and masked values, the
+permissions as they actually are, all 15 timers with their journals, the key list. No form,
+no write path.
+*Ships:* the answer to "what governs this thing", without a terminal.
+*Risk:* low by construction — the only thing it can do is show. The two real risks are
+disclosure, not corruption, and both are tested: a personal value out of
+`config.local.json` and anything out of an `.env` file beyond a variable name.
+
+**Phase 10 — Editing.** (~4 h, blocked)
+The writing half of screen 8, and the editors of screens 2 and 3 (phase 5): configuration
+as a form, permissions as switches that genuinely bind, timer times that rewrite the unit
+and `daemon-reload` it.
+*Blocked on one decision, not on effort.* The panel runs as `ich` — the same user as the
+session, the timers and the whole repository — and it has no authentication. So a write
+from the panel carries the owner's rights and nobody's signature, and on a port reachable
+from the local network that is not a form, it is a remote control. Either the panel gets
+authentication first (which "Not a phase" below currently refuses) or editing stays out.
+The owner decides which; until then the panel reads, and changes are made from the terminal.
+*Risk when it happens:* the highest in the project — a bad write here breaks every probe
+and timer at once.
 
 **Phase 9 — Chat.** (~3 h)
 Screen 11, last because it is the only one that writes *outward*. The send box posts into
@@ -354,8 +388,10 @@ say something to the session, which is exactly what Telegram already allows. The
 caution is scope creep: the moment this box starts accepting commands rather than sentences,
 it has become an unauthenticated remote control, and it must not.
 
-**Not a phase:** authentication, remote access, mobile beyond Pulse. If the panel ever needs
-to be reachable from outside a trusted network, that is a version of its own.
+**Not a phase:** remote access from outside a trusted network, accounts and roles, mobile
+beyond Pulse. Authentication was in this list until phase 8 (2026-11-01) and is now the one
+thing phase 10 waits on: as long as the panel cannot tell who is pressing, it may read
+everything and write nothing that governs the assistant.
 
 ## Out of scope
 
