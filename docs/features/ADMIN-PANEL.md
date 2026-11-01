@@ -1,6 +1,6 @@
 # Admin panel — functionality and design
 
-Status: phases 1-4 and 6-8 built; 5 deferred, 9 next, 10 blocked on authentication.
+Status: phases 1-4 and 6-8 built; 5 deferred, 9 (Sent) next, 10 blocked on authentication.
 Target: v5 of [ROADMAP.md](../ROADMAP.md).
 
 ## Why a panel at all
@@ -265,31 +265,34 @@ already has Telegram, which is the better interface for intent.
 - The panel never calls the model. Everything intelligent is either a script or a
   scenario run in a headless session.
 
-### 11. Chat
+### 11. Sent
 
-Added on the owner's request (2026-10-31), reversing the original "out of scope: chat with
-the assistant". The reason it earns a place: while he is *looking at* a screen — a probe gone
-amber, a dedup decision that looks wrong, a forecast stage that failed — the question is
-about what is on the screen, and switching to Telegram to ask it loses the context and the
-moment. "I am here, I can see it, do something about it."
+Reworked on the owner's request (2026-11-01), replacing the chat screen the same owner had
+asked for a day earlier. The reasoning that killed it is his own usage: **he listens, he does
+not read.** A send box on the panel duplicates a channel that already works better — Telegram
+with voice — and it would be the only screen that writes *outward*, on a port with no
+authentication. Its single genuine advantage, asking about what is on screen without losing
+the context, is worth one line of context and not a second conversation.
 
-**The panel still never calls the model** (§ The one hard rule stands). It is not a second
-assistant; it is a window onto the same conversation:
+What is left is the half that has value on its own: **nothing in this system records what it
+actually said.** The digest, the forecast, the reminders and the probe reports go out through
+`notify.sh` and are gone. "Did the 20:03 digest say anything, or did it run and stay silent"
+is unanswerable today except by scrolling a phone.
 
-- **Send** writes the message into the main Telegram chat through the Bot API — one HTTP
-  call, no model — so the live session receives it exactly as if it had been typed into
-  Telegram, with all of its context and tools.
-- **Read** comes from a transcript the session already produces: `notify.sh` appends every
-  outgoing message to `status/state/chat-log.jsonl`, and the panel renders that beside what
-  it sent. So the thread shown is the real conversation, not a copy with its own state.
-- The box carries the screen it was sent from, as one line of context the session can see
-  («з екрану Зірка»), because a question asked while looking at the pipeline usually means
-  that pipeline.
-- Voice is not rendered here. He listens in Telegram; on the panel he is reading.
+- **`notify.sh` appends one line per outgoing message** to `status/state/chat-log.jsonl`:
+  when, which bot, what kind (probe, digest, forecast, reminder, restart, answer), the
+  delivery result, whether voice went with it and how long it was. Append-only, like the
+  change log.
+- **The screen reads that log**, newest first, with a filter by bot and by kind, and shows
+  **metadata by default — not the body.** This is deliberate and it is the lesson of t1094:
+  the text of a digest *is* the owner's calendar and mail, and this port has no login. The
+  body is shown only when `panel.sent_bodies` is on, which waits for the authentication
+  phase 10 waits for.
+- **It answers one question the rest of the panel cannot**: a timer that ran successfully and
+  said nothing looks identical to a timer that worked, in `systemctl` and in the journal
+  alike. Here the silence is visible.
 
-The honest limitation, which belongs in the UI and not only in this document: a reply takes
-as long as the session takes, and the panel is polling a log rather than holding a socket
-open. A pending message says "надіслано, чекаю" and nothing pretends to be faster than it is.
+Nothing on this screen writes anything, outward or otherwise.
 
 ## Phases
 
@@ -376,17 +379,19 @@ The owner decides which; until then the panel reads, and changes are made from t
 *Risk when it happens:* the highest in the project — a bad write here breaks every probe
 and timer at once.
 
-**Phase 9 — Chat.** (~3 h)
-Screen 11, last because it is the only one that writes *outward*. The send box posts into
-the main Telegram chat through the Bot API; the thread is read from the transcript
-`notify.sh` writes to `status/state/chat-log.jsonl`, which has to be added first. Carries
-the current screen as one line of context.
-*Ships:* asking for something while looking at the thing you are asking about, without
-switching to the phone and losing the context.
-*Risk:* low in mechanism — no model is called here, and the only thing the panel can do is
-say something to the session, which is exactly what Telegram already allows. The real
-caution is scope creep: the moment this box starts accepting commands rather than sentences,
-it has become an unauthenticated remote control, and it must not.
+**Phase 9 — Sent.** (~2 h)
+Screen 11: the log of what the system actually said. First `notify.sh` learns to append every
+outgoing message to `status/state/chat-log.jsonl` — that is most of the work and it is useful
+with no screen at all — then the screen reads it: newest first, filtered by bot and kind,
+metadata by default.
+*Ships:* the answer to "did it say anything", which neither `systemctl` nor the journal can
+give, because a timer that ran and stayed silent looks exactly like one that worked.
+*Risk:* low — one more reader of one more append-only file. The one thing to get right is the
+same thing phase 8 got wrong once: the body of a message is personal content, so it stays
+behind the switch until the panel can tell who is asking.
+*Dropped from this phase:* the send box. See screen 11 for why — the owner listens rather than
+reads, so the panel would be duplicating a worse channel, and it would be the only screen
+writing outward on an unauthenticated port.
 
 **Not a phase:** remote access from outside a trusted network, accounts and roles, mobile
 beyond Pulse. Authentication was in this list until phase 8 (2026-11-01) and is now the one
@@ -395,8 +400,9 @@ everything and write nothing that governs the assistant.
 
 ## Out of scope
 
-- A second assistant: the chat screen (11) is a window onto the Telegram conversation, not
-  a model the panel talks to on its own.
+- A chat window, and with it any outward write. Screen 11 reads what was sent and offers no
+  way to send (2026-11-01). Telegram with voice is the channel; the panel is the instrument
+  panel beside it.
 - Secret values in any form.
 - Remote access, accounts, roles.
 - Charts and analytics beyond token spend per day; a graph is not an answer.

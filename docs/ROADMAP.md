@@ -133,22 +133,32 @@ box that runs the same hybrid query the session runs.
 **Tests:** deleting a fact appends to the change log; the search box and
 `memory/search.sh` return the same first five results.
 
-### v5.4 Rules
+### v5.4 Rules (reading, done 2026-11-01)
 
-**Goal:** turn prose rules into switches.
+**Goal:** make visible what governs the assistant.
 
-**Description.** Configuration as a form rather than JSON: probe TTLs, planning window,
-sleep hours, mail and LinkedIn filters, YouTube channels with search, enable/disable and
-a priority flag. Permissions as explicit toggles: send mail — only with confirmation;
-create events — free; edit the owner's events — never. Timers with their schedules.
+**Description.** Configuration as a table rather than JSON: every key with its default,
+the effective value, and whether `config.local.json` overrode it — with the personal
+values masked, because the panel listens on the local network with no login. Permissions
+as they actually are, which turned out to be no allow/deny list anywhere plus prose in
+`CLAUDE.md`, each rule shown beside the file it stands on. All 14 systemd timers with
+their schedules or intervals, what they run, and a journal tail. Which `.env` files exist,
+and the names of the variables inside them — never a value.
 
-**DoD:** adding a YouTube channel to `priority`, changing the digest time, and
-tightening a permission all happen in the browser and are visible in the change log.
+**Narrowed by the owner (2026-11-01):** this version **reads and writes nothing.** Turning
+the prose into switches moved to v5.7, because a switch that cannot tell who flipped it is
+decoration.
 
-**Tests:** a schedule change rewrites the unit and reloads systemd; an invalid cron
-expression is rejected before writing; `config.local.json` keeps its mode 600.
+**DoD (met):** the merged configuration, the real permissions, the schedule and the key
+list are all answerable in the browser without a terminal; no masked value and no key
+value reaches the HTML.
 
-### v5.5 Tasks board
+**Tests:** 30 in `tests/test_panel_rules.py` — masking by key prefix, a list rendered as a
+count, the schedule against real `systemctl show` output, a key file's names without its
+values, every standing rule's source re-read, and `?unit=` refused for anything systemd did
+not name.
+
+### v5.5 Tasks board (done 2026-10-31)
 
 **Goal:** the one view chat is bad at.
 
@@ -156,7 +166,44 @@ expression is rejected before writing; `config.local.json` keeps its mode 600.
 date, a checkbox to close, and the 📌 flag for a time block. The calendar stays the
 source of truth for events; the board shows them and can unlink.
 
-**DoD:** closing a task on the board renames its all-day event `☐ → ☑` in the calendar.
+**DoD (met):** closing a task on the board renames its all-day event `☐ → ☑` in the
+calendar. Drag was refused — it needs a frontend framework this design forbids — so a date
+changes through the «на вихідні» / «на тиждень» buttons instead.
+
+### v5.6 Sent
+
+**Goal:** know what the system actually said.
+
+**Description.** `notify.sh` appends every outgoing message to
+`status/state/chat-log.jsonl` — when, which bot, what kind, delivered or not, whether voice
+went with it — and the panel reads that log, newest first, metadata by default. This
+replaces the chat screen asked for on 2026-10-31 and dropped on 2026-11-01: the owner
+listens rather than reads, so a send box in the panel would duplicate a worse channel and
+be the only outward write on an unauthenticated port.
+
+**DoD:** "did the 20:03 digest say anything, or did it run and stay silent" is answerable
+without a phone.
+
+**Tests:** a message with no voice and a failed delivery both appear correctly; the body is
+hidden unless `panel.sent_bodies` is on.
+
+### v5.7 Editing (blocked)
+
+**Goal:** change the rules from the panel, not only read them.
+
+**Description.** Configuration as a form, permissions as switches that genuinely bind,
+timer times that rewrite the unit and reload systemd, and the editors for `persona.md` and
+`CLAUDE.md` from v5.1.
+
+**Blocked on one decision.** The panel runs as `ich`, the same user as the session and the
+timers, and it has no authentication; `panel.host` is `0.0.0.0` by the owner's choice of
+2026-10-31. A write from it therefore carries his rights and nobody's signature. Either the
+panel gets authentication — which «Deliberately not doing» below still refuses — or editing
+stays in the terminal. His call; until then the panel reads.
+
+**Tests (when it happens):** a schedule change rewrites the unit and reloads systemd; an
+invalid calendar expression is rejected before writing; `config.local.json` keeps its mode
+600 and its version copy.
 
 ---
 
@@ -190,9 +237,15 @@ and the change log, answered by one voice reply.
   Facebook stays as e-mail notifications.
 - **YouTube Data API.** Per-channel RSS already answers "what is new" without OAuth or
   quotas.
-- **Multi-user, authentication, tenancy.** One machine, one person; the panel listens on
-  localhost and is reached over SSH or Tailscale.
+- **Multi-user and tenancy.** One machine, one person.
+- **Authentication — refused, and now the thing v5.7 waits on.** The panel was meant to
+  listen on localhost behind an SSH tunnel; on 2026-10-31 the owner bound it to the whole
+  local network instead, knowingly. Reading is fine that way, and the screens are built to
+  be safe to read: personal values masked, journal bodies withheld, keys shown by name only.
+  Writing is not, so every write stays in the terminal until this is decided (2026-11-01).
 - **Secrets in any interface but the terminal.** The panel may show that a key exists,
   never what it is.
-- **A chat window in the panel.** Telegram and the terminal already do that; duplicating
-  it would create a second place where context lives.
+- **A chat window in the panel.** Asked for on 2026-10-31, dropped on 2026-11-01: the owner
+  listens rather than reads, so the panel would duplicate a worse channel, and a send box
+  would be the only outward write on an unauthenticated port. What survived is v5.6, which
+  only reads what was sent.
