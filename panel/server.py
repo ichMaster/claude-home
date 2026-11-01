@@ -566,7 +566,15 @@ def prompt_html(message: str = "") -> str:
             handoff = note.read_text(encoding="utf-8")
         except OSError:
             handoff = None
-    got = prompt_screen.assembled(persona, facts if ok else "", handoff)
+    perms = ""
+    try:
+        sys.path.append(str(HOME / "tools"))
+        import permissions as perm_tool                                 # noqa: E402
+        perms = perm_tool.prompt_block()
+    except Exception:                                                   # noqa: BLE001
+        perms = ""                      # a missing block is visible as a missing part
+    got = prompt_screen.assembled(persona, facts if ok else "", handoff,
+                                  permissions=perms)
     started = session_started()
     watched = [HOME / "persona.md", HOME / "CLAUDE.md",
                *sorted((HOME / "memory" / "facts").glob("*.md"))]
@@ -641,6 +649,23 @@ def _resolve(cmd: list[str]) -> list[str]:
         out.append(str(HOME / part) if not part.startswith(("-", "/")) and
                    (HOME / part).exists() else part)
     return out
+
+
+def rules_action(form: dict) -> str:
+    """Screen 8's writes (t1102): one setting at a time, into `config.local.json`.
+
+    Every refusal is `rules_screen`'s to make — masked values, permissions, lists and
+    unknown keys never reach a write — so this function only routes.
+    """
+    what = (form.get("action") or [""])[0]
+    key = (form.get("key") or [""])[0].strip()
+    if what == "save":
+        ok, said = rules_screen.set_setting(key, (form.get("value") or [""])[0])
+        return said if ok else f"Не записано: {said}"
+    if what == "reset":
+        ok, said = rules_screen.reset_setting(key)
+        return said if ok else f"Не скинуто: {said}"
+    return "Невідома дія."
 
 
 def journal_text(unit: str, limit: int | None = None) -> str:
@@ -719,7 +744,21 @@ def _settings_files() -> list[tuple[str, dict]]:
     return found
 
 
-def rules_html(unit: str = "") -> str:
+def permission_levels() -> dict:
+    """`{key: (level, what)}` for the Rules screen — read through the same module the
+    system prompt is rendered from, so the screen cannot drift from what the session is
+    told."""
+    try:
+        sys.path.append(str(HOME / "tools"))
+        import permissions as perm_tool                                 # noqa: E402
+        current = perm_tool.levels()
+        return {key: (perm_tool.LEVELS[perm_tool.level(key, current)], meta["what"])
+                for key, meta in perm_tool.DECISIONS.items()}
+    except Exception:                                                   # noqa: BLE001
+        return {}
+
+
+def rules_html(unit: str = "", message: str = "") -> str:
     """Screen 8. Read-only — no form, no write path, nothing to press but a journal link."""
     default, local = _raw_config()
     try:
@@ -736,10 +775,12 @@ def rules_html(unit: str = "") -> str:
     return render.render_rules(
         rules_screen.setting_rows(default, local, rules_screen.masked_keys()),
         rules_screen.permissions(start, _settings_files(),
-                                 conf("telegram.inbox", {}) or {}),
+                                 conf("telegram.inbox", {}) or {},
+                                 levels=permission_levels()),
         rules_screen.schedule_rows(timers, boot_epoch=_boot_epoch()),
         rules_screen.key_rows(rules_screen.key_files()),
-        journal_text(unit) if unit else "", unit, filtered=not journal_full())
+        journal_text(unit) if unit else "", unit, filtered=not journal_full(),
+        token=FORM_TOKEN, message=message)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -829,12 +870,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, scenarios_html(message[:2000]).encode("utf-8"),
                                   "text/html; charset=utf-8")
             if path == "/rules":
-                # GET only: phase 8 reads. A POST falls through to the 404 below, which is
-                # the honest answer — this screen has no form to have submitted.
-                unit = urllib.parse.parse_qs(
-                    urllib.parse.urlparse(self.path).query).get("unit", [""])[0]
-                return self._send(200, rules_html(unit[:80]).encode("utf-8"),
-                                  "text/html; charset=utf-8")
+                q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                return self._send(200, rules_html(q.get("unit", [""])[0][:80],
+                                                  q.get("m", [""])[0][:300])
+                                  .encode("utf-8"), "text/html; charset=utf-8")
             if path in SOON:
                 html = render.render_soon(TITLES.get(path, path), path, SOON[path])
                 return self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
@@ -915,6 +954,10 @@ class Handler(BaseHTTPRequestHandler):
                 if probe:
                     where += "p=" + urllib.parse.quote(probe[:300]) + "&"
                 return self._redirect(where.rstrip("&?") or "/sources")
+            if path == "/rules":
+                # Post/Redirect/Get, like every other write on this panel (t1078)
+                return self._redirect("/rules?m=" +
+                                      urllib.parse.quote(rules_action(form)[:300]))
             if path == "/scenarios":
                 # Post/Redirect/Get: a run must not re-fire on F5 (t1078).
                 return self._redirect("/scenarios?m=" +

@@ -375,32 +375,28 @@ no write path.
 disclosure, not corruption, and both are tested: a personal value out of
 `config.local.json` and anything out of an `.env` file beyond a variable name.
 
-**Phase 10 — Editing.** (~4 h, blocked)
-The writing half of screen 8, and the editors of screens 2 and 3 (phase 5): configuration
-as a form, permissions as switches that genuinely bind, timer times that rewrite the unit
-and `daemon-reload` it.
-*Blocked on one decision, not on effort.* The panel runs as `ich` — the same user as the
-session, the timers and the whole repository — and it has no authentication. So a write
-from the panel carries the owner's rights and nobody's signature, and on a port reachable
-from the local network that is not a form, it is a remote control. Either the panel gets
-authentication first — phase 11, below — or editing stays out.
-The owner decides which; until then the panel reads, and changes are made from the terminal.
-*Risk when it happens:* the highest in the project — a bad write here breaks every probe
-and timer at once.
+**Phase 10 — Editing.** (~4 h) — **in progress**
+The writing half of screen 8 and the editors of screens 2 and 3.
 
-**Phase 9 — Sent.** (~2 h)
-Screen 11: the log of what the system actually said. First `notify.sh` learns to append every
-outgoing message to `status/state/chat-log.jsonl` — that is most of the work and it is useful
-with no screen at all — then the screen reads it: newest first, filtered by bot and kind,
-metadata by default.
-*Ships:* the answer to "did it say anything", which neither `systemctl` nor the journal can
-give, because a timer that ran and stayed silent looks exactly like one that worked.
-*Risk:* low — one more reader of one more append-only file. The one thing to get right is the
-same thing phase 8 got wrong once: the body of a message is personal content, so it stays
-behind the switch until the panel can tell who is asking.
-*Dropped from this phase:* the send box. See screen 11 for why — the owner listens rather than
-reads, so the panel would be duplicating a worse channel, and it would be the only screen
-writing outward on an unauthenticated port.
+*Done (t1102):* configuration as a form. Every scalar setting is editable and the write goes
+to `config.local.json` through the versioned atomic path, so a wrong value is one
+`tools/versions.py restore` away. *Повернути типове* removes the override rather than writing
+the default, so the committed file stays the authority. Refused by design, each for its own
+reason: masked values (personal — terminal only), lists and blocks (the channels have their
+own screen; a textarea of JSON is a way to corrupt a file), unknown keys (a form must not be
+able to invent a setting), and permissions.
+
+*Done (t1102):* **permissions that bind.** Phase 8 found that nothing machine-readable
+governed the assistant at all. Now `config.json` carries a `permissions` block —
+`free` / `ask` / `never` per named decision, plus three hard rules that are not switches —
+`tools/permissions.py prompt` renders it, and `start.sh` appends it to the system prompt
+beside the persona and the facts. That is what makes a change bind: the session is told, and
+the restart banner says when it is not in force yet. **They are set from the terminal**
+(`tools/permissions.py set`), not from the panel, because that is the owner's standing rule
+and a password on a LAN page is not a shell on the machine. The screen shows the levels and
+offers no switch.
+
+*Left:* the editors for `persona.md` and `CLAUDE.md`, and the timer times.
 
 **Phase 11 — Authentication.** (~4 h)
 Added on the owner's request, 2026-11-01. It was in "not a phase" until phase 8 showed what

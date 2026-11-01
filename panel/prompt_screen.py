@@ -29,7 +29,8 @@ HOME = Path(__file__).resolve().parents[1]
 CHARS_PER_TOKEN = 3.5
 
 
-def assembled(persona: str, facts: str, handoff: str | None) -> dict:
+def assembled(persona: str, facts: str, handoff: str | None,
+              permissions: str | None = None) -> dict:
     """The prompt in the exact order `start.sh` concatenates it.
 
     The handoff note is part of it only while `memory/handoff.md` exists: `start.sh` moves
@@ -38,6 +39,8 @@ def assembled(persona: str, facts: str, handoff: str | None) -> dict:
     """
     parts = [{"name": "persona.md", "text": persona or ""},
              {"name": "факти", "text": facts or ""}]
+    if permissions:
+        parts.append({"name": "дозволи", "text": permissions})
     if handoff:
         parts.append({"name": "естафета", "text": handoff})
     text = "\n".join(p["text"] for p in parts if p["text"])

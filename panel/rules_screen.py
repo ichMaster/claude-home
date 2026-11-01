@@ -13,16 +13,23 @@ Two things must never reach the page, and the tests enforce both: a personal val
 """
 from __future__ import annotations
 
+import json
 import re
 import sys
 from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from noosconf import conf                                               # noqa: E402
+from noosconf import ROOT, atomic_write_text, conf                      # noqa: E402
 
 HOME = Path(__file__).resolve().parents[1]
+LOCAL = HOME / "config.local.json"
 MASK_TEXT = "значення приховано"
+# What the form may not touch, each for its own reason (t1102): a masked value is personal
+# and belongs to the terminal; a permission is the owner's standing rule about the terminal;
+# a list or a block is not a form field — the 603 channels have their own screen, and a
+# textarea full of JSON is a way to corrupt a file rather than to edit one.
+NO_EDIT_PREFIXES = ("permissions",)
 
 
 # --- configuration ----------------------------------------------------------------------
@@ -78,6 +85,111 @@ def value_text(value, limit: int = 100) -> str:
     return text if len(text) <= limit else text[:limit - 1] + "…"
 
 
+def _default_config() -> dict:
+    """`config.json` as written, unmerged — the authority on a setting's type and default."""
+    try:
+        return json.loads((HOME / "config.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _local_config() -> dict:
+    try:
+        return json.loads(LOCAL.read_text(encoding="utf-8")) if LOCAL.exists() else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def editable(key: str, value, masked: list[str]) -> bool:
+    """A setting is editable when it is a scalar, not masked, and not a permission."""
+    if not key or key.startswith("_") or key.endswith("_"):
+        return False
+    if is_masked(key, masked) or any(key == p or key.startswith(p + ".")
+                                     for p in NO_EDIT_PREFIXES):
+        return False
+    return isinstance(value, (str, int, float, bool)) and not isinstance(value, type(None))
+
+
+def _parse_like(raw: str, like) -> tuple[bool, object]:
+    """Read a form field as the type of the current value. The type is not negotiable: a
+    TTL that becomes the string "900" would be a config no probe can use."""
+    text = (raw or "").strip()
+    if isinstance(like, bool):
+        if text.lower() in ("on", "true", "1", "так", "yes"):
+            return True, True
+        if text.lower() in ("off", "false", "0", "ні", "no"):
+            return True, False
+        return False, None
+    if isinstance(like, bool) is False and isinstance(like, int):
+        try:
+            return True, int(text)
+        except ValueError:
+            return False, None
+    if isinstance(like, float):
+        try:
+            got = float(text)
+        except ValueError:
+            return False, None
+        return (True, got) if got == got and abs(got) != float("inf") else (False, None)
+    if not text:
+        return False, None
+    return True, text
+
+
+def set_setting(key: str, raw: str) -> tuple[bool, str]:
+    """Write one override into `config.local.json`. Returns (written, what to say).
+
+    The committed `config.json` is never touched: it holds the defaults, and a panel that
+    edited them would make the repository's own copy of the truth drift.
+    """
+    default, local = _default_config(), _local_config()
+    flat_default, flat_local = flatten(default), flatten(local)
+    if key not in flat_default and key not in flat_local:
+        return False, f"Такого ключа немає: «{key[:60]}». Форма не вигадує налаштувань."
+    current = flat_local.get(key, flat_default.get(key))
+    if not editable(key, current, masked_keys()):
+        if is_masked(key, masked_keys()):
+            return False, "Це особисте значення — ставиться лише з термінала."
+        if any(key == p or key.startswith(p + ".") for p in NO_EDIT_PREFIXES):
+            return False, ("Дозволи змінюються лише з термінала: "
+                           "tools/permissions.py set <ключ> <рівень>.")
+        return False, "Списки й блоки тут не редагуються."
+    ok, value = _parse_like(raw, current)
+    if not ok:
+        kind = {bool: "так/ні", int: "ціле число", float: "число"}.get(
+            type(current), "рядок")
+        return False, f"Не читається як {kind}: «{(raw or '')[:40]}»."
+    node = local
+    for part in key.split(".")[:-1]:
+        node = node.setdefault(part, {})
+        if not isinstance(node, dict):
+            return False, "Шлях конфліктує з уже наявним значенням."
+    node[key.split(".")[-1]] = value
+    atomic_write_text(LOCAL, json.dumps(local, ensure_ascii=False, indent=2) + "\n")
+    return True, f"{key} = {value_text(value)}; діє після перезапуску того, хто це читає."
+
+
+def reset_setting(key: str) -> tuple[bool, str]:
+    """Remove an override so the committed default takes over again. Empty parent blocks
+    are pruned: a trail of `{}` left behind is noise that looks like configuration."""
+    local = _local_config()
+    parts = key.split(".")
+    chain, node = [], local
+    for part in parts[:-1]:
+        if not isinstance(node, dict) or part not in node:
+            return False, f"Локального перевизначення для «{key[:60]}» немає."
+        chain.append((node, part))
+        node = node[part]
+    if not isinstance(node, dict) or parts[-1] not in node:
+        return False, f"Локального перевизначення для «{key[:60]}» немає."
+    node.pop(parts[-1])
+    for parent, part in reversed(chain):
+        if isinstance(parent.get(part), dict) and not parent[part]:
+            parent.pop(part)
+    atomic_write_text(LOCAL, json.dumps(local, ensure_ascii=False, indent=2) + "\n")
+    return True, f"{key} повернуто до типового; діє після перезапуску."
+
+
 def setting_rows(default: dict, local: dict, masked: list[str]) -> list[dict]:
     """One row per setting: the default, what actually wins, and where it came from.
 
@@ -98,6 +210,11 @@ def setting_rows(default: dict, local: dict, masked: list[str]) -> list[dict]:
             "overridden": in_local and key in flat_default,
             "local_only": in_local and key not in flat_default,
             "hidden": hidden,
+            "editable": editable(key, effective, masked),
+            "raw": "" if hidden or not isinstance(
+                effective, (str, int, float, bool)) else
+                ("on" if effective is True else "off" if effective is False
+                 else str(effective)),
         })
     return rows
 
@@ -160,7 +277,7 @@ def permission_mode(start_text: str) -> str:
 
 
 def permissions(start_text: str, settings: list[tuple[str, dict]],
-                inbox: dict) -> dict:
+                inbox: dict, levels: dict | None = None) -> dict:
     """The effective policy, with the file each part of it comes from.
 
     An absent allow/deny list is reported as absent. Rendering it as «0 правил» would read
@@ -180,6 +297,7 @@ def permissions(start_text: str, settings: list[tuple[str, dict]],
         "lists": lists,
         "inbox": {"max_per_hour": (inbox or {}).get("max_per_hour", 0)},
         "rules": standing_rules(),
+        "levels": dict(levels or {}),
     }
 
 

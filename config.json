@@ -244,6 +244,16 @@
       "status/topics"
     ]
   },
+  "permissions_": "What may happen without asking — the one machine-readable copy of it (tools/permissions.py, t1102). start.sh renders this into the system prompt, so a change binds once the session restarts; the panel shows the levels and offers no switch, because permissions, secrets and tokens are set from the terminal only (the owner's standing rule). Levels: free | ask | never; anything unrecognised reads as never. Three rules are hard and absent from this block on purpose — see tools/permissions.py HARD.",
+  "permissions": {
+    "mail.send": "ask",
+    "calendar.create": "free",
+    "calendar.edit_foreign": "never",
+    "files.delete": "ask",
+    "git.push": "ask",
+    "ops.restart": "ask",
+    "spend.model": "free"
+  },
   "panel": {
     "_": "The admin panel (panel/server.py, noos-panel.service). 8090 belongs to the matrix-agora panel. There is no authentication, so `host` decides who can reach it: 127.0.0.1 (an SSH tunnel only), `tailscale` (the owner's own devices), or 0.0.0.0 (every device on the local network). The owner chose the last one on 2026-10-31 — he works from another machine on the same Wi-Fi — knowing the board is unauthenticated. See docs/features/ADMIN-PANEL.md.",
     "host": "0.0.0.0",

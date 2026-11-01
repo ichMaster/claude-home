@@ -3,9 +3,11 @@
 # If claude exits, restart it after 5 seconds.
 export PATH="$HOME/.bun/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
 cd "$HOME/claude-home" || exit 1
-# System prompt = persona plus the pinned facts from memory/facts/
+# System prompt = persona + pinned facts + the permission block (tools/permissions.py,
+# t1102: the one machine-readable copy of what may happen without asking)
 PROMPT="$(cat "$HOME/claude-home/persona.md")
-$("$HOME/claude-home/.venv-voice/bin/python" "$HOME/claude-home/memory/facts.py" prompt 2>/dev/null)"
+$("$HOME/claude-home/.venv-voice/bin/python" "$HOME/claude-home/memory/facts.py" prompt 2>/dev/null)
+$("$HOME/claude-home/.venv-voice/bin/python" "$HOME/claude-home/tools/permissions.py" prompt 2>/dev/null)"
 
 # A handoff note from restart-summary.sh: the thread of the previous session, carried
 # into an otherwise clean context. Consumed once, then archived.

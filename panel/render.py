@@ -686,7 +686,9 @@ def render_soon(title: str, href: str, phase: str) -> str:
 
 # --- screen 8: Rules (read-only) ------------------------------------------------------------
 
-def _settings_table(rows: list[dict], query: str = "") -> str:
+def _settings_table(rows: list[dict], token: str = "") -> str:
+    """The table, with a field where editing is allowed (t1102) and plain text where it is
+    not — a masked value, a permission, a list or a block."""
     if not rows:
         return '<p class="empty">Налаштувань не видно.</p>'
     out = ['<table class="settings"><tr><th>ключ<th>чинне<th>типове<th>звідки</tr>']
@@ -699,8 +701,19 @@ def _settings_table(rows: list[dict], query: str = "") -> str:
             source = '<span class="warn">перевизначено</span>'
         else:
             source = '<span class="dim">типове</span>'
+        if token and r.get("editable"):
+            reset = ('<button type="submit" name="action" value="reset">типове</button>'
+                     if r["overridden"] or r["local_only"] else "")
+            cell = (f'<form method="post" action="/rules" class="inline">'
+                    f'<input type="hidden" name="token" value="{e(token)}">'
+                    f'<input type="hidden" name="key" value="{e(r["key"])}">'
+                    f'<input name="value" value="{e(r["raw"])}" size="14">'
+                    f'<button type="submit" name="action" value="save">зберегти</button>'
+                    f'{reset}</form>')
+        else:
+            cell = e(r["value"])
         out.append(f'<tr><td class="id">{e(r["key"])}'
-                   f'<td class="text">{e(r["value"])}'
+                   f'<td class="text">{cell}'
                    f'<td class="text dim">{e(r["default"]) or "—"}'
                    f'<td>{source}</tr>')
     return "".join(out) + "</table>"
@@ -726,10 +739,27 @@ def _permissions_block(p: dict) -> str:
                  'і правила нижче.</p>')
     inbox = (f'<p>Боти: не більше {int(p["inbox"]["max_per_hour"])} відповідей на годину '
              f'на бота, лише в чат власника, без інструментів.</p>')
+    levels = ""
+    if p.get("levels"):
+        # a level may arrive alone or with its description — the screen takes either, so
+        # a caller that knows only the levels is not forced to invent the prose
+        rows = []
+        for key, got in sorted(p["levels"].items()):
+            lvl, what = got if isinstance(got, (tuple, list)) else (got, "")
+            rows.append(f'<tr><td class="id">{e(key)}<td class="text">{e(what)}'
+                        f'<td class="text">{e(lvl)}</tr>')
+        rows = "".join(rows)
+        levels = ('<h3 class="stage">Дозволи, які читає сесія</h3>'
+                  f'<table class="perms">{rows}</table>'
+                  '<p class="dim">Цей блок іде в системну підказку (start.sh → '
+                  '<code>tools/permissions.py prompt</code>), тому зміна діє після '
+                  'перезапуску сесії. Перемикачів тут немає свідомо: дозволи, секрети '
+                  'й токени ставляться лише з термінала — '
+                  '<code>tools/permissions.py set &lt;ключ&gt; &lt;рівень&gt;</code>.</p>')
     rules = "".join(
         f'<tr><td class="text">{e(r["rule"])}'
         f'<td class="id dim">{e(r["source"])}</tr>' for r in p["rules"])
-    return (mode + lists + inbox +
+    return (mode + lists + inbox + levels +
             '<h3 class="stage">Правила, які діють текстом</h3>'
             f'<table class="perms">{rules}</table>'
             '<p class="dim">Змінюються лише з терміналу: панель не має підпису, '
@@ -800,7 +830,7 @@ def _keys_table(rows: list[dict]) -> str:
 
 def render_rules(settings: list[dict], perms: dict, schedule: list[dict],
                  keys: list[dict], journal: str = "", unit: str = "",
-                 filtered: bool = False) -> str:
+                 filtered: bool = False, token: str = "", message: str = "") -> str:
     """Screen 8 — what governs the assistant. Reads only: this page carries no form, and
     that is the phase's whole decision (the owner, 2026-11-01). Editing is phase 10, after
     the panel has authentication — until then a write here would be made with the owner's
@@ -815,11 +845,14 @@ def render_rules(settings: list[dict], perms: dict, schedule: list[dict],
                 f'<code>journalctl --user -u {e(unit)}</code></p>') if filtered else ""
     log = (f'<h3 class="stage">Журнал · {e(unit)}</h3>{withheld}'
            f'<pre class="journal">{e(journal)}</pre>' if journal else "")
+    head = (f'<p class="note">{e(message)}</p>' if message else "") + (
+        '<p class="dim">Налаштування редагуються тут; дозволи, особисті значення '
+        'і ключі — лише з термінала.</p>' if token else
+        '<p class="note">Цей екран лише показує.</p>')
     body = (
-        "<h1>Правила</h1>"
-        '<p class="note">Цей екран лише показує. Редагування — окрема фаза, '
-        'після того як панель отримає автентифікацію.</p>'
-        f"<section><h2>Налаштування</h2>{counters}{_settings_table(settings)}</section>"
+        "<h1>Правила</h1>" + head +
+        f"<section><h2>Налаштування</h2>{counters}"
+        f"{_settings_table(settings, token)}</section>"
         f"<section><h2>Дозволи</h2>{_permissions_block(perms)}</section>"
         f"<section><h2>Розклад</h2>{_schedule_table(schedule, unit)}{log}</section>"
         f"<section><h2>Ключі</h2>{_keys_table(keys)}</section>")
