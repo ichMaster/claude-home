@@ -1062,3 +1062,61 @@ def render_scenarios(rows: list[dict], token: str, message: str = "") -> str:
             'скрипт, що й таймер. Довгий іде відчепленим, сухий прогін — тут же.</p>'
             + "".join(_scenario_card(r, token) for r in rows))
     return page("Сценарії", body, "/scenarios")
+
+
+# --- screen 11: Sent (t1119) ----------------------------------------------------------------
+
+def _sent_table(rows: list[dict], bodies: bool) -> str:
+    if not rows:
+        return '<p class="empty">Ще нічого не надсилалось — або журнал тільки почався.</p>'
+    out = ['<table class="sentlog"><tr><th>коли<th>бот<th>що<th>голос<th>доставка'
+           + ("<th>текст" if bodies else "") + "</tr>"]
+    for r in rows:
+        ts = str(r.get("ts") or "")
+        when = (ts[5:16].replace("T", " ")) if len(ts) >= 16 else ts
+        codes = r.get("codes") or {}
+        if r.get("ok", True):
+            delivery = '<span class="dim">200</span>'
+        else:
+            shown = ", ".join(f"{k}: {e(v)}" for k, v in codes.items()) or "невідомо"
+            delivery = f'<span class="alert">{shown}</span>'
+        body = (f'<td class="text">{e((r.get("text") or "")[:400])}' if bodies else "")
+        out.append(f'<tr><td class="age">{e(when)}'
+                   f'<td class="id">{e(r.get("bot") or "main")}'
+                   f'<td class="id">{e(r.get("kind")) or "—"}'
+                   f'<td class="age">{"голос" if r.get("voice") else "—"}'
+                   f' · {r.get("chars", 0)} зн.'
+                   f'<td>{delivery}{body}</tr>')
+    return "".join(out) + "</table>"
+
+
+def render_sent(rows: list[dict], counts: dict, bots: list[str], kinds: list[str],
+                bot: str = "", kind: str = "", bodies: bool = False) -> str:
+    """Screen 11 — the one question nothing else answers: did it say anything?
+
+    A timer that ran and stayed silent is indistinguishable from one that worked, in
+    `systemctl` and in the journal alike. Here the silence is visible — and the bodies stay
+    behind `panel.sent_bodies`, because a digest's text is the owner's calendar (t1119).
+    """
+    def links(name: str, values: list[str], current: str) -> str:
+        if not values:
+            return ""
+        all_link = ('усі' if not current else
+                    f'<a href="/sent?{e(name)}=">усі</a>')
+        parts = [all_link] + [
+            (f'<b>{e(v)}</b>' if v == current else
+             f'<a href="/sent?{e(name)}={e(v)}">{e(v)}</a>') for v in values]
+        return f'<p class="dim">{e(name)}: ' + " · ".join(parts) + "</p>"
+
+    note = ('<p class="dim">Показано метадані. Текст повідомлень приховано: у дайджесті це '
+            'твій календар і пошта. Увімкнути — <code>panel.sent_bodies</code>.</p>'
+            if not bodies else
+            '<p class="warn">Текст повідомлень показано '
+            '(<code>panel.sent_bodies</code>) — на цій сторінці видно те саме, що в чаті.</p>')
+    head = (f'<p>{counts["total"]} повідомлень у журналі, з них {counts["voice"]} з '
+            f'голосом' + (f', <span class="alert">{counts["failed"]} не доставлено</span>'
+                          if counts["failed"] else ", усі доставлені") + ".</p>")
+    body = ("<h1>Надіслане</h1>" + head + note
+            + links("bot", bots, bot) + links("kind", kinds, kind)
+            + f"<section>{_sent_table(rows, bodies)}</section>")
+    return page("Надіслане", body, "/sent")

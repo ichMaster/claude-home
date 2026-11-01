@@ -183,15 +183,14 @@ def test_static_cannot_escape_its_directory(attack):
     assert server.static_file(attack) is None
 
 
-def test_unknown_screens_name_their_phase():
-    """A screen that is not built yet says which phase builds it — honest beats blank.
-    Only the chat screen is left, and phase 9 turned it into the Sent log (t1098)."""
-    html = render.render_soon("Надіслане", "/sent", server.SOON["/sent"])
-    assert "фаза 9" in html and "Надіслане" in html
-    assert "/chat" not in dict(render.SCREENS), \
-        "the rail must not advertise the screen t1098 refused"
-    for built in ("/zirka", "/bruno", "/changes", "/rules", "/prompt", "/scenarios"):
-        assert built not in server.SOON, "a built screen must not keep a placeholder"
+def test_no_screen_is_a_placeholder_any_more():
+    """Phase 9 built the last one (t1119). The placeholder renderer stays — it is how a
+    future screen announces itself — but nothing points at it now."""
+    assert server.SOON == {}
+    for href, _name in render.SCREENS:
+        assert href not in server.SOON
+    html = render.render_soon("Колись", "/somewhere", "фаза 12")
+    assert "фаза 12" in html and "Колись" in html
 
 
 # --- t1056: probes_now stamps `checked` from the cache mtime --------------------------------

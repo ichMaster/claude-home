@@ -1,6 +1,6 @@
 # Admin panel — functionality and design
 
-Status: ten of eleven screens built (phases 1-8, 10, 11). Phase 9 — Sent — is the only one outstanding.
+Status: all eleven screens built (phases 1-11), 2026-11-01. What is left is not a phase: TLS, and the decision to narrow the bind back to the tailnet.
 Target: v5 of [ROADMAP.md](../ROADMAP.md).
 
 ## Why a panel at all
@@ -159,7 +159,7 @@ not delete one.
   each was first seen — a Low named in a fix report is not listed.
 - **Журнал змін** in full, with a search over weeks rather than over the display window.
 
-### 11. Sent — not built (phase 9)
+### 11. Sent
 
 Reworked on the owner's request (2026-11-01), replacing the chat screen the same owner had
 asked for a day earlier. The reasoning that killed it is his own usage: **he listens, he does
@@ -174,8 +174,12 @@ is unanswerable today except by scrolling a phone.
 
 - **`notify.sh` appends one line per outgoing message** to `status/state/chat-log.jsonl`:
   when, which bot, what kind (probe, digest, forecast, reminder, restart, answer), the
-  delivery result, whether voice went with it and how long it was. Append-only, like the
-  change log.
+  delivery result — Telegram's own HTTP code, not an assumption — and whether voice went
+  with it. The **kind** is the calling script's own name when no `--kind` is given, read from
+  the parent process, so a digest says `digest-headless.sh` and a reminder says `remind.py`
+  without a single caller being changed; a throwaway wrapper in `/tmp` is not recorded as a
+  sender. The chat id is deliberately not stored: the bot's name says where it went. Trimmed
+  to the newest `sent.max_lines` on append — a record, not an archive.
 - **The screen reads that log**, newest first, with a filter by bot and by kind, and shows
   **metadata by default — not the body.** This is deliberate and it is the lesson of t1094:
   the text of a digest *is* the owner's calendar and mail. The body is shown only when
@@ -324,7 +328,7 @@ no write path.
 disclosure, not corruption, and both are tested: a personal value out of
 `config.local.json` and anything out of an `.env` file beyond a variable name.
 
-**Phase 9 — Sent.** (~2 h) — **the only one outstanding**
+**Phase 9 — Sent.** (~2 h) — **done 2026-11-01**
 Screen 11: the log of what the system actually said. First `notify.sh` learns to append every
 outgoing message to `status/state/chat-log.jsonl` — that is most of the work and it is useful
 with no screen at all — then the screen reads it: newest first, filtered by bot and kind,

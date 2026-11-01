@@ -171,7 +171,7 @@ source of truth for events; the board shows them and can unlink.
 calendar. Drag was refused — it needs a frontend framework this design forbids — so a date
 changes through the «на вихідні» / «на тиждень» buttons instead.
 
-### v5.6 Sent
+### v5.6 Sent (done 2026-11-01)
 
 **Goal:** know what the system actually said.
 
@@ -182,11 +182,14 @@ replaces the chat screen asked for on 2026-10-31 and dropped on 2026-11-01: the 
 listens rather than reads, so a send box in the panel would duplicate a worse channel and
 be the only outward write on an unauthenticated port.
 
-**DoD:** "did the 20:03 digest say anything, or did it run and stay silent" is answerable
-without a phone.
+**DoD (met):** "did the 20:03 digest say anything, or did it run and stay silent" is
+answerable without a phone — and a message Telegram refused is visible as refused, which is
+the half that justifies keeping a log at all.
 
-**Tests:** a message with no voice and a failed delivery both appear correctly; the body is
-hidden unless `panel.sent_bodies` is on.
+**Tests:** 21 in `tests/test_sent.py` — the record's shape, `ok` following Telegram's codes
+rather than an assumption, the kind falling back to the calling script (and ignoring a /tmp
+wrapper), the trim keeping the line just written, a torn line skipped, the filters, the
+counters, and the body hidden unless `panel.sent_bodies` is on.
 
 ### v5.7 Authentication (done 2026-11-01)
 

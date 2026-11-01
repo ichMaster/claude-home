@@ -812,6 +812,14 @@ and `start.sh` appends it to the system prompt, so a change binds at the next re
 panel's Prompt screen shows it as a part. Three rules are hard and are not switches:
 `secrets.reveal`, `rules.from_chat`, `changelog.edit`. An unrecognised level reads as `never`.
 
+**What was sent is recorded.** `notify.sh` appends one line per outgoing message to
+`status/state/chat-log.jsonl` (`status/tools/sent_log.py`): when, which bot, what kind,
+Telegram's own HTTP code, whether voice went with it, the length and the text. `--kind <name>`
+labels a message; without it the log records the calling script's name. Screen 11 reads it and
+shows **metadata only** unless `panel.sent_bodies` is on — a digest's text is the owner's
+calendar and mail. This is how "did the 20:03 digest say anything, or did it run and stay
+silent" became answerable: in `systemctl` those two look identical.
+
 **A screen must never state something false.** A wrong value shown confidently is worse than
 a blank: an unknown age renders as unknown, an unparsed report as «не розібрано», a missing
 record as «не записано», and a value that must not be shown as «значення приховано». The three

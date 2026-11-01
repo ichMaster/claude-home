@@ -398,3 +398,9 @@ form.editor button:hover, .settings form.inline button:hover,
   font-family: var(--mono);
   font-size: 12px;
 }
+
+/* --- screen 11: sent (t1119) ------------------------------------------------------ */
+
+.sentlog td { vertical-align: top; }
+.sentlog td.age { font-size: 12px; }
+.sentlog td.text { width: 100%; font-size: 12px; }

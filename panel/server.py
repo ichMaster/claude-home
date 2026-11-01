@@ -43,6 +43,7 @@ import auth                                                            # noqa: E
 import prompt_screen                                                   # noqa: E402
 import render                                                          # noqa: E402
 import rules_screen                                                    # noqa: E402
+import sent_screen                                                      # noqa: E402
 import sources_screen                                                  # noqa: E402
 import tasks_screen                                                    # noqa: E402
 import zirka                                                           # noqa: E402
@@ -52,9 +53,7 @@ STATIC = Path(__file__).resolve().parent / "static"
 # and only to a unit systemd itself named (t1103).
 UNIT_DIR = Path.home() / ".config" / "systemd" / "user"
 # screen → the phase that builds it, for the placeholder pages
-SOON = {
-    "/sent": "фаза 9",
-}
+SOON: dict[str, str] = {}          # every screen is built
 TITLES = dict(render.SCREENS)
 
 
@@ -884,6 +883,16 @@ def permission_levels() -> dict:
         return {}
 
 
+def sent_html(bot: str = "", kind: str = "") -> str:
+    """Screen 11. Read-only, and the bodies stay behind `panel.sent_bodies` (t1119)."""
+    everything = sent_screen.rows()
+    shown = sent_screen.rows(bot=bot, kind=kind,
+                             limit=int(conf("panel.sent_shown", 200)))
+    return render.render_sent(shown, sent_screen.counters(everything),
+                              sent_screen.bots(everything), sent_screen.kinds(everything),
+                              bot, kind, bodies=sent_screen.bodies_shown())
+
+
 def rules_html(unit: str = "", message: str = "") -> str:
     """Screen 8. Read-only — no form, no write path, nothing to press but a journal link."""
     default, local = _raw_config()
@@ -1017,6 +1026,11 @@ class Handler(BaseHTTPRequestHandler):
                     urllib.parse.urlparse(self.path).query).get("m", [""])[0]
                 return self._send(200, scenarios_html(message[:2000]).encode("utf-8"),
                                   "text/html; charset=utf-8")
+            if path == "/sent":
+                q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                return self._send(200, sent_html(q.get("bot", [""])[0][:40],
+                                                 q.get("kind", [""])[0][:60])
+                                  .encode("utf-8"), "text/html; charset=utf-8")
             if path == "/rules":
                 q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
                 return self._send(200, rules_html(q.get("unit", [""])[0][:80],
