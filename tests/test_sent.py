@@ -189,3 +189,179 @@ def test_notify_sh_appends_to_the_log():
     text = (ROOT / "notify.sh").read_text(encoding="utf-8")
     assert "sent_log.py" in text
     assert "http_code" in text, "the delivery result has to be captured, not assumed"
+
+
+# --- t1121: the failure the log exists for (phase-9 review H1, M1-M5) --------------------
+
+SHIM = '''#!/bin/bash
+# a curl that answers the way the stubs say, including failing like a network does
+if [ -n "${STUB_FAIL:-}" ]; then echo "curl: stubbed network error" >&2; exit "$STUB_FAIL"; fi
+case "$*" in
+  *sendVoice*) [ -n "${STUB_VOICE_FAIL:-}" ] && { echo "curl: boom" >&2; exit "$STUB_VOICE_FAIL"; }
+               printf '%s' "${STUB_VOICE_CODE:-200}" ;;
+  *) [ -n "${STUB_TEXT_FAIL:-}" ] && { echo "curl: boom" >&2; exit "$STUB_TEXT_FAIL"; }
+     printf '%s' "${STUB_TEXT_CODE:-200}" ;;
+esac
+'''
+
+
+@pytest.fixture
+def offline(tmp_path):
+    """`notify.sh` with every outward call stubbed: no Telegram, no ElevenLabs, no network.
+
+    The wiring used to be "tested" by grepping notify.sh for two substrings, which is how
+    H1, M1 and M2 all survived the suite (phase-9 review M5).
+    """
+    home = tmp_path / "home"
+    repo = home / "claude-home"
+    (repo / "voice").mkdir(parents=True)
+    (repo / "status" / "tools").mkdir(parents=True)
+    (repo / "status" / "state").mkdir(parents=True)
+    for name in ("notify.sh", "config.sh", "config.json"):
+        (repo / name).write_bytes((ROOT / name).read_bytes())
+    (repo / "notify.sh").chmod(0o755)
+    (repo / "status" / "tools" / "sent_log.py").write_bytes(
+        (ROOT / "status" / "tools" / "sent_log.py").read_bytes())
+    (repo / "noosconf.py").write_bytes((ROOT / "noosconf.py").read_bytes())
+    (repo / ".env.telegram").write_text(
+        "TELEGRAM_BOT_TOKEN=stub\nTELEGRAM_CHAT_ID=1\n", encoding="utf-8")
+    (repo / "voice" / "el_say.sh").write_text(
+        '#!/bin/bash\n[ -n "${STUB_EL_FAIL:-}" ] && exit "$STUB_EL_FAIL"\n'
+        'printf x > "$1"\n', encoding="utf-8")
+    (repo / "voice" / "el_say.sh").chmod(0o755)
+    (repo / "voice" / "to_ogg.py").write_text("import sys, pathlib\n"
+                                              "pathlib.Path(sys.argv[2]).write_text('x')\n",
+                                              encoding="utf-8")
+    venv = repo / ".venv-voice" / "bin"
+    venv.mkdir(parents=True)
+    (venv / "python").symlink_to(sys.executable)
+    shim = tmp_path / "bin"
+    shim.mkdir()
+    (shim / "curl").write_text(SHIM, encoding="utf-8")
+    (shim / "curl").chmod(0o755)
+    return repo, shim
+
+
+def run_notify(offline, args, **stubs):
+    repo, shim = offline
+    env = dict(os.environ)
+    env.update({"HOME": str(repo.parent), "PATH": f"{shim}:{env['PATH']}"})
+    env.update({k: str(v) for k, v in stubs.items()})
+    out = subprocess.run(["./notify.sh", *args], cwd=str(repo), env=env,
+                         capture_output=True, text=True, timeout=120)
+    log = repo / "status" / "state" / "chat-log.jsonl"
+    rows = [json.loads(x) for x in log.read_text(encoding="utf-8").splitlines()
+            if x.strip()] if log.exists() else []
+    return out, rows
+
+
+def test_a_refused_message_is_recorded(offline):
+    out, rows = run_notify(offline, ["--no-voice", "x"], STUB_TEXT_CODE=400)
+    assert rows and rows[0]["ok"] is False and rows[0]["codes"]["text"] == 400
+
+
+def test_a_transport_failure_is_recorded(offline):
+    """H1: `code=$(curl …)` under `set -e` aborted the script before the log, so the most
+    likely failure of all — Telegram unreachable — was the one the log could not show."""
+    out, rows = run_notify(offline, ["--no-voice", "z"], STUB_TEXT_FAIL=28)
+    assert rows, "a message that never left must still be recorded"
+    assert rows[0]["ok"] is False
+    assert rows[0].get("error"), "and it must say it was a transport failure, not a refusal"
+
+
+def test_a_delivered_text_survives_a_failed_voice_call(offline):
+    """H1's second half: the text went out, the voice call could not connect, and the whole
+    record — including the delivered part — disappeared."""
+    out, rows = run_notify(offline, ["w"], STUB_VOICE_FAIL=7)
+    assert rows and rows[0]["codes"].get("text") == 200
+    assert rows[0]["ok"] is False and rows[0].get("error")
+
+
+def test_a_refused_synthesis_is_recorded(offline):
+    out, rows = run_notify(offline, ["v"], STUB_EL_FAIL=1)
+    assert rows and rows[0]["codes"].get("text") == 200 and rows[0]["ok"] is False
+
+
+def test_one_message_makes_exactly_one_record(offline):
+    out, rows = run_notify(offline, ["ok-path"])
+    assert len(rows) == 1 and rows[0]["ok"] is True
+    assert rows[0]["codes"] == {"text": 200, "voice": 200}
+
+
+def test_the_kind_comes_from_the_environment_when_a_model_sends(offline):
+    """M1: four units send through `claude -p`, where the parent is a harness shell and the
+    script name is nowhere in the tree. The wrappers export NOOS_SENT_KIND instead."""
+    out, rows = run_notify(offline, ["--no-voice", "x"],
+                           NOOS_SENT_KIND="digest-headless.sh")
+    assert rows[0]["kind"] == "digest-headless.sh"
+
+
+def test_an_explicit_kind_wins_over_the_environment(offline):
+    out, rows = run_notify(offline, ["--kind", "ручне", "--no-voice", "x"],
+                           NOOS_SENT_KIND="digest-headless.sh")
+    assert rows[0]["kind"] == "ручне"
+
+
+def test_the_bot_recorded_is_the_bot_used(offline):
+    """M2: on the token fallback the record named a chat the message never reached — and the
+    chat id was dropped on the strength of that field."""
+    out, rows = run_notify(offline, ["--bot", "nonexistent", "--no-voice", "x"])
+    assert rows[0]["bot"] == "main"
+    assert rows[0].get("asked") == "nonexistent", "and it says what was asked for"
+
+
+def test_the_headless_wrappers_name_their_kind():
+    """The four model-driven senders, where the fallback cannot work."""
+    for name in ("digest-headless.sh", "youtube-headless.sh", "social-headless.sh",
+                 "code-review-headless.sh"):
+        text = (ROOT / "status" / name).read_text(encoding="utf-8")
+        assert "NOOS_SENT_KIND" in text, name
+
+
+def test_concurrent_appends_at_the_cap_lose_nothing(tmp_path, monkeypatch):
+    """M3: the trim is a read-modify-write, and 11-15 of 20 records vanished."""
+    import threading
+    log = tmp_path / "chat-log.jsonl"
+    monkeypatch.setattr(sent_log, "LOG", log)
+    monkeypatch.setattr(sent_log, "max_lines", lambda: 10)
+    monkeypatch.setattr(sent_log, "caller", lambda: "t")
+
+    def write(i):
+        sent_log.append(bot="main", kind="k", text=f"м{i}", codes={"text": 200},
+                        voice=False)
+
+    threads = [threading.Thread(target=write, args=(i,)) for i in range(20)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    lines = [json.loads(x) for x in log.read_text(encoding="utf-8").splitlines()
+             if x.strip()]
+    assert len(lines) == 10, f"{len(lines)} lines kept"
+    assert all(json.dumps(r, ensure_ascii=False) for r in lines), "every line parses"
+
+
+def test_a_filter_link_survives_a_hostile_kind():
+    """M4: the links were escaped for HTML and not encoded for a URL, so the screen's own
+    link answered «ще нічого» about a record that exists."""
+    rows = [row(kind="a&b+c#d")]
+    html = render.render_sent(rows, sent_screen.counters(rows), ["main"], ["a&b+c#d"],
+                              "", "", bodies=False)
+    assert "a%26b%2Bc%23d" in html
+
+
+def test_a_record_of_the_wrong_shape_does_not_down_the_screen():
+    """Low, but the screen must not 500 on a line it does not understand."""
+    rows = [{"ts": 12345, "bot": None, "codes": "200", "chars": "кілька"}]
+    html = render.render_sent(rows, {"total": 1, "voice": 0, "failed": 0}, [], [], "",
+                              "", bodies=True)
+    assert "Надіслане" in html
+
+
+def test_the_log_is_created_private(tmp_path, monkeypatch):
+    """It holds the text of every message sent — the most personal file in status/state."""
+    log = tmp_path / "chat-log.jsonl"
+    monkeypatch.setattr(sent_log, "LOG", log)
+    monkeypatch.setattr(sent_log, "caller", lambda: "t")
+    sent_log.append(bot="main", kind="k", text="t", codes={"text": 200}, voice=False)
+    assert oct(log.stat().st_mode & 0o777) == "0o600"

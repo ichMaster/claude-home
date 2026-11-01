@@ -815,7 +815,9 @@ panel's Prompt screen shows it as a part. Three rules are hard and are not switc
 **What was sent is recorded.** `notify.sh` appends one line per outgoing message to
 `status/state/chat-log.jsonl` (`status/tools/sent_log.py`): when, which bot, what kind,
 Telegram's own HTTP code, whether voice went with it, the length and the text. `--kind <name>`
-labels a message; without it the log records the calling script's name. Screen 11 reads it and
+labels a message, and `NOOS_SENT_KIND` does the same for a whole session — which is how the
+four headless senders label themselves, since a model has no script name in the process tree.
+Without either, the log records the calling script's name. Screen 11 reads it and
 shows **metadata only** unless `panel.sent_bodies` is on — a digest's text is the owner's
 calendar and mail. This is how "did the 20:03 digest say anything, or did it run and stay
 silent" became answerable: in `systemctl` those two look identical.

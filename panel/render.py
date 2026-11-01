@@ -1072,20 +1072,29 @@ def _sent_table(rows: list[dict], bodies: bool) -> str:
     out = ['<table class="sentlog"><tr><th>коли<th>бот<th>що<th>голос<th>доставка'
            + ("<th>текст" if bodies else "") + "</tr>"]
     for r in rows:
+        if not isinstance(r, dict):
+            continue                      # a line this screen does not understand, not a 500
         ts = str(r.get("ts") or "")
         when = (ts[5:16].replace("T", " ")) if len(ts) >= 16 else ts
-        codes = r.get("codes") or {}
-        if r.get("ok", True):
-            delivery = '<span class="dim">200</span>'
+        codes = r.get("codes") if isinstance(r.get("codes"), dict) else {}
+        shown = ", ".join(f"{e(k)}: {e(v)}" for k, v in codes.items())
+        if "ok" not in r:
+            delivery = '<span class="dim">невідомо</span>'
+        elif r.get("ok"):
+            delivery = f'<span class="dim">{shown or "надіслано"}</span>'
         else:
-            shown = ", ".join(f"{k}: {e(v)}" for k, v in codes.items()) or "невідомо"
-            delivery = f'<span class="alert">{shown}</span>'
-        body = (f'<td class="text">{e((r.get("text") or "")[:400])}' if bodies else "")
+            why = e(r.get("error") or "")
+            delivery = (f'<span class="alert">{shown or "не дійшло"}</span>'
+                        + (f'<br><span class="dim">{why}</span>' if why else ""))
+        asked = (f'<br><span class="warn">просили: {e(r.get("asked"))}</span>'
+                 if r.get("asked") else "")
+        text = r.get("text")
+        body = (f'<td class="text">{e(str(text)[:400] if text else "")}' if bodies else "")
         out.append(f'<tr><td class="age">{e(when)}'
-                   f'<td class="id">{e(r.get("bot") or "main")}'
+                   f'<td class="id">{e(r.get("bot") or "main")}{asked}'
                    f'<td class="id">{e(r.get("kind")) or "—"}'
                    f'<td class="age">{"голос" if r.get("voice") else "—"}'
-                   f' · {r.get("chars", 0)} зн.'
+                   f' · {e(r.get("chars", 0))} зн.'
                    f'<td>{delivery}{body}</tr>')
     return "".join(out) + "</table>"
 
@@ -1099,13 +1108,18 @@ def render_sent(rows: list[dict], counts: dict, bots: list[str], kinds: list[str
     behind `panel.sent_bodies`, because a digest's text is the owner's calendar (t1119).
     """
     def links(name: str, values: list[str], current: str) -> str:
+        """A filter link needs URL encoding as well as HTML escaping: a kind holding `&`,
+        `+` or `#` made the screen's own link answer «ще нічого» about a record that is
+        there (t1121)."""
         if not values:
             return ""
+        from urllib.parse import quote
         all_link = ('усі' if not current else
-                    f'<a href="/sent?{e(name)}=">усі</a>')
+                    f'<a href="/sent?{quote(name)}=">усі</a>')
         parts = [all_link] + [
             (f'<b>{e(v)}</b>' if v == current else
-             f'<a href="/sent?{e(name)}={e(v)}">{e(v)}</a>') for v in values]
+             f'<a href="/sent?{quote(name)}={quote(v, safe="")}">{e(v)}</a>')
+            for v in values]
         return f'<p class="dim">{e(name)}: ' + " · ".join(parts) + "</p>"
 
     note = ('<p class="dim">Показано метадані. Текст повідомлень приховано: у дайджесті це '
@@ -1114,8 +1128,12 @@ def render_sent(rows: list[dict], counts: dict, bots: list[str], kinds: list[str
             '<p class="warn">Текст повідомлень показано '
             '(<code>panel.sent_bodies</code>) — на цій сторінці видно те саме, що в чаті.</p>')
     head = (f'<p>{counts["total"]} повідомлень у журналі, з них {counts["voice"]} з '
-            f'голосом' + (f', <span class="alert">{counts["failed"]} не доставлено</span>'
-                          if counts["failed"] else ", усі доставлені") + ".</p>")
+            f'голосом' + (f', <span class="alert">{counts["failed"]} не дійшло</span>'
+                          if counts["failed"] else ", усі дійшли") + ".</p>"
+            + (f'<p class="dim">Нижче показано {len(rows)} за фільтром.</p>'
+               if (bot or kind) else
+               (f'<p class="dim">Нижче показано останні {len(rows)}.</p>'
+                if len(rows) < counts["total"] else "")))
     body = ("<h1>Надіслане</h1>" + head + note
             + links("bot", bots, bot) + links("kind", kinds, kind)
             + f"<section>{_sent_table(rows, bodies)}</section>")

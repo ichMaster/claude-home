@@ -14,7 +14,8 @@
 #   notify.sh --voice-text "spoken" "text"
 #                                — the text goes out as written, the voice reads "spoken"
 #                                  instead (a long report with a short spoken digest)
-#   notify.sh --kind <name> "text"
+#   notify.sh --kind <name> "text"   (or the NOOS_SENT_KIND environment variable, which is
+#                                  how the four headless senders label themselves)
 #                                — label this message in the Sent log (status/state/
 #                                  chat-log.jsonl); without it the log records the calling
 #                                  script's own name
@@ -32,7 +33,8 @@ cfg="$HOME/claude-home/.env.telegram"
 set -a; . "$cfg"; set +a
 
 voice=1; text_only=1; silent=""; quiet=0; vtext=""; vname=""; vprof=""; bot=""
-kind=""; text_code=""; voice_code=""
+kind="${NOOS_SENT_KIND:-}"; text_code=""; voice_code=""; send_error=""
+bot_used="main"; bot_asked=""
 while true; do
   case "${1:-}" in
     --quiet)      quiet=1; silent="-d disable_notification=true"; shift ;;  # no ping
@@ -52,7 +54,11 @@ text="$*"
 # A named bot swaps the token for this message only. Resolved before the first send,
 # because the text part goes out before the voice part. A missing token is not fatal:
 # the message falls back to the main bot rather than disappearing.
+# The Sent log records the bot the message actually went through, not the one that was
+# asked for: on the fallback below the record used to name a chat the message never reached,
+# and the chat id is deliberately absent on the strength of that field (t1121).
 if [ -n "$bot" ]; then
+  bot_asked="$bot"
   . "$HOME/claude-home/config.sh"
   suffix=$(NOOS_PYTHON="$HOME/claude-home/.venv-voice/bin/python" conf "telegram.bots.$bot")
   suffix="${suffix//-/_}"
@@ -63,6 +69,7 @@ if [ -n "$bot" ]; then
     if [ -n "${!tkey:-}" ]; then
       TELEGRAM_BOT_TOKEN="${!tkey}"
       TELEGRAM_CHAT_ID="${!ckey:-$TELEGRAM_CHAT_ID}"
+      bot_used="$bot"
     else
       echo "немає $tkey у .env.telegram — шлю через головного" >&2
     fi
@@ -88,8 +95,12 @@ sys.stdout.write("\0".join(out))')
 
 for part in "${parts[@]}"; do
   [ -z "$part" ] && continue
+  set +e
   code=$(curl -sS -m 25 -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
     -d "chat_id=${TELEGRAM_CHAT_ID}" $silent --data-urlencode "text=$part" -o /dev/null -w '%{http_code}')
+  rc=$?
+  set -e
+  if [ "$rc" != 0 ]; then code="0"; send_error="curl $rc (текст)"; fi
   echo "текст $code"
   # the worst code wins: one part refused means the message did not go out whole
   if [ -z "$text_code" ] || [ "$code" != "200" ]; then text_code="$code"; fi
@@ -97,12 +108,20 @@ done
 fi
 
 # One line per outgoing message, with Telegram's own answer rather than an assumption
-# (t1119). Nothing else in this project knew what had been said.
+# (t1119). Written exactly once, from an EXIT trap as well as from the normal path: a curl
+# that cannot connect exits non-zero, and under `set -e` that used to abort the script
+# before the log — so the most likely failure of all, Telegram unreachable, was the one
+# failure the log could not show, and a delivered text part disappeared with it (t1121).
+logged=0
 sent_log() {
+  [ "$logged" = 1 ] && return 0
+  logged=1
   printf '%s' "${text:-${vtext:-}}" | "$HOME/claude-home/.venv-voice/bin/python" \
-    "$HOME/claude-home/status/tools/sent_log.py" --bot "${bot:-main}" --kind "$kind" \
-    --text-code "$text_code" --voice-code "$voice_code" 2>/dev/null || true
+    "$HOME/claude-home/status/tools/sent_log.py" --bot "$bot_used" --kind "$kind" \
+    --asked "$bot_asked" --text-code "$text_code" --voice-code "$voice_code" \
+    --error "$send_error" 2>/dev/null || true
 }
+trap 'sent_log' EXIT
 
 if [ "$voice" != 1 ]; then
   sent_log
@@ -136,12 +155,34 @@ if [ -n "$vname" ]; then
 fi
 
 mp3=$(mktemp --suffix=.mp3); ogg=$(mktemp --suffix=.ogg)
-trap 'rm -f "$mp3" "$ogg"' EXIT
+trap 'rm -f "$mp3" "$ogg"; sent_log' EXIT
+set +e
 ./voice/el_say.sh "$mp3" "$spoken" >/dev/null
-.venv-voice/bin/python voice/to_ogg.py "$mp3" "$ogg" "${NOOS_TEMPO:-1.0}" >/dev/null
+synth=$?
+if [ "$synth" = 0 ]; then
+  .venv-voice/bin/python voice/to_ogg.py "$mp3" "$ogg" "${NOOS_TEMPO:-1.0}" >/dev/null
+  synth=$?
+fi
+set -e
+if [ "$synth" != 0 ]; then
+  # The text part may already have gone out; the record has to say so either way.
+  send_error="${send_error:+$send_error; }синтез $synth"
+  voice_code="0"
+  echo "голос не зробився ($synth)" >&2
+  sent_log
+  exit 0
+fi
 vsilent=()
 if [ "$quiet" = 1 ]; then vsilent=(-F disable_notification=true); fi
+set +e
 voice_code=$(curl -sS -m 60 -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendVoice" \
   -F "chat_id=${TELEGRAM_CHAT_ID}" -F "voice=@${ogg}" "${vsilent[@]}" -o /dev/null -w '%{http_code}')
-echo "голос $voice_code"
+rc=$?
+set -e
+if [ "$rc" != 0 ]; then
+  voice_code="0"; send_error="${send_error:+$send_error; }curl $rc (голос)"
+  echo "голос не надіслався ($rc)" >&2
+else
+  echo "голос $voice_code"
+fi
 sent_log

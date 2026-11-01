@@ -10,6 +10,9 @@
 # for the owner's morning approval (see CLAUDE.md § Git).
 set -uo pipefail
 cd "$HOME/claude-home"
+# Label this session's messages in the Sent log: the sender here is a model, so notify.sh
+# cannot read a script name out of the process tree (t1121).
+export NOOS_SENT_KIND="code-review-headless.sh"
 model="$("$HOME/claude-home/.venv-voice/bin/python" -c "
 import sys; sys.path.insert(0,'$HOME/claude-home')
 from noosconf import conf

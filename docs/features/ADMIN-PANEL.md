@@ -175,9 +175,10 @@ is unanswerable today except by scrolling a phone.
 - **`notify.sh` appends one line per outgoing message** to `status/state/chat-log.jsonl`:
   when, which bot, what kind (probe, digest, forecast, reminder, restart, answer), the
   delivery result — Telegram's own HTTP code, not an assumption — and whether voice went
-  with it. The **kind** is the calling script's own name when no `--kind` is given, read from
-  the parent process, so a digest says `digest-headless.sh` and a reminder says `remind.py`
-  without a single caller being changed; a throwaway wrapper in `/tmp` is not recorded as a
+  with it. The **kind** is `--kind`, or `NOOS_SENT_KIND` for a whole session — which is what the four
+  headless senders export, because a model has no script name in the process tree (t1121) —
+  or, failing both, the calling script's own name read from the parent process, so a reminder
+  says `remind.py` without being changed; a throwaway wrapper in `/tmp` is not recorded as a
   sender. The chat id is deliberately not stored: the bot's name says where it went. Trimmed
   to the newest `sent.max_lines` on append — a record, not an archive.
 - **The screen reads that log**, newest first, with a filter by bot and by kind, and shows

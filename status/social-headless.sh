@@ -5,6 +5,9 @@
 # does not steal getUpdates from the main one.
 set -uo pipefail
 cd "$HOME/claude-home"
+# Label this session's messages in the Sent log: the sender here is a model, so notify.sh
+# cannot read a script name out of the process tree (t1121).
+export NOOS_SENT_KIND="social-headless.sh"
 exec claude -p "$(cat status/social-prompt.md)" \
   --settings "$HOME/claude-home/status/digest-settings.json" \
   --allowedTools "Bash" "mcp__claude_ai_Gmail__search_threads" \

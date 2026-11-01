@@ -4,6 +4,9 @@
 # The telegram plugin stays disabled so this session does not steal getUpdates.
 set -uo pipefail
 cd "$HOME/claude-home"
+# Label this session's messages in the Sent log: the sender here is a model, so notify.sh
+# cannot read a script name out of the process tree (t1121).
+export NOOS_SENT_KIND="youtube-headless.sh"
 exec claude -p "$(cat status/youtube-prompt.md)" \
   --settings "$HOME/claude-home/status/digest-settings.json" \
   --allowedTools "Bash" \

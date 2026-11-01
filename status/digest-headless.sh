@@ -6,6 +6,9 @@
 # sees Gmail and Calendar.
 set -uo pipefail
 cd "$HOME/claude-home"
+# Label this session's messages in the Sent log: the sender here is a model, so notify.sh
+# cannot read a script name out of the process tree (t1121).
+export NOOS_SENT_KIND="digest-headless.sh"
 part="${1:-ранковий}"
 exec claude -p "$(cat status/digest-prompt.md | sed "s/{{ЧАСТИНА}}/$part/")" \
   --settings "$HOME/claude-home/status/digest-settings.json" \
