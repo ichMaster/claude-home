@@ -1,6 +1,6 @@
 # Admin panel — functionality and design
 
-Status: phases 1-4 and 6-8 built; 5 deferred, 9 (Sent) next, 10 waits on 11 (authentication).
+Status: phases 1-8 and 11 built; 9 (Sent) next, 10 (Editing) is the last one left.
 Target: v5 of [ROADMAP.md](../ROADMAP.md).
 
 ## Why a panel at all
@@ -50,9 +50,10 @@ The screen that justifies the project.
 
 - The **assembled system prompt**, exactly as `start.sh` builds it: `persona.md` plus
   `facts.py prompt`, with a character count and the model's context budget for scale.
-- `persona.md` and `CLAUDE.md` in an editor with a diff against the committed version.
-- A **"restart required"** banner the moment either file differs from what the running
-  session loaded, with the two restart buttons (keep conversation / clean).
+- `persona.md` and `CLAUDE.md`, read-only, each saying whether it differs from the commit.
+  The editor is phase 10.
+- A **"restart required"** banner the moment either file — or any pinned fact — has changed
+  since the session started, because those files are read at launch: saved is not in force.
 - Facts that were **cut** by the prompt limit, shown greyed under the ones that fit —
   the single most surprising piece of state in the system today.
 
@@ -335,13 +336,21 @@ the search, topics with *Collect now*, the chat and its dropped log, the prompts
 *Ships:* the first look inside the news dedup, which is the piece most likely to be wrong.
 *Risk:* low.
 
-**Phase 5 — Prompt and Scenarios.** (~4 h)
-Screens 2 and 3: the assembled system prompt with the facts that did not fit, `persona.md`
-and `CLAUDE.md` in an editor with a diff and the restart banner, the scenario prompts with
-run and dry-run.
-*Ships:* the thing that justified the project — showing the assistant to itself.
-*Risk:* real for the first time. These files change the running session, so: explicit save,
-a diff before it, and the banner saying a restart is needed.
+**Phase 5 — Prompt and Scenarios.** (~4 h) — **done 2026-11-01**
+Screens 2 and 3, reading. The assembled system prompt exactly as `start.sh` builds it —
+`persona.md`, then the facts block, then the handoff note while one is pending — with each
+part's size and a rough token estimate. **A restart banner** when a file the session read at
+launch has changed since it started, because an edit to `persona.md` is saved long before it
+is in force; the session's start time comes from its own systemd unit, so nothing new is
+recorded anywhere. `persona.md` and `CLAUDE.md` read-only, each saying whether it has
+uncommitted changes. Screen 3 lists the scenarios from `panel.scenarios` — prompt files with
+their sizes, the timer that fires them, its schedule and last result — with *run* and, where
+the script has one, *dry run*; a long run is detached through `systemd-run`.
+*Ships:* the thing that justified the project — showing the assistant to itself, and saying
+plainly when what it was told is out of date.
+*Why it came after phase 11:* this screen shows the prompt in full, pinned personal facts
+included. Before the login that would have published them to the network; the editors stay in
+phase 10 for the same reason.
 
 **Phase 6 — Tasks.** (~3 h)
 Screen 9: the four columns, drag to change a date, close, request a block. Writes go through

@@ -859,3 +859,97 @@ def render_login(configured: bool = True, message: str = "") -> str:
 <link rel="stylesheet" href="/static/panel.css"></head>
 <body><main class="only">{body}</main></body></html>
 """)
+
+
+# --- screens 2 and 3: the prompt and the scenarios (t1101) ----------------------------------
+
+def _prompt_parts(got: dict) -> str:
+    rows = "".join(
+        f'<tr><td class="id">{e(p["name"])}<td class="age">{p["chars"]} знаків</tr>'
+        for p in got["parts"])
+    return (f'<table class="settings">{rows}'
+            f'<tr><td class="id">разом<td class="age">{got["chars"]} знаків, '
+            f'приблизно {got["tokens"]} токенів</tr></table>'
+            '<p class="dim">Оцінка токенів грубо, 3.5 знака на токен — вона тут для '
+            'масштабу, а не для бюджету.</p>')
+
+
+def _restart_banner(stale: list[dict]) -> str:
+    if not stale:
+        return ('<p class="dim">Усе, з чого складено підказку, не змінювалось після '
+                'старту сесії.</p>')
+    what = ", ".join(f'{e(f["file"])} ({e(f["ago"])} тому)' for f in stale)
+    return (f'<p class="alert">Потрібен перезапуск: {what} змінено вже після того, '
+            'як сесія прочитала ці файли. Збережено — ще не означає діє.</p>'
+            '<p class="dim">Перезапуск: <code>/restart</code> у чаті або '
+            '<code>./restart.sh</code> у терміналі.</p>')
+
+
+def _file_block(rows: list[dict]) -> str:
+    if not rows:
+        return ""
+    out = []
+    for r in rows:
+        mark = (' <span class="warn">незакомічені зміни</span>' if r.get("dirty")
+                else "")
+        missing = "" if r.get("exists", True) else ' <span class="alert">немає</span>'
+        out.append(f'<tr><td class="id">{e(r["file"])}{missing}'
+                   f'<td class="age">{r["chars"]} знаків{mark}</tr>')
+    return ('<table class="settings">' + "".join(out) + "</table>"
+            '<p class="dim">Редагування — фаза 10. Поки що ці файли змінюються '
+            'у терміналі або мною.</p>')
+
+
+def render_prompt(got: dict, stale: list[dict], files: list[dict],
+                  message: str = "") -> str:
+    """Screen 2 — the assistant shown to itself: the prompt it actually wakes up with."""
+    note = f'<p class="note">{e(message)}</p>' if message else ""
+    body = (
+        f"<h1>Промпт</h1>{note}"
+        f"<section><h2>Склад</h2>{_prompt_parts(got)}{_restart_banner(stale)}</section>"
+        f"<section><h2>Файли</h2>{_file_block(files)}</section>"
+        f'<section><h2>Системна підказка</h2>'
+        '<p class="dim">Тут видно те, що бачить сесія, включно з особистими фактами — '
+        'сторінка за паролем (фаза 11), і це єдина причина, чому вона може їх показувати.</p>'
+        f'<pre class="journal prompt">{e(got["text"])}</pre></section>'
+        '<section><h2>Факти</h2><p class="dim">Які факти влізли в підказку, а які '
+        'лишились за бортом — на екрані <a href="/memory">Памʼять</a>.</p></section>')
+    return page("Промпт", body, "/prompt")
+
+
+def _scenario_card(r: dict, token: str) -> str:
+    prompts = "".join(
+        f'<li class="id">{e(p["file"])} — '
+        + (f'{p["chars"]} знаків' if p["exists"]
+           else '<span class="alert">немає</span>') + "</li>"
+        for p in r["prompts"]) or '<li class="dim">промптів немає</li>'
+    sched = ", ".join(e(s) for s in r["schedules"]) or "—"
+    last = (f'<span class="alert">{e(r["last"])}</span>' if r["failed"]
+            else e(r["last"]) or "—")
+    buttons = (f'<form method="post" action="/scenarios" class="inline">'
+               f'<input type="hidden" name="token" value="{e(token)}">'
+               f'<input type="hidden" name="name" value="{e(r["name"])}">'
+               f'<button type="submit" name="action" value="run">запустити</button>'
+               + (f'<button type="submit" name="action" value="dry">сухий прогін</button>'
+                  if r["dry"] else "") + "</form>")
+    return (f'<section><h2>{e(r["name"])}</h2>'
+            + (f'<p class="dim">{e(r["what"])}</p>' if r["what"] else "")
+            + f'<table class="settings">'
+              f'<tr><td class="id">юніт<td class="text">{e(r["unit"]) or "—"}</tr>'
+              f'<tr><td class="id">розклад<td class="text">{sched}</tr>'
+              f'<tr><td class="id">останній<td class="text">{last}</tr>'
+              f'<tr><td class="id">команда<td class="text dim">{e(r["cmd"])}</tr>'
+              f"</table><ul class='queues'>{prompts}</ul>{buttons}</section>")
+
+
+def render_scenarios(rows: list[dict], token: str, message: str = "") -> str:
+    """Screen 3 — the prompts that belong to no channel, and the buttons that fire them."""
+    note = f'<p class="note">{e(message)}</p>' if message else ""
+    if not rows:
+        return page("Сценарії", f"<h1>Сценарії</h1>{note}"
+                    '<p class="empty">Сценаріїв не названо в конфізі.</p>', "/scenarios")
+    body = (f"<h1>Сценарії</h1>{note}"
+            '<p class="dim">Запуск — це не редагування: сценарій виконує той самий '
+            'скрипт, що й таймер. Довгий іде відчепленим, сухий прогін — тут же.</p>'
+            + "".join(_scenario_card(r, token) for r in rows))
+    return page("Сценарії", body, "/scenarios")

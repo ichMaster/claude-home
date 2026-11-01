@@ -352,3 +352,8 @@ form.login button {
 }
 
 form.login button:hover { color: var(--ink); border-color: var(--amber); }
+
+/* --- screens 2 and 3: prompt and scenarios (t1101) -------------------------------- */
+
+pre.journal.prompt { max-height: 40em; color: var(--ink); }
+.queues .id { font-size: 12px; }

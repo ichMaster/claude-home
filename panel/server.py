@@ -38,6 +38,7 @@ import changes                                                         # noqa: E
 import data                                                            # noqa: E402
 import memory_screen                                                   # noqa: E402
 import auth                                                            # noqa: E402
+import prompt_screen                                                   # noqa: E402
 import render                                                          # noqa: E402
 import rules_screen                                                    # noqa: E402
 import sources_screen                                                  # noqa: E402
@@ -47,7 +48,6 @@ import zirka                                                           # noqa: E
 STATIC = Path(__file__).resolve().parent / "static"
 # screen → the phase that builds it, for the placeholder pages
 SOON = {
-    "/prompt": "фаза 5", "/scenarios": "фаза 5",
     "/chat": "фаза 9",
 }
 TITLES = dict(render.SCREENS)
@@ -526,6 +526,123 @@ def zirka_action(form: dict) -> str:
     return "Невідома дія."
 
 
+def session_started() -> float:
+    """When the live session started, from its own systemd unit — the moment it read
+    `persona.md`, `CLAUDE.md` and the facts. Unknown start time means no banner rather than
+    a false one (t1101)."""
+    out = data.show(str(conf("panel.session_unit", "claude-home.service")),
+                    "ExecMainStartTimestamp")
+    stamp = (out or "").partition("=")[2].strip()
+    for fmt in ("%a %Y-%m-%d %H:%M:%S %Z", "%a %Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(stamp, fmt).timestamp()
+        except ValueError:
+            continue
+    return 0.0
+
+
+def dirty_files() -> set[str]:
+    """Which tracked files have uncommitted changes — `git status`, not a guess."""
+    ok, said = run_script("git", "status", "--porcelain", timeout=20)
+    if not ok:
+        return set()
+    return {Path(line[3:].strip()).name for line in said.splitlines() if line.strip()}
+
+
+def prompt_html(message: str = "") -> str:
+    """Screen 2. The prompt is rebuilt exactly as `start.sh` builds it, from the same files
+    and the same `facts.py prompt`, so what is shown is what the session was told."""
+    try:
+        persona = (HOME / "persona.md").read_text(encoding="utf-8")
+    except OSError as exc:
+        persona, message = "", f"{message} persona.md не прочитався: {exc}".strip()
+    ok, facts = run_script(str(HOME / ".venv-voice" / "bin" / "python"),
+                           str(HOME / "memory" / "facts.py"), "prompt",
+                           timeout=60, cap=40000)
+    handoff = None
+    note = HOME / "memory" / "handoff.md"
+    if note.is_file():
+        try:
+            handoff = note.read_text(encoding="utf-8")
+        except OSError:
+            handoff = None
+    got = prompt_screen.assembled(persona, facts if ok else "", handoff)
+    started = session_started()
+    watched = [HOME / "persona.md", HOME / "CLAUDE.md",
+               *sorted((HOME / "memory" / "facts").glob("*.md"))]
+    stale = prompt_screen.stale_files(started, watched) if started else []
+    files = prompt_screen.prompt_files([HOME / "persona.md", HOME / "CLAUDE.md"],
+                                       dirty_files())
+    if not ok:
+        message = (message + " факти не зібрались: " + facts).strip()
+    return render.render_prompt(got, stale, files, message)
+
+
+def scenarios_html(message: str = "") -> str:
+    """Screen 3."""
+    items = prompt_screen.scenarios()
+    units = {str(i.get("unit")) for i in items if i.get("unit")}
+    timers = {}
+    for unit in sorted(units):
+        rows = rules_screen.schedule_rows([(
+            unit,
+            data.show(unit, "Unit,Description,TimersCalendar,TimersMonotonic,"
+                            "NextElapseUSecRealtime,NextElapseUSecMonotonic,"
+                            "LastTriggerUSec,ActiveState"),
+            data.show(unit.replace(".timer", ".service"),
+                      "Result,ExecMainStatus,ActiveState"))],
+            boot_epoch=_boot_epoch())
+        timers[unit] = rows[0]
+    return render.render_scenarios(prompt_screen.scenario_rows(items, timers),
+                                   FORM_TOKEN, message)
+
+
+def scenario_action(form: dict) -> str:
+    """Run one scenario, or dry-run it. The name comes from the form and is used for one
+    thing only — a lookup in the config; the command itself is never taken from a request."""
+    what = (form.get("action") or [""])[0]
+    name = (form.get("name") or [""])[0]
+    item = prompt_screen.by_name(name)
+    if not item:
+        return f"Не знаю сценарію «{name[:40]}»."
+    if what == "dry":
+        cmd = [str(x) for x in (item.get("dry") or [])]
+        if not cmd:
+            return f"У «{name}» сухого прогону немає."
+        ok, said = run_script(*_resolve(cmd), timeout=900, cap=4000, tail=True)
+        return (f"Сухий прогін «{name}»:\n{said}" if ok
+                else f"Сухий прогін «{name}» не вдався: {said}")
+    if what != "run":
+        return "Невідома дія."
+    cmd = _resolve([str(x) for x in (item.get("cmd") or [])])
+    if not cmd:
+        return f"У «{name}» немає команди."
+    if not item.get("detach"):
+        ok, said = run_script(*cmd, timeout=600, cap=4000, tail=True)
+        return (f"«{name}»: {said}" if ok else f"«{name}» не вдався: {said}")
+    # A digest or a forecast runs for minutes; detached, the request returns at once and
+    # the run survives a panel restart (the same path Zirka's recalc takes).
+    unit = "noos-panel-run-" + "".join(c if c.isalnum() else "-" for c in name)[:40]
+    ok, said = run_script("systemd-run", "--user", f"--unit={unit}", "--collect",
+                          "--setenv", f"HOME={HOME.parent}", *cmd, timeout=60)
+    if not ok and "exists" in said:
+        return f"«{name}» уже виконується."
+    return (f"«{name}» запущено відчепленим; результат прийде туди, куди він пише завжди."
+            if ok else f"Не запустилось: {said}")
+
+
+def _resolve(cmd: list[str]) -> list[str]:
+    """A relative path in a configured command means "in this repository", and a `.py`
+    means the project's interpreter — so the config stays short and never hardcodes paths."""
+    out = []
+    for i, part in enumerate(cmd):
+        if i == 0 and part.endswith(".py"):
+            out.append(str(HOME / ".venv-voice" / "bin" / "python"))
+        out.append(str(HOME / part) if not part.startswith(("-", "/")) and
+                   (HOME / part).exists() else part)
+    return out
+
+
 def journal_text(unit: str, limit: int | None = None) -> str:
     """The tail of one unit's journal, for a unit systemd itself named.
 
@@ -703,6 +820,14 @@ class Handler(BaseHTTPRequestHandler):
                     urllib.parse.urlparse(self.path).query).get("day", [""])[0]
                 return self._send(200, zirka_html(day[:10]).encode("utf-8"),
                                   "text/html; charset=utf-8")
+            if path == "/prompt":
+                return self._send(200, prompt_html().encode("utf-8"),
+                                  "text/html; charset=utf-8")
+            if path == "/scenarios":
+                message = urllib.parse.parse_qs(
+                    urllib.parse.urlparse(self.path).query).get("m", [""])[0]
+                return self._send(200, scenarios_html(message[:2000]).encode("utf-8"),
+                                  "text/html; charset=utf-8")
             if path == "/rules":
                 # GET only: phase 8 reads. A POST falls through to the 404 below, which is
                 # the honest answer — this screen has no form to have submitted.
@@ -790,6 +915,10 @@ class Handler(BaseHTTPRequestHandler):
                 if probe:
                     where += "p=" + urllib.parse.quote(probe[:300]) + "&"
                 return self._redirect(where.rstrip("&?") or "/sources")
+            if path == "/scenarios":
+                # Post/Redirect/Get: a run must not re-fire on F5 (t1078).
+                return self._redirect("/scenarios?m=" +
+                                      urllib.parse.quote(scenario_action(form)[:2000]))
             if path == "/zirka":
                 message = zirka_action(form)
                 day = (form.get("day") or [""])[0]

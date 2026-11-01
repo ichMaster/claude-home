@@ -183,10 +183,10 @@ def test_static_cannot_escape_its_directory(attack):
 
 def test_unknown_screens_name_their_phase():
     """A screen that is not built yet says which phase builds it — honest beats blank.
-    Zirka left this list when phase 3 built it (t1068); Bruno is next."""
-    html = render.render_soon("Промпт", "/prompt", server.SOON["/prompt"])
-    assert "фаза 5" in html and "Промпт" in html
-    for built in ("/zirka", "/bruno", "/changes"):
+    Only the chat screen is left, and phase 9 turned it into the Sent log (t1098)."""
+    html = render.render_soon("Чат", "/chat", server.SOON["/chat"])
+    assert "фаза 9" in html and "Чат" in html
+    for built in ("/zirka", "/bruno", "/changes", "/rules", "/prompt", "/scenarios"):
         assert built not in server.SOON, "a built screen must not keep a placeholder"
 
 
