@@ -776,6 +776,11 @@ def _keys_table(rows: list[dict]) -> str:
                 for v in r["vars"]) or '<span class="dim">змінних не знайдено</span>'
             loose = (' <span class="alert">права надто широкі</span>' if r["loose"]
                      else "")
+            odd = r.get("unparsed") or 0
+            if odd:
+                names += (f' <span class="warn">+ {odd} '
+                          + ("рядок не схожий на змінну" if odd == 1
+                             else "рядки не схожі на змінні") + "</span>")
             state = (f'<span class="ok">є</span> · права {e(r["mode"])}{loose} · '
                      f'{r["size"]} Б · {e(r["mtime"])}')
         else:

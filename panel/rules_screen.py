@@ -13,6 +13,7 @@ Two things must never reach the page, and the tests enforce both: a personal val
 """
 from __future__ import annotations
 
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -320,6 +321,23 @@ def schedule_rows(blobs: list[tuple[str, str, str]],
 
 # --- keys -------------------------------------------------------------------------------
 
+NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _closed(text: str, quote: str) -> bool:
+    """Does this quoted value end on the same line it opened?"""
+    return len(text) >= 2 and text.endswith(quote)
+
+
+def _has_value(raw: str) -> bool:
+    """Is this variable actually configured? `FOO=""` is not (review L2): «задано» is the
+    claim a reader checks when a probe is warning, so quotes are stripped first."""
+    text = raw.strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in ("'", '"'):
+        text = text[1:-1]
+    return bool(text.strip())
+
+
 def key_rows(wanted: list[dict], folder: Path | None = None) -> list[dict]:
     """Which key files exist, and the **names** inside them. Never a value.
 
@@ -338,7 +356,7 @@ def key_rows(wanted: list[dict], folder: Path | None = None) -> list[dict]:
         row = {"file": name, "what": str(item.get("what") or ""),
                "example": example, "example_present": (base / example).is_file(),
                "present": f.is_file(), "mode": "", "size": 0, "mtime": "",
-               "loose": False, "vars": []}
+               "loose": False, "vars": [], "unparsed": 0}
         if row["present"]:
             try:
                 st = f.stat()
@@ -346,14 +364,29 @@ def key_rows(wanted: list[dict], folder: Path | None = None) -> list[dict]:
                 row["size"] = st.st_size
                 row["mtime"] = datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d")
                 row["loose"] = bool(st.st_mode & 0o077)
+                quote = ""            # inside a multi-line value, waiting for its closer
                 for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
-                    line = line.strip()
-                    if not line or line.startswith("#") or "=" not in line:
+                    if quote:
+                        # The body of a value, not a new variable. A PEM's second line is
+                        # base64, which carries `=` as padding and is pure alphanumerics,
+                        # so by both the old `=` test and a name pattern it looked like a
+                        # name and got printed — in the one section whose promise is
+                        # "never a value" (t1097).
+                        if line.rstrip().endswith(quote):
+                            quote = ""
                         continue
-                    var, _, value = line.partition("=")
-                    var = var.replace("export ", "").strip()
-                    if var:
-                        row["vars"].append({"name": var, "set": bool(value.strip())})
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    var, sep, value = line.partition("=")
+                    var = var.removeprefix("export ").strip()
+                    if not sep or not NAME_RE.match(var):
+                        row["unparsed"] += 1
+                        continue
+                    opener = value.strip()[:1]
+                    if opener in ("'", '"') and not _closed(value.strip(), opener):
+                        quote = opener
+                    row["vars"].append({"name": var, "set": _has_value(value)})
             except OSError as exc:
                 row["vars"] = []
                 row["what"] = (row["what"] + f" (не прочитався: {exc})").strip()

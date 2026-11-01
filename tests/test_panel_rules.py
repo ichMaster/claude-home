@@ -481,3 +481,59 @@ def test_the_other_callers_keep_the_head_clamp():
     right behaviour and must not change with the journal's needs."""
     ok, said = server.run_script("printf", "x" * 2000)
     assert ok and len(said) == 600 and said.startswith("x")
+
+
+# --- t1097 (M4): a multi-line value became a variable name -------------------------------
+
+PEM_ENV = '''GOOGLE_KEY="-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQ==
+-----END PRIVATE KEY-----"
+'''
+
+
+def test_a_multiline_value_is_not_mistaken_for_a_name(tmp_path):
+    """A base64 line carries `=` as padding, so the key's own body came back as a «name» —
+    on the port with no login, in the one section whose promise is "never a value"."""
+    (tmp_path / ".env.youtube").write_text(PEM_ENV, encoding="utf-8")
+    r = rules_screen.key_rows([{"file": ".env.youtube", "what": "OAuth"}], tmp_path)[0]
+    assert [v["name"] for v in r["vars"]] == ["GOOGLE_KEY"]
+    html = render.render_rules([], rules_screen.permissions("", [], {}), [], [r], "", "")
+    assert "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQ" not in html
+
+
+def test_a_multiline_value_counts_as_one_variable_and_no_odd_lines(tmp_path):
+    """Its body belongs to the value — it is neither a variable nor junk."""
+    (tmp_path / ".env.youtube").write_text(PEM_ENV, encoding="utf-8")
+    r = rules_screen.key_rows([{"file": ".env.youtube", "what": "OAuth"}], tmp_path)[0]
+    assert r["unparsed"] == 0 and len(r["vars"]) == 1 and r["vars"][0]["set"]
+
+
+def test_the_lines_it_could_not_read_are_counted_not_hidden(tmp_path):
+    (tmp_path / ".env.youtube").write_text(
+        "A=1\nцей рядок не змінна\n99BAD=2\n", encoding="utf-8")
+    r = rules_screen.key_rows([{"file": ".env.youtube", "what": "OAuth"}], tmp_path)[0]
+    assert [v["name"] for v in r["vars"]] == ["A"]
+    assert r["unparsed"] == 2
+    html = render.render_rules([], rules_screen.permissions("", [], {}), [], [r], "", "")
+    assert "не схожі на змінні" in html or "не схожий на змінну" in html
+
+
+def test_ordinary_env_shapes_still_parse(tmp_path):
+    (tmp_path / ".env.voice").write_text(
+        "# comment\n\nNAME=value\nexport OTHER=value\nURL=https://x/y?a=b\n",
+        encoding="utf-8")
+    r = rules_screen.key_rows([{"file": ".env.voice", "what": "голос"}], tmp_path)[0]
+    assert [v["name"] for v in r["vars"]] == ["NAME", "OTHER", "URL"]
+    assert r["unparsed"] == 0
+
+
+@pytest.mark.parametrize("line,is_set", [
+    ('FOO=""', False), ("FOO=''", False), ("FOO=", False), ("FOO=x", True),
+    ('FOO=" "', False),
+])
+def test_an_explicitly_emptied_variable_reads_as_empty(tmp_path, line, is_set):
+    """«Задано» is the claim a reader checks when a probe is warning: it must mean
+    configured, and `FOO=""` is not configured."""
+    (tmp_path / ".env.voice").write_text(line + "\n", encoding="utf-8")
+    r = rules_screen.key_rows([{"file": ".env.voice", "what": "голос"}], tmp_path)[0]
+    assert r["vars"][0]["set"] is is_set
