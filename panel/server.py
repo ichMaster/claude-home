@@ -425,9 +425,25 @@ def journal_text(unit: str, limit: int | None = None) -> str:
     if unit not in allowed:
         return f"Не знаю юніта «{unit}» — показую лише свої таймери та їхні сервіси."
     n = int(limit or conf("panel.journal_lines", 40))
-    ok, said = run_script("journalctl", "--user", "-u", unit, "-n", str(n),
-                          "--no-pager", "--output=short-iso", timeout=30)
+    cmd = ["journalctl", "--user", "-u", unit, "-n", str(n),
+           "--no-pager", "--output=short-iso"]
+    if not journal_full():
+        # A headless unit's stdout IS the content the model composed — the digest's calendar
+        # block, mail subjects, the nightly review's findings — and this port has no login
+        # (t1094). systemd's own lines carry the diagnostic (Starting / Finished / Failed /
+        # exit code) and nothing personal. Priority filtering was measured and does not
+        # separate them: a script's stdout is logged at the same priority 6.
+        cmd += ["-t", "systemd"]
+    ok, said = run_script(*cmd, timeout=30)
     return said if ok else f"Журнал не прочитався: {said}"
+
+
+def journal_full() -> bool:
+    """Is the pane allowed to show a unit's own output? `systemd` (default) says no.
+
+    Kept in config rather than in code so the day the panel has authentication — phase 10 —
+    the full journal is one setting away instead of a patch."""
+    return str(conf("panel.journal_scope", "systemd")).lower() == "full"
 
 
 def _raw_config() -> tuple[dict, dict]:
@@ -477,7 +493,7 @@ def rules_html(unit: str = "") -> str:
                                  conf("telegram.inbox", {}) or {}),
         rules_screen.schedule_rows(timers),
         rules_screen.key_rows(rules_screen.key_files()),
-        journal_text(unit) if unit else "", unit)
+        journal_text(unit) if unit else "", unit, filtered=not journal_full())
 
 
 class Handler(BaseHTTPRequestHandler):

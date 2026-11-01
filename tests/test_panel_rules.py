@@ -303,3 +303,45 @@ def test_an_interval_timer_shows_its_interval_not_a_dash():
         "ActiveState=active\n", "")])[0]
     assert row["schedules"] == ["кожні 15min після завершення",
                                "через 5min після старту системи"]
+
+
+# --- t1094 (H1): the journal pane published the unit's own output on an open port -------
+# The settings table on this very page masks `user.name` because the port is unauthenticated.
+# The pane beside it printed the digest's calendar block. Only systemd's own lines are shown
+# now; a unit's stdout waits for the phase that brings authentication.
+
+def journal_calls(monkeypatch, scope="systemd"):
+    calls = []
+
+    def fake_run(*cmd, timeout=300):
+        calls.append(cmd)
+        return True, "Finished Ноос: повний дайджест."
+    monkeypatch.setattr(server, "run_script", fake_run)
+    monkeypatch.setattr(server.data, "timer_units", lambda: ["noos-digest.timer"])
+    real = server.conf
+    monkeypatch.setattr(server, "conf",
+                        lambda key, default=None: scope if key == "panel.journal_scope"
+                        else real(key, default))
+    return calls
+
+
+def test_the_journal_pane_asks_only_for_systemd_s_own_lines(monkeypatch):
+    calls = journal_calls(monkeypatch)
+    server.journal_text("noos-digest.service")
+    assert calls and "-t" in calls[0] and "systemd" in calls[0], calls
+
+
+def test_the_full_journal_is_a_config_decision_not_a_code_change(monkeypatch):
+    calls = journal_calls(monkeypatch, scope="full")
+    server.journal_text("noos-digest.service")
+    assert "-t" not in calls[0], calls
+
+
+def test_the_pane_says_what_it_withholds_and_how_to_see_it():
+    html = render.render_rules([], rules_screen.permissions("", [], {}), [],
+                               [], "Finished.", "noos-digest.service", filtered=True)
+    assert "journalctl --user -u noos-digest.service" in html
+    assert "приховано" in html
+    full = render.render_rules([], rules_screen.permissions("", [], {}), [],
+                               [], "Finished.", "noos-digest.service", filtered=False)
+    assert "приховано" not in full.split("<h2>Розклад")[1]

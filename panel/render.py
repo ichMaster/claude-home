@@ -794,7 +794,8 @@ def _keys_table(rows: list[dict]) -> str:
 
 
 def render_rules(settings: list[dict], perms: dict, schedule: list[dict],
-                 keys: list[dict], journal: str = "", unit: str = "") -> str:
+                 keys: list[dict], journal: str = "", unit: str = "",
+                 filtered: bool = False) -> str:
     """Screen 8 — what governs the assistant. Reads only: this page carries no form, and
     that is the phase's whole decision (the owner, 2026-11-01). Editing is phase 10, after
     the panel has authentication — until then a write here would be made with the owner's
@@ -802,8 +803,13 @@ def render_rules(settings: list[dict], perms: dict, schedule: list[dict],
     overridden = sum(1 for r in settings if r["overridden"] or r["local_only"])
     counters = (f'<p>{len(settings)} налаштувань, з них {overridden} задані локально. '
                 'Чинне значення — те, якому підкоряються пробники.</p>')
-    log = (f'<h3 class="stage">Журнал · {e(unit)}</h3><pre class="journal">{e(journal)}</pre>'
-           if journal else "")
+    # The pane shows systemd's own lines only (t1094). Saying what is withheld, and the one
+    # command that shows it, beats a pane that looks like the whole journal and is not.
+    withheld = ('<p class="dim">Вивід самих сценаріїв приховано — у ньому буває особисте, '
+                'а порт без пароля. Повний журнал у терміналі: '
+                f'<code>journalctl --user -u {e(unit)}</code></p>') if filtered else ""
+    log = (f'<h3 class="stage">Журнал · {e(unit)}</h3>{withheld}'
+           f'<pre class="journal">{e(journal)}</pre>' if journal else "")
     body = (
         "<h1>Правила</h1>"
         '<p class="note">Цей екран лише показує. Редагування — окрема фаза, '
