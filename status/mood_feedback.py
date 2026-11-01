@@ -179,8 +179,15 @@ def questions(items: list[dict]) -> str:
         claim = mood._unlabel(str(item.get("claim") or "")).rstrip(".")
         sign = mood._unlabel(str(item.get("sign") or "")).rstrip(".")
         order = ("Перше" if i == 1 else "Друге" if i == 2 else "Третє")
-        lines.append(f"{order}: {window} — чи було так, що {claim}"
-                     + (f"; {sign}" if sign else "") + "?")
+        variants = [mood._unlabel(v) for v in (item.get("variants") or [])
+                    if str(v).strip()]
+        if len(variants) > 1:
+            shown = ", або ".join(v.rstrip(".") for v in variants)
+            lines.append(f"{order}: {window} — {claim}. Як це вийшло: {shown}? "
+                         "Чи нічого з цього?")
+        else:
+            lines.append(f"{order}: {window} — чи було так, що {claim}"
+                         + (f"; {sign}" if sign else "") + "?")
     lines.append("Якщо жодного такого відчуття не було — так і скажи, це корисніше за "
                  "«нормально».")
     return "\n\n".join(lines)
@@ -209,9 +216,13 @@ def score_rows(rows: list[dict]) -> dict:
     counts in neither direction — a rate computed over silence would be the same kind of
     decoration the old reading was (t1126).
     """
-    hits = sum(1 for r in rows if r.get("verified") is True)
+    # `verified` is None (unanswered), False (nothing of the sort), or truthy — True, or the
+    # name of the variant that actually landed (t1126).
+    hits = sum(1 for r in rows
+               if r.get("verified") not in (None, False) and r.get("verified") != "")
     misses = sum(1 for r in rows if r.get("verified") is False)
-    unanswered = sum(1 for r in rows if r.get("verified") is None)
+    unanswered = sum(1 for r in rows
+                     if r.get("verified") is None or r.get("verified") == "")
     answered = hits + misses
     return {"hits": hits, "misses": misses, "unanswered": unanswered,
             "total": len(rows), "rate": (hits / answered) if answered else None}

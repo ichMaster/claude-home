@@ -300,11 +300,15 @@ def _unlabel(part: str) -> str:
 
 
 def claims(text: str) -> tuple[list[dict], int]:
-    """The ПРОГНОЗ block as data: `вікно | що станеться | ознака` per line.
+    """The ПРОГНОЗ block as data: `вікно | тема | варіант або варіант або варіант`.
 
-    A claim with no window or no sign is **dropped and counted**, never sent: the whole point
-    of the new shape is that the evening can check it, and a line without those two cannot be
-    checked. Returns (claims, dropped).
+    The third field is a **set of ways the state can show up**, not one sign (the owner,
+    2026-11-01: «це дуже однозначно, тому що для кожного вікна може бути декілька
+    інтерпретацій»). One aspect does not produce one state: it produces a family, and which
+    member of it lands is exactly what the evening can tell us — and the most useful thing
+    this project can learn about this chart.
+
+    A line with no window or no theme is dropped and counted. Returns (claims, dropped).
     """
     block = split_blocks(text).get("ПРОГНОЗ", "")
     out, dropped = [], 0
@@ -316,7 +320,10 @@ def claims(text: str) -> tuple[list[dict], int]:
         if len(parts) < 3 or not all(parts[:3]):
             dropped += 1
             continue
-        out.append({"window": parts[0], "claim": parts[1], "sign": parts[2]})
+        variants = [v.strip() for v in re.split(r"\s+або\s+|\s*;\s*", parts[2])
+                    if v.strip()]
+        out.append({"window": parts[0], "claim": parts[1], "sign": parts[2],
+                    "variants": variants})
     return out[:MAX_CLAIMS], dropped
 
 
@@ -336,7 +343,10 @@ def save_claims(day: date, items: list[dict]) -> None:
     for i, item in enumerate(items, 1):
         kept.append({"day": day.isoformat(), "id": f"{day.isoformat()}-{i}",
                      "window": item["window"], "claim": item["claim"],
-                     "sign": item["sign"], "verified": None})
+                     "sign": item["sign"], "variants": item.get("variants", []),
+                     # None — not answered; False — nothing of the sort; a string — which of
+                     # the variants it actually was, which is what teaches the chart (t1126)
+                     "verified": None})
     f.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in kept),
                  encoding="utf-8")
 

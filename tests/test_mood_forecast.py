@@ -314,3 +314,46 @@ def test_the_question_cleans_a_label_that_is_already_stored():
                "sign": "ознака: відкладеш роботу"}]
     text = mood_feedback.questions(stored)
     assert "ознака:" not in text and "відкладеш роботу" in text
+
+
+# --- t1126: one window, several readings -------------------------------------------------
+
+VARIANTS = """ПРОГНОЗ
+11:00-13:00 | тягне до чогось теплого і не до справ | написати тому, про кого думаєш або потягне в самоту або накриє ностальгія
+17:00-18:00 | хочеться дотиснути давнє | доробити висяче або перебрати старі файли
+"""
+
+
+def test_a_window_carries_several_readings():
+    """«Це дуже однозначно, тому що для кожного вікна може бути декілька інтерпретацій»
+    (the owner, 2026-11-01). One aspect is a family of states, not one."""
+    got, dropped = mood.claims(VARIANTS)
+    assert dropped == 0 and len(got) == 2
+    assert got[0]["variants"] == ["написати тому, про кого думаєш", "потягне в самоту",
+                                  "накриє ностальгія"]
+    assert len(got[1]["variants"]) == 2
+
+
+def test_the_question_asks_which_reading_it_was():
+    got, _ = mood.claims(VARIANTS)
+    text = mood_feedback.questions(got)
+    assert "Як це вийшло" in text and "або" in text
+    assert "Чи нічого з цього?" in text
+
+
+def test_the_variant_that_landed_is_what_is_stored(tmp_path, monkeypatch):
+    f = tmp_path / "claims.jsonl"
+    monkeypatch.setattr(mood, "CLAIMS", f)
+    got, _ = mood.claims(VARIANTS)
+    mood.save_claims(date(2026, 11, 2), got)
+    rows = mood.load_claims(date(2026, 11, 2), f)
+    assert rows[0]["variants"] and rows[0]["verified"] is None
+
+
+def test_a_landed_variant_counts_as_a_hit():
+    """`verified` carries which reading it was, so the score has to count a string as a
+    hit — that string is the thing worth learning about this chart."""
+    rows = [{"verified": "потягне в самоту"}, {"verified": False}, {"verified": None},
+            {"verified": True}]
+    got = mood_feedback.score_rows(rows)
+    assert got["hits"] == 2 and got["misses"] == 1 and got["unanswered"] == 1
