@@ -446,6 +446,17 @@ def journal_full() -> bool:
     return str(conf("panel.journal_scope", "systemd")).lower() == "full"
 
 
+def _boot_epoch() -> float | None:
+    """When this machine booted, as a unix timestamp — the origin an interval timer's
+    next-elapse is measured from (t1095). Unreadable uptime means no date rather than a
+    wrong one."""
+    try:
+        import time
+        return time.time() - float(Path("/proc/uptime").read_text().split()[0])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
 def _raw_config() -> tuple[dict, dict]:
     """`config.json` and `config.local.json` unmerged — the screen's whole point is
     showing which of the two won, which the merged view cannot say."""
@@ -482,8 +493,9 @@ def rules_html(unit: str = "") -> str:
     except OSError:
         start = ""
     timers = [(u,
-               data.show(u, "Unit,Description,TimersCalendar,Persistent,"
-                            "NextElapseUSecRealtime,LastTriggerUSec,ActiveState"),
+               data.show(u, "Unit,Description,TimersCalendar,TimersMonotonic,Persistent,"
+                            "NextElapseUSecRealtime,NextElapseUSecMonotonic,"
+                            "LastTriggerUSec,ActiveState"),
                data.show(u.replace(".timer", ".service"),
                          "Description,ExecStart,Result,ExecMainStatus,ActiveState"))
               for u in data.timer_units()]
@@ -491,7 +503,7 @@ def rules_html(unit: str = "") -> str:
         rules_screen.setting_rows(default, local, rules_screen.masked_keys()),
         rules_screen.permissions(start, _settings_files(),
                                  conf("telegram.inbox", {}) or {}),
-        rules_screen.schedule_rows(timers),
+        rules_screen.schedule_rows(timers, boot_epoch=_boot_epoch()),
         rules_screen.key_rows(rules_screen.key_files()),
         journal_text(unit) if unit else "", unit, filtered=not journal_full())
 

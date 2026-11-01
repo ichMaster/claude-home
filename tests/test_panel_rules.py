@@ -6,6 +6,7 @@ schedule, and which keys exist. It writes nothing — so the tests that matter m
 ones about what must never reach the page: a personal value, a secret, or a form.
 """
 import json
+import pytest
 import sys
 from pathlib import Path
 
@@ -301,8 +302,8 @@ def test_an_interval_timer_shows_its_interval_not_a_dash():
         "TimersMonotonic={ OnUnitActiveUSec=15min ; next_elapse=4w 1d }\n"
         "TimersMonotonic={ OnBootUSec=5min ; next_elapse=5min }\n"
         "ActiveState=active\n", "")])[0]
-    assert row["schedules"] == ["кожні 15min після завершення",
-                               "через 5min після старту системи"]
+    assert row["schedules"] == ["кожні 15 хв після завершення",
+                               "через 5 хв після старту системи"]
 
 
 # --- t1094 (H1): the journal pane published the unit's own output on an open port -------
@@ -345,3 +346,73 @@ def test_the_pane_says_what_it_withholds_and_how_to_see_it():
     full = render.render_rules([], rules_screen.permissions("", [], {}), [],
                                [], "Finished.", "noos-digest.service", filtered=False)
     assert "приховано" not in full.split("<h2>Розклад")[1]
+
+
+# --- t1095 (M2): the interval timers were never asked about ------------------------------
+# The parser landed in t1090 and the property was never requested, so the four timers that
+# run most often said «—» — which reads as "no schedule", not as "unknown".
+
+def test_rules_html_asks_systemd_about_interval_timers(monkeypatch):
+    asked = []
+
+    def fake_show(unit, properties):
+        asked.append(properties)
+        return ""
+    monkeypatch.setattr(server.data, "timer_units", lambda: ["noos-watch.timer"])
+    monkeypatch.setattr(server.data, "show", fake_show)
+    server.rules_html()
+    timer_props = asked[0]
+    assert "TimersMonotonic" in timer_props and "NextElapseUSecMonotonic" in timer_props
+
+
+@pytest.mark.parametrize("text,seconds", [
+    ("4w 1d 13h 23min 5.346337s", 4 * 604800 + 86400 + 13 * 3600 + 23 * 60 + 5.346337),
+    ("15min", 900.0),
+    ("2min 30s", 150.0),
+    ("500ms", 0.5),
+    ("1h", 3600.0),
+])
+def test_parse_span_reads_systemd_s_duration_spelling(text, seconds):
+    assert abs(rules_screen.parse_span(text) - seconds) < 0.001
+
+
+@pytest.mark.parametrize("text", ["", "n/a", "скоро", "4 тижні"])
+def test_parse_span_refuses_nonsense(text):
+    assert rules_screen.parse_span(text) is None
+
+
+def test_an_interval_timer_gets_a_real_next_run_from_the_boot_clock():
+    boot = 1762000000.0                      # a fixed epoch: the test owns the clock
+    row = rules_screen.schedule_rows([(
+        "noos-watch.timer",
+        "TimersMonotonic={ OnUnitActiveUSec=15min ; next_elapse=1h }\n"
+        "NextElapseUSecMonotonic=1h\nActiveState=active\n", "")], boot_epoch=boot)[0]
+    import time
+    assert row["next"] == time.strftime("%Y-%m-%d %H:%M:%S",
+                                        time.localtime(boot + 3600))
+
+
+def test_without_a_boot_clock_the_next_run_stays_blank_not_wrong():
+    row = rules_screen.schedule_rows([(
+        "noos-watch.timer", "NextElapseUSecMonotonic=1h\n", "")])[0]
+    assert row["next"] == ""
+
+
+def test_a_calendar_timer_keeps_its_realtime_next_run():
+    row = rules_screen.schedule_rows(
+        [("noos-digest.timer", DIGEST_TIMER, DIGEST_SERVICE)], boot_epoch=1762000000.0)[0]
+    assert row["next"] == "Sun 2026-11-01 08:03:00 EET"
+
+
+def test_the_doc_no_longer_claims_fifteen_timers():
+    doc = (ROOT / "docs/features/ADMIN-PANEL.md").read_text(encoding="utf-8")
+    assert "15 systemd user timers" not in doc and "all 15 timers" not in doc
+
+
+@pytest.mark.parametrize("seconds,text", [
+    (900, "15 хв"), (7200, "2 год"), (86400, "1 д"), (30, "30 с"), (0.5, "500 мс"),
+    (None, ""),
+])
+def test_an_interval_reads_as_ukrainian_not_as_systemd_s_abbreviation(seconds, text):
+    """This line is listened to as often as it is read — «15min» is Latin and clipped."""
+    assert rules_screen.span_text(seconds) == text

@@ -223,6 +223,22 @@ MONOTONIC = {
 }
 
 
+def span_text(seconds: float | None) -> str:
+    """Seconds as Ukrainian, because this line is read aloud as often as it is read:
+    «15 хв», «2 год», «30 с». systemd's own «15min» is Latin and abbreviated."""
+    if seconds is None:
+        return ""
+    if seconds >= 86400 and seconds % 86400 == 0:
+        return f"{int(seconds // 86400)} д"
+    if seconds >= 3600 and seconds % 3600 == 0:
+        return f"{int(seconds // 3600)} год"
+    if seconds >= 60 and seconds % 60 == 0:
+        return f"{int(seconds // 60)} хв"
+    if seconds >= 1:
+        return f"{seconds:.0f} с"
+    return f"{seconds * 1000:.0f} мс"
+
+
 def _monotonic(props: dict[str, list[str]]) -> list[str]:
     out = []
     for raw in props.get("TimersMonotonic") or []:
@@ -232,8 +248,23 @@ def _monotonic(props: dict[str, list[str]]) -> list[str]:
             continue
         span = rest.split(";")[0].strip()
         if span:
-            out.append(MONOTONIC[key.strip()] % span)
+            out.append(MONOTONIC[key.strip()] % (span_text(parse_span(span)) or span))
     return out
+
+
+SPAN_UNITS = {"w": 604800, "d": 86400, "h": 3600, "min": 60, "m": 60, "s": 1,
+              "ms": 0.001, "us": 0.000001}
+
+
+def parse_span(text: str) -> float | None:
+    """systemd's duration spelling — `4w 1d 13h 23min 5.346337s`, `15min`, `500ms` — in
+    seconds. `None` when nothing parsed, so a wrong date is never shown as a real one."""
+    import re
+    total, matched = 0.0, False
+    for number, unit in re.findall(r"(\d+(?:\.\d+)?)(us|ms|min|[wdhms])", str(text or "")):
+        total += float(number) * SPAN_UNITS[unit]
+        matched = True
+    return total if matched else None
 
 
 def _command(props: dict[str, list[str]]) -> str:
@@ -245,15 +276,25 @@ def _command(props: dict[str, list[str]]) -> str:
     return ""
 
 
-def schedule_rows(blobs: list[tuple[str, str, str]]) -> list[dict]:
+def schedule_rows(blobs: list[tuple[str, str, str]],
+                  boot_epoch: float | None = None) -> list[dict]:
     """One row per timer from `(unit, timer properties, service properties)`.
 
     Property blocks that could not be read yield a row with blanks: on a board a missing
     value is information, an exception is a blank page (the same rule as `data.timer_rows`).
     """
+    import time
     rows = []
     for unit, timer_blob, service_blob in blobs:
         t, s = multi_props(timer_blob), multi_props(service_blob)
+        # An interval timer has no realtime next-elapse at all — only a span since boot
+        # (t1095). The clock is passed in, so this stays a pure function.
+        when = _one(t, "NextElapseUSecRealtime")
+        if not when and boot_epoch is not None:
+            span = parse_span(_one(t, "NextElapseUSecMonotonic"))
+            if span is not None:
+                when = time.strftime("%Y-%m-%d %H:%M:%S",
+                                     time.localtime(boot_epoch + span))
         last = _one(t, "LastTriggerUSec")
         if not last or last in ("0", "n/a"):
             last, result = "не запускався", ""
@@ -267,7 +308,7 @@ def schedule_rows(blobs: list[tuple[str, str, str]]) -> list[dict]:
             "command": _command(s),
             "schedules": _calendars(t) + _monotonic(t),
             "persistent": _one(t, "Persistent") == "yes",
-            "next": _one(t, "NextElapseUSecRealtime"),
+            "next": when,
             "last": last,
             "result": result,
             "failed": bool(result) and result != "success",

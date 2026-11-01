@@ -162,7 +162,7 @@ screen 8's second half and a phase of its own — see *Phase 10* below.
   words beside the file it stands on. A test re-reads every one of those files: a rule
   deleted from `CLAUDE.md` breaks the suite instead of staying on screen as a promise
   nobody keeps.
-- **Schedule**: all 15 systemd user timers — unit, description, the command it actually
+- **Schedule**: all 14 systemd user timers — unit, description, the command it actually
   runs, every `OnCalendar` line (the digest has two) or the interval for the four timers
   that have none, whether it catches up a missed run, next, last, and the result with the
   exit status. One link per unit tails its journal, which is the answer to "why did the
@@ -356,7 +356,7 @@ channels with search, disable, priority and *Remove dead*; the mail and social f
 
 **Phase 8 — Rules, reading.** (~3 h) — **done**
 Screen 8 as described above: the merged configuration with overrides and masked values, the
-permissions as they actually are, all 15 timers with their journals, the key list. No form,
+permissions as they actually are, all 14 timers with their journals, the key list. No form,
 no write path.
 *Ships:* the answer to "what governs this thing", without a terminal.
 *Risk:* low by construction — the only thing it can do is show. The two real risks are
