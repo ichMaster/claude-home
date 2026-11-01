@@ -242,3 +242,13 @@ def test_a_failed_daemon_reload_is_not_reported_as_success(unit_file, monkeypatc
                                    "calendar": ["*-*-* 09:00:00"]})
     assert "не перезавантаж" in said.lower() or "daemon-reload" in said
     assert unit_file.read_text(encoding="utf-8") == UNIT, "and the unit is put back"
+
+
+def test_a_crlf_body_is_stored_with_unix_newlines(files):
+    """writes M2: a browser normalises a textarea's newlines, so one save rewrote every
+    line — and the diff the commit-time security reading has to read became the whole file."""
+    body = "\r\n".join(["рядок"] * 300)
+    ok, _ = prompt_screen.save_file("persona.md", body, confirm=True)
+    assert ok
+    on_disk = (files / "persona.md").read_text(encoding="utf-8")
+    assert "\r" not in on_disk and on_disk.count("\n") == 299

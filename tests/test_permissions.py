@@ -85,3 +85,22 @@ def test_start_sh_appends_the_block_to_the_prompt():
     """The one property that separates this from decoration: the session is actually told."""
     start = (ROOT / "start.sh").read_text(encoding="utf-8")
     assert "permissions.py" in start and "prompt" in start
+
+
+# --- t1112: a malformed level must fail closed, not raise (full review: writes M4) -------
+
+@pytest.mark.parametrize("value", [["free"], {"level": "free"}, 3.5, b"free"])
+def test_an_unhashable_or_odd_level_reads_as_never(value):
+    """`x in dict` needs a hashable x, so a JSON array or object raised — and all three
+    readers caught the exception, which meant the whole permission block vanished from the
+    system prompt in silence."""
+    assert permissions.level("mail.send", {"mail.send": value}) == "never"
+
+
+@pytest.mark.parametrize("blob", ["free", ["free"], 7, None])
+def test_a_permissions_node_that_is_not_a_block_does_not_raise(blob, monkeypatch):
+    monkeypatch.setattr(permissions, "conf", lambda key, default=None:
+                        blob if key == "permissions" else default)
+    assert permissions.levels() == {}
+    text = permissions.prompt_block()
+    assert "не обговорюється" in text, "the block must still be rendered"

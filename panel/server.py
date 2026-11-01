@@ -988,10 +988,10 @@ class Handler(BaseHTTPRequestHandler):
                                       q.get("p", [""])[0][:300]).encode("utf-8"),
                     "text/html; charset=utf-8")
             if path == "/zirka":
-                day = urllib.parse.parse_qs(
-                    urllib.parse.urlparse(self.path).query).get("day", [""])[0]
-                return self._send(200, zirka_html(day[:10]).encode("utf-8"),
-                                  "text/html; charset=utf-8")
+                q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                return self._send(200, zirka_html(q.get("day", [""])[0][:10],
+                                                  q.get("m", [""])[0][:400])
+                                  .encode("utf-8"), "text/html; charset=utf-8")
             if path == "/prompt":
                 message = urllib.parse.parse_qs(
                     urllib.parse.urlparse(self.path).query).get("m", [""])[0]
@@ -1099,10 +1099,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._redirect("/scenarios?m=" +
                                       urllib.parse.quote(scenario_action(form)[:2000]))
             if path == "/zirka":
+                # Post/Redirect/Get like every other write here (t1112): an F5 used to
+                # re-send the evening question, re-run the eight-minute forecast, or add
+                # the same reference again with its calibration rules.
                 message = zirka_action(form)
-                day = (form.get("day") or [""])[0]
-                return self._send(200, zirka_html(day[:10], message).encode("utf-8"),
-                                  "text/html; charset=utf-8")
+                day = (form.get("day") or [""])[0][:10]
+                return self._redirect(
+                    "/zirka?day=" + urllib.parse.quote(day) +
+                    "&m=" + urllib.parse.quote(message[:400]))
             self._send(404, b"not found", "text/plain; charset=utf-8")
         except Exception:                                                # noqa: BLE001
             traceback.print_exc()

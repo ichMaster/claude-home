@@ -18,7 +18,7 @@ import rules_screen                                                     # noqa: 
 import server                                                           # noqa: E402
 
 DEFAULT = {"probes": {"loe": {"queue": "4.1", "ttl": 600, "on": True, "share": 0.5}},
-           "panel": {"port": 8091, "probes": ["loe", "alarm"]},
+           "panel": {"port": 8091, "changes": 20, "probes": ["loe", "alarm"]},
            "astro": {"birth": {"place": "десь"}},
            "permissions": {"mail.send": "ask"}}
 
@@ -45,7 +45,7 @@ def saved(f):
     ("probes.loe.queue", "5.2", "5.2"),
     ("probes.loe.on", "off", False),
     ("probes.loe.share", "0.75", 0.75),
-    ("panel.port", "9000", 9000),
+    ("panel.changes", "40", 40),
 ])
 def test_a_setting_keeps_the_type_of_its_default(local, key, raw, want):
     ok, said = rules_screen.set_setting(key, raw)
@@ -253,3 +253,19 @@ def test_an_absent_local_config_is_not_an_error(tmp_path, monkeypatch):
     ok, said = rules_screen.set_setting("probes.loe.ttl", "900")
     assert ok, said
     assert json.loads(f.read_text(encoding="utf-8"))["probes"]["loe"]["ttl"] == 900
+
+
+# --- t1112: four Mediums from the full review --------------------------------------------
+
+@pytest.mark.parametrize("key", ["panel.auth.max_attempts", "panel.auth.lock_min",
+                                 "panel.auth.ttl_hours", "panel.journal_scope",
+                                 "panel.host", "panel.port", "versions.dir",
+                                 "versions.files", "panel.edit_min_ratio"])
+def test_the_form_cannot_weaken_the_panel_itself(local, key):
+    """Security M5: the settings form could raise the attempt limit, shorten the lock,
+    stretch the session, re-open the journal disclosure t1094 closed, move the version
+    directory, or rebind the socket — all from the page those settings protect."""
+    ok, said = rules_screen.set_setting(key, "999")
+    assert not ok and ("термінал" in said.lower() or "панел" in said.lower())
+    ok, said = rules_screen.reset_setting(key)
+    assert not ok

@@ -30,7 +30,15 @@ MASK_TEXT = "значення приховано"
 # and belongs to the terminal; a permission is the owner's standing rule about the terminal;
 # a list or a block is not a form field — the 603 channels have their own screen, and a
 # textarea full of JSON is a way to corrupt a file rather than to edit one.
-NO_EDIT_PREFIXES = ("permissions",)
+NO_EDIT_PREFIXES = (
+    "permissions",
+    # A page must not be able to weaken what protects the page (security M5): the attempt
+    # limit and the lock, the session's life, the journal filter t1094 closed, the socket
+    # the panel binds, the version directory that makes a wrong write recoverable, and the
+    # shrink ratio that stands between a truncated paste and persona.md.
+    "panel.auth", "panel.journal_scope", "panel.host", "panel.port",
+    "panel.edit_min_ratio", "panel.max_post_bytes", "versions",
+)
 
 
 # --- configuration ----------------------------------------------------------------------
@@ -159,6 +167,11 @@ def set_setting(key: str, raw: str) -> tuple[bool, str]:
     The committed `config.json` is never touched: it holds the defaults, and a panel that
     edited them would make the repository's own copy of the truth drift.
     """
+    # The protection check comes first: a key a page may not touch must say so, not
+    # «такого ключа немає» (t1112).
+    refusal = _edit_refusal(key)
+    if refusal:
+        return False, refusal
     try:
         default, local = _default_config(), _local_config()
     except LocalUnreadable as exc:
@@ -167,9 +180,6 @@ def set_setting(key: str, raw: str) -> tuple[bool, str]:
     if key not in flat_default and key not in flat_local:
         return False, f"Такого ключа немає: «{key[:60]}». Форма не вигадує налаштувань."
     current = flat_local.get(key, flat_default.get(key))
-    refusal = _edit_refusal(key)
-    if refusal:
-        return False, refusal
     if not editable(key, current, masked_keys()):
         return False, "Списки й блоки тут не редагуються."
     ok, value = _parse_like(raw, current)
@@ -215,9 +225,12 @@ def _edit_refusal(key: str) -> str:
         return "Ключ не названо."
     if is_masked(key, masked_keys()):
         return "Це особисте значення — ставиться лише з термінала."
-    if any(key == p or key.startswith(p + ".") for p in NO_EDIT_PREFIXES):
+    if key == "permissions" or key.startswith("permissions."):
         return ("Дозволи змінюються лише з термінала: "
                 "tools/permissions.py set <ключ> <рівень>.")
+    if any(key == p or key.startswith(p + ".") for p in NO_EDIT_PREFIXES):
+        return ("Це налаштування захищає саму панель — змінюється лише з термінала "
+                "(config.json / config.local.json).")
     return ""
 
 

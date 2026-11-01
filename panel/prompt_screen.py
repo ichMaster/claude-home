@@ -185,6 +185,10 @@ def save_file(name: str, text: str, confirm: bool = False) -> tuple[bool, str]:
     """
     if name not in EDITABLE:
         return False, f"Тут редагуються лише {', '.join(sorted(EDITABLE))}."
+    # A browser normalises a textarea's newlines to CRLF, so one save rewrote every line of
+    # the file — and the diff the commit-time security review has to read became the whole
+    # file (t1112).
+    text = (text or "").replace("\r\n", "\n").replace("\r", "\n")
     if not (text or "").strip():
         return False, "Порожній файл — не зберігаю. Це майже завжди не те, чого хотіли."
     target = Path(HOME) / name

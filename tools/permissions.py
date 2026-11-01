@@ -65,7 +65,11 @@ HARD = {
 
 
 def levels() -> dict:
-    return dict(conf("permissions", {}) or {})
+    """The overrides, or {} — a `permissions` key that is not a block is not a permission
+    block, and raising on it made the whole thing vanish from the prompt in silence (t1112).
+    """
+    got = conf("permissions", {})
+    return dict(got) if isinstance(got, dict) else {}
 
 
 def level(key: str, current: dict | None = None) -> str:
@@ -75,7 +79,9 @@ def level(key: str, current: dict | None = None) -> str:
     if key not in source:
         return str(DECISIONS[key]["default"]) if key in DECISIONS else "never"
     got = source[key]
-    return str(got) if got in LEVELS else "never"
+    # `x in dict` needs a hashable x, so a JSON array or object used to raise here — and all
+    # three readers caught it, which meant no permissions reached the prompt at all (t1112).
+    return str(got) if isinstance(got, str) and got in LEVELS else "never"
 
 
 def prompt_block(current: dict | None = None) -> str:
