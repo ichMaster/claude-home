@@ -1,6 +1,6 @@
 # Admin panel — functionality and design
 
-Status: phases 1-4 and 6-8 built; 5 deferred, 9 (Sent) next, 10 blocked on authentication.
+Status: phases 1-4 and 6-8 built; 5 deferred, 9 (Sent) next, 10 waits on 11 (authentication).
 Target: v5 of [ROADMAP.md](../ROADMAP.md).
 
 ## Why a panel at all
@@ -374,7 +374,7 @@ and `daemon-reload` it.
 session, the timers and the whole repository — and it has no authentication. So a write
 from the panel carries the owner's rights and nobody's signature, and on a port reachable
 from the local network that is not a form, it is a remote control. Either the panel gets
-authentication first (which "Not a phase" below currently refuses) or editing stays out.
+authentication first — phase 11, below — or editing stays out.
 The owner decides which; until then the panel reads, and changes are made from the terminal.
 *Risk when it happens:* the highest in the project — a bad write here breaks every probe
 and timer at once.
@@ -393,10 +393,52 @@ behind the switch until the panel can tell who is asking.
 reads, so the panel would be duplicating a worse channel, and it would be the only screen
 writing outward on an unauthenticated port.
 
-**Not a phase:** remote access from outside a trusted network, accounts and roles, mobile
-beyond Pulse. Authentication was in this list until phase 8 (2026-11-01) and is now the one
-thing phase 10 waits on: as long as the panel cannot tell who is pressing, it may read
-everything and write nothing that governs the assistant.
+**Phase 11 — Authentication.** (~4 h)
+Added on the owner's request, 2026-11-01. It was in "not a phase" until phase 8 showed what
+an open port means in practice, and until phase 10 turned out to be blocked by a decision
+that belonged to no phase at all: editing cannot ship without it, so it is a phase.
+
+*The design, in the order the requests hit it:*
+
+- **Narrow the bind back to the tailnet.** `panel.host` returns to `tailscale`, so the
+  listener is on his own devices rather than on every device on the home Wi-Fi, and the
+  traffic between them is WireGuard-encrypted. This is the half that does the most work for
+  the least code — it is already implemented (`resolve_host`), it is one setting, and it
+  removes the entire class of "someone else on the network".
+- **One shared password, stored as a hash.** No accounts, no roles: one person, one secret.
+  `hashlib.scrypt` with a random salt — stdlib, no dependency — written to `.env.panel`
+  (mode 600, git-ignored) by `panel/auth.py set`, which reads the password from a terminal
+  prompt and never echoes or logs it. The panel reads the hash at start; a missing file means
+  no password is set, and then the panel serves **nothing but** `/login` with the one-line
+  instruction for setting it, rather than falling open.
+- **A session cookie, in memory only.** `/login` takes the password, compares with
+  `hmac.compare_digest`, and on success mints 32 random bytes as a token held in a dict in
+  the process with an expiry (`panel.auth.ttl_hours`, 12). The cookie is `HttpOnly`,
+  `SameSite=Strict`, `Path=/`. Memory-only is deliberate: a restart logs everyone out, and
+  the panel gains no second on-disk secret to protect.
+- **Rate limiting, because a LAN password without it is a dictionary away.** Failed attempts
+  are counted per source address (`panel.auth.max_attempts`, 5) and the address is locked for
+  `panel.auth.lock_min` (5), every attempt appended to `status/state/panel-auth.jsonl`. The
+  log is the point as much as the lock: an attempt from an address that is not his is
+  something he should be able to see.
+- **The form token stays.** It solves a different problem — a page on another origin driving
+  this one (t1069, t1085) — and a login does not replace it.
+- **No TLS, stated plainly.** Plain HTTP on a tailnet address is encrypted by WireGuard
+  between the devices and in clear only on each device itself. If that stops being enough,
+  the upgrade is `tailscale cert` plus `http.server` with TLS: a real certificate for the
+  `*.ts.net` name with no private CA to run. Not in this phase.
+
+*Ships:* the panel knows who is asking, which is what phases 9 and 10 are waiting on — the
+message bodies on the Sent screen and every form in Editing.
+*Risk:* moderate and of an unusual kind — the failure mode is not a leak but a lockout:
+getting the password check wrong, or the cookie path wrong, locks him out of his own panel.
+So the first thing this phase gets is a test that a wrong password is refused, a right one
+accepted, and an expired token refused, and the second is a terminal escape hatch
+(`panel/auth.py clear`, which drops the password file and the sessions).
+
+**Not a phase:** remote access from outside the tailnet, accounts and roles, mobile beyond
+Pulse. Authentication left this list on 2026-11-01 and became phase 11, because phase 10
+cannot exist without it.
 
 ## Out of scope
 

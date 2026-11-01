@@ -187,7 +187,32 @@ without a phone.
 **Tests:** a message with no voice and a failed delivery both appear correctly; the body is
 hidden unless `panel.sent_bodies` is on.
 
-### v5.7 Editing (blocked)
+### v5.7 Authentication
+
+**Goal:** the panel knows who is asking.
+
+**Description.** One shared password — one machine, one person, so no accounts and no roles.
+`hashlib.scrypt` with a random salt, stored in `.env.panel` (mode 600, git-ignored) and set
+from a terminal prompt by `panel/auth.py set`; a session token of 32 random bytes held in
+memory with a 12-hour expiry, in an `HttpOnly`, `SameSite=Strict` cookie; failed attempts
+counted per source address, locked after five, every attempt appended to
+`status/state/panel-auth.jsonl`. `panel.host` returns to `tailscale` at the same time, so the
+listener is on his own devices and the traffic between them is WireGuard-encrypted — that
+half costs one setting and removes the whole class of "someone else on the Wi-Fi". No
+password file means the panel serves only the login page with the instruction for setting
+one: it fails closed, never open.
+
+**Why it stopped being refused.** It was in «deliberately not doing» until v5.4 was built and
+its review found the journal pane publishing the owner's calendar to the network, and until
+v5.8 turned out to be blocked by a decision that belonged to no version at all (2026-11-01).
+
+**DoD:** a wrong password is refused and logged, a right one lasts twelve hours, an expired
+token is refused, and `panel/auth.py clear` is a terminal escape hatch out of a lockout.
+
+**Tests:** the three password cases, the lock after five attempts, a request with no cookie
+redirected to the login page, and `/static` plus `/login` reachable without one.
+
+### v5.8 Editing (waits on v5.7)
 
 **Goal:** change the rules from the panel, not only read them.
 
@@ -195,11 +220,10 @@ hidden unless `panel.sent_bodies` is on.
 timer times that rewrite the unit and reload systemd, and the editors for `persona.md` and
 `CLAUDE.md` from v5.1.
 
-**Blocked on one decision.** The panel runs as `ich`, the same user as the session and the
-timers, and it has no authentication; `panel.host` is `0.0.0.0` by the owner's choice of
-2026-10-31. A write from it therefore carries his rights and nobody's signature. Either the
-panel gets authentication — which «Deliberately not doing» below still refuses — or editing
-stays in the terminal. His call; until then the panel reads.
+**Waits on v5.7, not on effort.** The panel runs as `ich`, the same user as the session and
+the timers. Until it can tell who is asking, a write from it carries the owner's rights and
+nobody's signature, so every write stays in the terminal. With v5.7 in place this is an
+ordinary version.
 
 **Tests (when it happens):** a schedule change rewrites the unit and reloads systemd; an
 invalid calendar expression is rejected before writing; `config.local.json` keeps its mode
@@ -238,11 +262,11 @@ and the change log, answered by one voice reply.
 - **YouTube Data API.** Per-channel RSS already answers "what is new" without OAuth or
   quotas.
 - **Multi-user and tenancy.** One machine, one person.
-- **Authentication — refused, and now the thing v5.7 waits on.** The panel was meant to
-  listen on localhost behind an SSH tunnel; on 2026-10-31 the owner bound it to the whole
-  local network instead, knowingly. Reading is fine that way, and the screens are built to
-  be safe to read: personal values masked, journal bodies withheld, keys shown by name only.
-  Writing is not, so every write stays in the terminal until this is decided (2026-11-01).
+- ~~**Authentication.**~~ Refused until 2026-11-01, when it became **v5.7**: the panel was
+  bound to the whole local network on 2026-10-31, v5.4's review found the journal pane
+  publishing the owner's calendar across it, and editing turned out to be blocked by a
+  decision that belonged to no version. Reading stayed safe by construction — personal values
+  masked, journal bodies withheld, keys by name only — but writing needs a signature.
 - **Secrets in any interface but the terminal.** The panel may show that a key exists,
   never what it is.
 - **A chat window in the panel.** Asked for on 2026-10-31, dropped on 2026-11-01: the owner
