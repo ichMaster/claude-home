@@ -132,8 +132,14 @@ def host_ok(header: str | None) -> bool:
         return False
 
 
-def run_script(*cmd: str, timeout: int = 300) -> tuple[bool, str]:
-    """Run one of the project's own scripts. A failure is returned, never swallowed."""
+def run_script(*cmd: str, timeout: int = 300, cap: int = 600,
+               tail: bool = False) -> tuple[bool, str]:
+    """Run one of the project's own scripts. A failure is returned, never swallowed.
+
+    `cap` and `tail` belong to the caller, because a task message and a journal page want
+    opposite ends of the same string: a message rides a redirect query string and wants its
+    first 600 characters, a journal wants its last lines (t1096). A cut tail says so.
+    """
     try:
         out = subprocess.run(list(cmd), capture_output=True, text=True,
                              timeout=timeout, cwd=str(HOME))
@@ -143,7 +149,9 @@ def run_script(*cmd: str, timeout: int = 300) -> tuple[bool, str]:
         return False, f"не вдалося запустити: {exc}"
     ok = out.returncode == 0
     said = (out.stdout or "").strip() or (out.stderr or "").strip()
-    return ok, said[:600]
+    if cap and len(said) > cap:
+        said = ("… обрізано\n" + said[-cap:]) if tail else said[:cap]
+    return ok, said
 
 
 def save_reference(text: str, day: str, author: str, learn: bool) -> str:
@@ -434,7 +442,8 @@ def journal_text(unit: str, limit: int | None = None) -> str:
         # exit code) and nothing personal. Priority filtering was measured and does not
         # separate them: a script's stdout is logged at the same priority 6.
         cmd += ["-t", "systemd"]
-    ok, said = run_script(*cmd, timeout=30)
+    ok, said = run_script(*cmd, timeout=30,
+                          cap=int(conf("panel.journal_chars", 12000)), tail=True)
     return said if ok else f"Журнал не прочитався: {said}"
 
 

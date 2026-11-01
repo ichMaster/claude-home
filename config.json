@@ -255,6 +255,7 @@
     "commits": 40,
     "channels_shown": 200,
     "journal_lines": 40,
+    "journal_chars": 12000,
     "journal_scope_": "What the Rules screen's journal pane may show. `systemd` (default) — systemd's own lines for the unit: Starting / Finished / Failed / exit code / CPU time. `full` — the unit's own stdout too, which for a headless unit is the content a model composed (the digest's calendar block, mail subjects, the nightly review's findings) and therefore waits for the panel to have authentication (t1094).",
     "journal_scope": "systemd",
     "rules_masked_": "Keys whose VALUE never reaches the Rules screen. The panel listens on the whole local network with no authentication (host above), so birth data, the calendar id, the owner's name and the ElevenLabs voice ids are shown as «перевизначено, значення приховано» — the fact of an override is useful, the value is nobody's business. Prefix match on whole dotted segments.",

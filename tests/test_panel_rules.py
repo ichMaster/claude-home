@@ -271,7 +271,7 @@ def test_the_values_are_escaped():
 def test_a_journal_is_read_only_for_a_unit_systemd_itself_named(monkeypatch):
     calls = []
 
-    def fake_run(*cmd, timeout=300):
+    def fake_run(*cmd, **kwargs):
         calls.append(cmd)
         return True, "два рядки журналу"
     monkeypatch.setattr(server, "run_script", fake_run)
@@ -284,7 +284,7 @@ def test_a_journal_is_read_only_for_a_unit_systemd_itself_named(monkeypatch):
 def test_an_unknown_unit_never_reaches_journalctl(monkeypatch):
     calls = []
     monkeypatch.setattr(server, "run_script",
-                        lambda *cmd, timeout=300: (calls.append(cmd), (True, ""))[1])
+                        lambda *cmd, **kw: (calls.append(cmd), (True, ""))[1])
     monkeypatch.setattr(server.data, "timer_units", lambda: ["noos-digest.timer"])
 
     for attack in ("ssh-agent.service", "noos-digest.timer; rm -rf ~",
@@ -314,7 +314,7 @@ def test_an_interval_timer_shows_its_interval_not_a_dash():
 def journal_calls(monkeypatch, scope="systemd"):
     calls = []
 
-    def fake_run(*cmd, timeout=300):
+    def fake_run(*cmd, **kwargs):
         calls.append(cmd)
         return True, "Finished Ноос: повний дайджест."
     monkeypatch.setattr(server, "run_script", fake_run)
@@ -416,3 +416,68 @@ def test_the_doc_no_longer_claims_fifteen_timers():
 def test_an_interval_reads_as_ukrainian_not_as_systemd_s_abbreviation(seconds, text):
     """This line is listened to as often as it is read — «15min» is Latin and clipped."""
     assert rules_screen.span_text(seconds) == text
+
+
+# --- t1096 (M3): the journal was cut from the front --------------------------------------
+
+LONG_JOURNAL = "\n".join(f"2026-11-01T0{i // 10}:{i % 10:02d}:00 рядок номер {i}"
+                         for i in range(1, 41))
+
+
+def journal_with(monkeypatch, output, **settings):
+    def fake_run(*cmd, timeout=300, cap=600, tail=False):   # mirrors run_script's shape
+        said = output
+        if cap and len(said) > cap:
+            said = ("… обрізано\n" + said[-cap:]) if tail else said[:cap]
+        return True, said
+    monkeypatch.setattr(server, "run_script", fake_run)
+    monkeypatch.setattr(server.data, "timer_units", lambda: ["noos-digest.timer"])
+    real = server.conf
+    monkeypatch.setattr(server, "conf",
+                        lambda key, default=None: settings.get(key, real(key, default)))
+
+
+def test_the_journal_pane_shows_the_newest_lines(monkeypatch):
+    """«Чому дайджест мовчав» is answered by the end of the journal, not its beginning."""
+    journal_with(monkeypatch, LONG_JOURNAL)
+    said = server.journal_text("noos-digest.service")
+    assert "рядок номер 40" in said
+
+
+def test_the_journal_is_not_clamped_to_six_hundred_characters(monkeypatch):
+    journal_with(monkeypatch, LONG_JOURNAL)
+    assert len(server.journal_text("noos-digest.service")) > 600
+
+
+def test_a_cut_journal_says_it_was_cut(monkeypatch):
+    journal_with(monkeypatch, LONG_JOURNAL, **{"panel.journal_chars": 200})
+    said = server.journal_text("noos-digest.service")
+    assert "обрізано" in said and "рядок номер 40" in said
+
+
+def test_an_uncut_journal_carries_no_marker(monkeypatch):
+    journal_with(monkeypatch, "Finished Ноос: повний дайджест.")
+    assert "обрізано" not in server.journal_text("noos-digest.service")
+
+
+def test_the_line_count_from_config_reaches_the_command(monkeypatch):
+    calls = []
+
+    def fake_run(*cmd, timeout=300, cap=600, tail=False):
+        calls.append(cmd)
+        return True, "ok"
+    monkeypatch.setattr(server, "run_script", fake_run)
+    monkeypatch.setattr(server.data, "timer_units", lambda: ["noos-digest.timer"])
+    real = server.conf
+    monkeypatch.setattr(server, "conf",
+                        lambda key, default=None: 7 if key == "panel.journal_lines"
+                        else real(key, default))
+    server.journal_text("noos-digest.service")
+    assert "7" in calls[0]
+
+
+def test_the_other_callers_keep_the_head_clamp():
+    """A task message rides a redirect query string, so its 600-character head clamp is the
+    right behaviour and must not change with the journal's needs."""
+    ok, said = server.run_script("printf", "x" * 2000)
+    assert ok and len(said) == 600 and said.startswith("x")
