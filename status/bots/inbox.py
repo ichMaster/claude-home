@@ -595,11 +595,13 @@ def poll(bot: str, dry_run: bool = False) -> int:
         except Exception as e:                                           # noqa: BLE001
             print(f"{bot}: збій обробки повідомлення: {e}")
             log_dropped(bot, f"збій обробки: {e}", upd)
+        # committed after every update, not once per batch: the oneshot service can be
+        # SIGKILLed past TimeoutStartSec mid-backlog, and a batch-level save replays
+        # every already-answered message two minutes later, on a loop (t1089). A dry
+        # run still commits nothing — it must not consume the queue (2026-10-30).
+        if not dry_run:
+            save_state(bot, st)
 
-    # a dry run must not consume the queue: offsets are only committed when the messages
-    # were actually answered (2026-10-30: a --dry-run swallowed a real question)
-    if not dry_run:
-        save_state(bot, st)
     return answered
 
 

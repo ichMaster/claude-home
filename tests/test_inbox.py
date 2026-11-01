@@ -57,3 +57,35 @@ def test_failing_send_still_saves_state(monkeypatch, bot_env):
     assert st["offset"] == 201
     dropped = (bot_env / "dropped.jsonl").read_text()
     assert "збій обробки" in dropped
+
+
+# --- t1089: state must be persisted per update, not once after the whole batch ---------
+
+def test_kill_mid_batch_does_not_replay_answered_messages(monkeypatch, bot_env):
+    """t1089 TC1 — the oneshot service gets SIGKILLed past TimeoutStartSec mid-backlog.
+    KeyboardInterrupt stands in for the kill: it escapes the loop's `except Exception`,
+    so whatever is on disk at that moment is what the next run replays — and the
+    already-answered first update must not be part of it."""
+    updates = [upd(300, text="перше"), upd(301, text="друге")]
+    monkeypatch.setattr(inbox, "api", lambda *a, **k: {"ok": True, "result": updates})
+    calls = {"n": 0}
+
+    def answer_then_die(*a, **k):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise KeyboardInterrupt
+        return "відповідь"
+    monkeypatch.setattr(inbox, "answer", answer_then_die)
+
+    with pytest.raises(KeyboardInterrupt):
+        inbox.poll("zirka")
+    st = json.loads((bot_env / "zirka.json").read_text())
+    assert st["offset"] == 301, "the answered update must already be committed on disk"
+
+
+def test_dry_run_saves_nothing_even_per_update(monkeypatch, bot_env):
+    """t1089 TC2 — a dry run must not consume the queue (2026-10-30), per update either."""
+    updates = [upd(400, text="привіт")]
+    monkeypatch.setattr(inbox, "api", lambda *a, **k: {"ok": True, "result": updates})
+    inbox.poll("zirka", dry_run=True)
+    assert not (bot_env / "zirka.json").exists()
