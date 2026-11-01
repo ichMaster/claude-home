@@ -254,6 +254,12 @@
     "changes_search": 5000,
     "commits": 40,
     "channels_shown": 200,
+    "auth_": "The panel's login (t1100, phase 11). One shared password, hashed with scrypt into .env.panel (mode 600, git-ignored) by panel/auth.py set — from a terminal, never over HTTP or Telegram. Sessions live in the process, so a restart logs out. `host` above stays 0.0.0.0 because the machine the owner works from is not on the tailnet; narrowing to `tailscale` is one word the day it is.",
+    "auth": {
+      "ttl_hours": 12,
+      "max_attempts": 5,
+      "lock_min": 5
+    },
     "journal_lines": 40,
     "journal_chars": 12000,
     "journal_scope_": "What the Rules screen's journal pane may show. `systemd` (default) — systemd's own lines for the unit: Starting / Finished / Failed / exit code / CPU time. `full` — the unit's own stdout too, which for a headless unit is the content a model composed (the digest's calendar block, mail subjects, the nightly review's findings) and therefore waits for the panel to have authentication (t1094).",

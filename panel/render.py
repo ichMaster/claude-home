@@ -824,3 +824,38 @@ def render_rules(settings: list[dict], perms: dict, schedule: list[dict],
         f"<section><h2>Розклад</h2>{_schedule_table(schedule, unit)}{log}</section>"
         f"<section><h2>Ключі</h2>{_keys_table(keys)}</section>")
     return page("Правила", body, "/rules")
+
+
+# --- the login page (t1100) -----------------------------------------------------------------
+
+def render_login(configured: bool = True, message: str = "") -> str:
+    """The only page served without a session.
+
+    An unconfigured panel lands here too, and says the one command that sets a password —
+    `.env.panel` is written from a terminal and nowhere else, because a request arriving over
+    HTTP does not prove who sent it.
+    """
+    note = f'<p class="alert">{e(message)}</p>' if message else ""
+    if configured:
+        body = (f'<h1>Ноос</h1>{note}'
+                '<form method="post" action="/login" class="login">'
+                '<input type="password" name="password" placeholder="пароль" autofocus>'
+                '<button type="submit">увійти</button></form>'
+                '<p class="dim">Сесія живе, поки живе процес панелі. '
+                'Рестарт панелі вилогінює.</p>')
+    else:
+        body = (f'<h1>Ноос</h1>{note}'
+                '<p class="alert">Пароль не встановлено, тож панель нікого не впускає.</p>'
+                '<p class="dim">Встановити — лише з терміналу цієї машини:</p>'
+                '<pre class="journal">cd ~/claude-home\n'
+                './panel/auth.py set\n'
+                'systemctl --user restart noos-panel</pre>'
+                '<p class="dim">Повідомлення в чаті не доводить, хто його написав, '
+                'тому пароль ставиться там, де це видно.</p>')
+    return (f"""<!doctype html>
+<html lang="uk"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Вхід · Ноос</title>
+<link rel="stylesheet" href="/static/panel.css"></head>
+<body><main class="only">{body}</main></body></html>
+""")

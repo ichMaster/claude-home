@@ -97,6 +97,8 @@ def test_post_with_foreign_host_is_refused_even_with_the_token(live_panel):
 def fetch_resp(port: int, method: str, path: str, body: str = ""):
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
     headers = {"Content-Type": "application/x-www-form-urlencoded"} if body else {}
+    # logged in: since t1100 every path but /login and /static needs a session cookie
+    headers["Cookie"] = f"{server.COOKIE}={server.new_session()}"
     conn.request(method, path, body=body or None, headers=headers)
     resp = conn.getresponse()
     resp.read()

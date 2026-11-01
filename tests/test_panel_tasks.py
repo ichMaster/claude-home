@@ -209,25 +209,29 @@ def live_panel(monkeypatch):
     httpd.shutdown()
 
 
-def post_tasks(port, body):
+def post_tasks(port, body, cookie=None):
+    """A logged-in browser: since t1100 every request but /login and /static needs a
+    session cookie, so the test mints one the way a successful login would."""
     import http.client
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
     conn.request("POST", "/tasks", urllib.parse.urlencode(body),
-                 {"Content-Type": "application/x-www-form-urlencoded"})
+                 {"Content-Type": "application/x-www-form-urlencoded",
+                  "Cookie": cookie or f"{server.COOKIE}={server.new_session()}"})
     return conn, conn.getresponse()
 
 
 def test_post_redirects_so_refresh_cannot_rewrite(live_panel):
     """TC1+TC2: the page left in the browser must be a GET, never the form submission."""
     port, fired = live_panel
+    cookie = f"{server.COOKIE}={server.new_session()}"
     conn, r = post_tasks(port, {"token": server.FORM_TOKEN,
-                                "action": "add", "text": "нова"})
+                                "action": "add", "text": "нова"}, cookie)
     assert r.status == 303, "a 200 here means F5 re-fires the action into the log"
     location = r.getheader("Location")
     assert location and location.startswith("/tasks?m=")
     r.read()
     assert fired == [["add"]]
-    conn.request("GET", location)
+    conn.request("GET", location, headers={"Cookie": cookie})
     shown = conn.getresponse().read().decode("utf-8")
     assert "зроблено ✔" in shown, "the action's message must survive the redirect"
     assert fired == [["add"]], "the GET after the redirect must not act"

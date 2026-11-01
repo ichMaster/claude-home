@@ -3,13 +3,15 @@
 
     panel/server.py [--port 8091] [--once]
 
-Binds `127.0.0.1` only (`panel.host`). There is no authentication and there must not be
-one: the panel is reached over an SSH tunnel, and a login form on a loopback socket is
-decoration. If it ever needs to be reachable from elsewhere, that is a version of its own
-(docs/features/ADMIN-PANEL.md § Technical shape).
+Binds what `panel.host` says — `0.0.0.0` since 2026-10-31, by the owner's choice, because he
+works from another machine on the same network. That made the original reasoning obsolete
+("no authentication and there must not be one: a login form on a loopback socket reached
+through an SSH tunnel is decoration"), and phase 8's review showed what an open port means in
+practice. So since t1100 there is a login: one shared password, hashed into `.env.panel` and
+set from a terminal, a session in memory, five attempts per address. `panel/auth.py`.
 
-Read-only, deliberately. The other nine screens answer with a placeholder naming the phase
-that builds them, so the rail is honest rather than full of dead links.
+Read-only still, by phase: the screens that write (configuration, permissions, timer times)
+wait for phase 10, now that phase 11 has given the panel a way to tell who is asking.
 """
 from __future__ import annotations
 
@@ -19,6 +21,7 @@ import json
 import secrets
 import subprocess
 import sys
+import time
 import traceback
 import urllib.parse
 from datetime import date, datetime
@@ -34,6 +37,7 @@ import bruno                                                           # noqa: E
 import changes                                                         # noqa: E402
 import data                                                            # noqa: E402
 import memory_screen                                                   # noqa: E402
+import auth                                                            # noqa: E402
 import render                                                          # noqa: E402
 import rules_screen                                                    # noqa: E402
 import sources_screen                                                  # noqa: E402
@@ -90,6 +94,110 @@ def changes_html(query: str = "") -> str:
     return render.render_changes(rows, details, nights, changes.open_lows(nights),
                                  len(ahead) if ahead is not None else None,
                                  log[:60], query)
+
+
+# --- authentication (t1100) ---------------------------------------------------------------
+# One password, one person. Sessions live here and nowhere else: a restart logs out, and the
+# panel gains no second secret on disk to protect. The failure mode of this whole mechanism
+# is a lockout rather than a leak, so the escape hatch is `panel/auth.py clear` in a
+# terminal — the one place that proves who is asking.
+SESSIONS: dict[str, float] = {}          # token -> expiry, unix seconds
+ATTEMPTS: dict[str, dict] = {}           # source address -> {fails, until}
+AUTH_LOG = HOME / "status" / "state" / "panel-auth.jsonl"
+COOKIE = "noos_panel"
+
+
+def configured() -> bool:
+    """Is a password set? No password means the panel serves only the login page — an
+    unconfigured panel must never read as an open one."""
+    return bool(auth.stored_record())
+
+
+def new_session() -> str:
+    token = secrets.token_urlsafe(32)
+    SESSIONS[token] = time.time() + float(conf("panel.auth.ttl_hours", 12)) * 3600
+    for old_token, expiry in list(SESSIONS.items()):          # cheap housekeeping
+        if expiry < time.time():
+            SESSIONS.pop(old_token, None)
+    return token
+
+
+def valid_session(token: str) -> bool:
+    if not token:
+        return False
+    for known, expiry in SESSIONS.items():
+        if secrets.compare_digest(known, token):
+            return expiry > time.time()
+    return False
+
+
+def drop_session(token: str) -> None:
+    SESSIONS.pop(token, None)
+
+
+def cookie_header(token: str, ttl_hours: float | None = None) -> str:
+    """HttpOnly so a script cannot read it, SameSite=Strict so another origin cannot ride
+    it, Path=/ so one login covers the whole panel. No `Secure`: there is no TLS here, and
+    marking it secure over plain HTTP would simply stop the cookie from being sent."""
+    hours = float(ttl_hours if ttl_hours is not None else conf("panel.auth.ttl_hours", 12))
+    return (f"{COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/; "
+            f"Max-Age={int(hours * 3600)}")
+
+
+def cookie_token(header: str | None) -> str:
+    for part in (header or "").split(";"):
+        name, sep, value = part.strip().partition("=")
+        if sep and name == COOKIE:
+            return value.strip()
+    return ""
+
+
+def open_path(path: str) -> bool:
+    """The only two things served without a session: the login page and the stylesheet.
+
+    `/static/` is matched on a cleaned path, so `/static/../.env.voice` is not "open" —
+    `static_file()` would refuse it anyway, but a path that walks out of its directory has
+    no business being judged by its prefix.
+    """
+    if path == "/login":
+        return True
+    return path.startswith("/static/") and ".." not in path
+
+
+def _log_attempt(source: str, result: str) -> None:
+    """Every attempt, with its outcome and never the password tried. The log is the point
+    as much as the lock: an attempt from an address that is not his should be visible."""
+    try:
+        AUTH_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with AUTH_LOG.open("a", encoding="utf-8") as f:
+            f.write(json.dumps({"ts": datetime.now().isoformat(timespec="seconds"),
+                                "from": source, "result": result},
+                               ensure_ascii=False) + "\n")
+    except OSError:
+        pass                      # a login must not fail because the log is unwritable
+
+
+def try_login(password: str, source: str) -> str | None:
+    """A token on success, None otherwise. Rate-limited per source address, because a
+    password on a local network without a limit is a dictionary and five minutes."""
+    limit = int(conf("panel.auth.max_attempts", 5))
+    lock_s = float(conf("panel.auth.lock_min", 5)) * 60
+    state = ATTEMPTS.setdefault(source, {"fails": 0, "until": 0.0})
+    if state["until"] > time.time():
+        _log_attempt(source, "locked")
+        return None
+    if not configured() or not auth.check_password(password, auth.stored_record()):
+        state["fails"] += 1
+        if state["fails"] >= limit:
+            state["until"] = time.time() + lock_s
+            state["fails"] = 0
+            _log_attempt(source, "locked")
+        else:
+            _log_attempt(source, "fail")
+        return None
+    state["fails"], state["until"] = 0, 0.0
+    _log_attempt(source, "ok")
+    return new_session()
 
 
 # Minted once per process and required on every POST. This is not authentication and does
@@ -535,12 +643,24 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _authed(self) -> bool:
+        return valid_session(cookie_token(self.headers.get("Cookie")))
+
     def do_GET(self) -> None:                                            # noqa: N802
         path = self.path.split("?")[0]
         try:
             if not host_ok(self.headers.get("Host")):
                 return self._send(403, "Невідомий Host — запит не до цієї панелі."
                                   .encode("utf-8"), "text/plain; charset=utf-8")
+            # the gate, before anything is read or gathered (t1100)
+            if path == "/login":
+                return self._send(200, render.render_login(configured()).encode("utf-8"),
+                                  "text/html; charset=utf-8")
+            if path == "/logout":
+                drop_session(cookie_token(self.headers.get("Cookie")))
+                return self._redirect("/login")
+            if not open_path(path) and not self._authed():
+                return self._redirect("/login")
             if path.startswith("/static/"):
                 found = static_file(path[len("/static/"):])
                 if not found:
@@ -619,6 +739,27 @@ class Handler(BaseHTTPRequestHandler):
                          int(conf("panel.max_post_bytes", 1_000_000)))
             body = self.rfile.read(length).decode("utf-8", "replace")
             form = urllib.parse.parse_qs(body, keep_blank_values=True)
+            if path == "/login":
+                # The one POST without a session or a form token: there is no page of ours
+                # to have minted one yet. Rate limiting is what guards it instead (t1100).
+                token = try_login((form.get("password") or [""])[0],
+                                  self.client_address[0] if self.client_address else "?")
+                if not token:
+                    said = ("Пароля немає — дивись інструкцію нижче." if not configured()
+                            else "Не той пароль, або адреса тимчасово заблокована.")
+                    return self._send(
+                        403, render.render_login(configured(), said).encode("utf-8"),
+                        "text/html; charset=utf-8")
+                self.send_response(303)
+                self.send_header("Location", "/")
+                self.send_header("Set-Cookie", cookie_header(token))
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            if not self._authed():
+                # refused before any action runs, not after
+                return self._send(403, "Потрібен вхід у панель.".encode("utf-8"),
+                                  "text/plain; charset=utf-8")
             if not check_token((form.get("token") or [""])[0]):
                 # no login guards this port, so an unrecognised form is the only signal
                 # that the request did not come from a page this process served

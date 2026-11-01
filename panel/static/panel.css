@@ -323,3 +323,32 @@ pre.journal {
 }
 
 a.on { color: var(--amber); }
+
+/* --- the login page (t1100) -------------------------------------------------------- */
+
+main.only {
+  max-width: 34em;
+  margin: 12vh auto;
+  padding: 0 24px;
+}
+
+form.login { display: flex; gap: 8px; margin: 16px 0; }
+
+form.login input {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--rule);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--mono);
+}
+
+form.login button {
+  padding: 6px 14px;
+  border: 1px solid var(--rule);
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+form.login button:hover { color: var(--ink); border-color: var(--amber); }
