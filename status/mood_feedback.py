@@ -167,13 +167,17 @@ def questions(items: list[dict]) -> str:
     """
     if not items:
         return ""
+    sys.path.insert(0, str(HOME / "status"))
+    import mood  # noqa: E402
     head = ("Одне питання про сьогоднішнє." if len(items) == 1
             else f"{'Два' if len(items) == 2 else 'Три'} питання про сьогоднішнє.")
     lines = [head]
     for i, item in enumerate(items, 1):
-        window = str(item.get("window") or "").strip()
-        claim = str(item.get("claim") or "").strip().rstrip(".")
-        sign = str(item.get("sign") or "").strip().rstrip(".")
+        # `_unlabel` again at read time: rows stored before the parser learned to strip a
+        # column name are still on disk, and «ознака:» must not be read aloud (t1126).
+        window = mood._unlabel(str(item.get("window") or ""))
+        claim = mood._unlabel(str(item.get("claim") or "")).rstrip(".")
+        sign = mood._unlabel(str(item.get("sign") or "")).rstrip(".")
         order = ("Перше" if i == 1 else "Друге" if i == 2 else "Третє")
         lines.append(f"{order}: {window} — {claim}" + (f", {sign}" if sign else "")
                      + ". Було таке?")

@@ -285,6 +285,20 @@ MAX_CLAIMS = 3
 CLAIMS = None                                            # set in state_path terms below
 
 
+# The column names, when a model writes them into the column (t1126: «ознака: відкладеш
+# роботу» reached the evening question and was read out).
+_LABELS = ("вікно", "що станеться", "що", "ознака", "прогноз")
+
+
+def _unlabel(part: str) -> str:
+    text = part.strip()
+    low = text.lower()
+    for label in _LABELS:
+        if low.startswith(label + ":"):
+            return text[len(label) + 1:].strip()
+    return text
+
+
 def claims(text: str) -> tuple[list[dict], int]:
     """The ПРОГНОЗ block as data: `вікно | що станеться | ознака` per line.
 
@@ -298,7 +312,7 @@ def claims(text: str) -> tuple[list[dict], int]:
         line = line.strip().lstrip("-•— ").strip()
         if not line:
             continue
-        parts = [p.strip() for p in line.split("|")]
+        parts = [_unlabel(p) for p in line.split("|")]
         if len(parts) < 3 or not all(parts[:3]):
             dropped += 1
             continue

@@ -277,3 +277,22 @@ def test_the_state_carries_every_key_the_probe_reads(tmp_path, monkeypatch):
     for name in ("day", "summary", "biorhythms", "bio_conclusion"):
         if f'"{name}"' in probe or f'"{name}"' in bio_probe or f"'{name}'" in probe:
             assert name in written, f"the probe reads {name} and the state must carry it"
+
+
+def test_a_field_label_written_into_the_field_is_stripped():
+    """The first live run came back with «ознака: відкладеш роботу» inside the sign — the
+    model repeated the column name, and the evening question then read it aloud (t1126)."""
+    text = ("ПРОГНОЗ\nвікно: до обіду | що станеться: прийде лист | ознака: відкладеш "
+            "роботу\n")
+    got, dropped = mood.claims(text)
+    assert dropped == 0 and got[0]["window"] == "до обіду"
+    assert got[0]["claim"] == "прийде лист" and got[0]["sign"] == "відкладеш роботу"
+
+
+def test_the_question_cleans_a_label_that_is_already_stored():
+    """Rows written before the parser learned to strip a label are still on disk, and the
+    question must not read «ознака:» aloud because of them (t1126)."""
+    stored = [{"window": "до обіду", "claim": "прийде лист",
+               "sign": "ознака: відкладеш роботу"}]
+    text = mood_feedback.questions(stored)
+    assert "ознака:" not in text and "відкладеш роботу" in text
