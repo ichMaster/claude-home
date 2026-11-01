@@ -518,3 +518,22 @@ def masked_keys() -> list[str]:
 
 def key_files() -> list[dict]:
     return list(conf("panel.key_files", []) or [])
+
+
+def replace_calendar(unit_text: str, specs: list[str]) -> str:
+    """Swap a timer unit's `OnCalendar=` lines for a new set, in place.
+
+    In place matters: the rest of the unit is kept byte for byte and the new lines sit where
+    the old ones were, so a diff of the file shows the schedule change and nothing else.
+    A unit with no `OnCalendar` is not a calendar timer and is not rewritten (t1103).
+    """
+    lines = (unit_text or "").splitlines()
+    at = [i for i, line in enumerate(lines) if line.strip().startswith("OnCalendar=")]
+    if not at:
+        raise ValueError("у юніті немає рядків OnCalendar — це інтервальний таймер")
+    new = [f"OnCalendar={s.strip()}" for s in specs if s.strip()]
+    if not new:
+        raise ValueError("не названо жодного розкладу")
+    out = [line for i, line in enumerate(lines) if i not in set(at[1:])]
+    out[out.index(lines[at[0]])] = "\n".join(new)
+    return "\n".join(out) + ("\n" if unit_text.endswith("\n") else "")

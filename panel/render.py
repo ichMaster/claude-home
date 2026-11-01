@@ -766,7 +766,7 @@ def _permissions_block(p: dict) -> str:
             'під яким можна було б дозволити собі більше.</p>')
 
 
-def _schedule_table(rows: list[dict], unit: str = "") -> str:
+def _schedule_table(rows: list[dict], unit: str = "", token: str = "") -> str:
     if not rows:
         return '<p class="empty">Таймерів не знайдено.</p>'
     out = ['<table class="schedule"><tr><th>юніт<th>розклад<th>наступний<th>останній'
@@ -783,11 +783,19 @@ def _schedule_table(rows: list[dict], unit: str = "") -> str:
         schedules = "<br>".join(e(s) for s in r["schedules"]) or "—"
         service = r["service"] or r["unit"].replace(".timer", ".service")
         here = ' class="on"' if unit == service else ""
+        edit = ""
+        if token and any("OnCalendar" not in s and ":" in s for s in r["schedules"]):
+            edit = (f'<form method="post" action="/rules" class="inline">'
+                    f'<input type="hidden" name="token" value="{e(token)}">'
+                    f'<input type="hidden" name="action" value="schedule">'
+                    f'<input type="hidden" name="unit" value="{e(r["unit"])}">'
+                    f'<input name="calendar" value="{e("; ".join(r["schedules"]))}" '
+                    f'size="22"><button type="submit">змінити</button></form>')
         out.append(
             f'<tr><td class="id">{e(r["unit"])}{off}<br>'
             f'<span class="dim">{e(r["description"])}</span><br>'
             f'<span class="dim">{e(r["command"])}</span>'
-            f'<td class="text">{schedules}{catch_up}'
+            f'<td class="text">{schedules}{catch_up}{edit}'
             f'<td class="age">{e(r["next"])}'
             f'<td class="age">{e(r["last"])}'
             f'<td>{verdict}'
@@ -854,7 +862,7 @@ def render_rules(settings: list[dict], perms: dict, schedule: list[dict],
         f"<section><h2>Налаштування</h2>{counters}"
         f"{_settings_table(settings, token)}</section>"
         f"<section><h2>Дозволи</h2>{_permissions_block(perms)}</section>"
-        f"<section><h2>Розклад</h2>{_schedule_table(schedule, unit)}{log}</section>"
+        f"<section><h2>Розклад</h2>{_schedule_table(schedule, unit, token)}{log}</section>"
         f"<section><h2>Ключі</h2>{_keys_table(keys)}</section>")
     return page("Правила", body, "/rules")
 
@@ -918,7 +926,12 @@ def _restart_banner(stale: list[dict]) -> str:
             '<code>./restart.sh</code> у терміналі.</p>')
 
 
-def _file_block(rows: list[dict]) -> str:
+def _file_block(rows: list[dict], token: str = "") -> str:
+    """The two files the prompt is built from, with an editor each once there is a token.
+
+    The editor is a textarea and a button — no diff view, because the diff that matters is
+    `git diff`, and no autosave, because these files decide who the assistant is (t1103).
+    """
     if not rows:
         return ""
     out = []
@@ -928,19 +941,35 @@ def _file_block(rows: list[dict]) -> str:
         missing = "" if r.get("exists", True) else ' <span class="alert">немає</span>'
         out.append(f'<tr><td class="id">{e(r["file"])}{missing}'
                    f'<td class="age">{r["chars"]} знаків{mark}</tr>')
-    return ('<table class="settings">' + "".join(out) + "</table>"
-            '<p class="dim">Редагування — фаза 10. Поки що ці файли змінюються '
-            'у терміналі або мною.</p>')
+    table = '<table class="settings">' + "".join(out) + "</table>"
+    if not token:
+        return table + ('<p class="dim">Редагування — фаза 10. Поки що ці файли '
+                        'змінюються у терміналі або мною.</p>')
+    editors = "".join(
+        f'<h3 class="stage">{e(r["file"])}</h3>'
+        f'<form method="post" action="/prompt" class="editor">'
+        f'<input type="hidden" name="token" value="{e(token)}">'
+        f'<input type="hidden" name="action" value="save">'
+        f'<input type="hidden" name="file" value="{e(r["file"])}">'
+        f'<textarea name="text" rows="18" spellcheck="false">{e(r.get("text"))}</textarea>'
+        f'<label><input type="checkbox" name="confirm" value="1"> '
+        f'підтверджую скорочення</label>'
+        f'<button type="submit">зберегти</button></form>'
+        for r in rows if r.get("exists", True))
+    return table + editors + (
+        '<p class="dim">Збереження бере копію попереднього вмісту (.versions), '
+        'порожній файл не приймається, а скорочення більш ніж удвічі — лише з '
+        'галочкою. Після збереження потрібен перезапуск сесії.</p>')
 
 
 def render_prompt(got: dict, stale: list[dict], files: list[dict],
-                  message: str = "") -> str:
+                  message: str = "", token: str = "") -> str:
     """Screen 2 — the assistant shown to itself: the prompt it actually wakes up with."""
     note = f'<p class="note">{e(message)}</p>' if message else ""
     body = (
         f"<h1>Промпт</h1>{note}"
         f"<section><h2>Склад</h2>{_prompt_parts(got)}{_restart_banner(stale)}</section>"
-        f"<section><h2>Файли</h2>{_file_block(files)}</section>"
+        f"<section><h2>Файли</h2>{_file_block(files, token)}</section>"
         f'<section><h2>Системна підказка</h2>'
         '<p class="dim">Тут видно те, що бачить сесія, включно з особистими фактами — '
         'сторінка за паролем (фаза 11), і це єдина причина, чому вона може їх показувати.</p>'

@@ -1,6 +1,6 @@
 # Admin panel — functionality and design
 
-Status: phases 1-8 and 11 built; 9 (Sent) next, 10 (Editing) is the last one left.
+Status: phases 1-8, 10 and 11 built; 9 (Sent) is the only one outstanding.
 Target: v5 of [ROADMAP.md](../ROADMAP.md).
 
 ## Why a panel at all
@@ -375,7 +375,7 @@ no write path.
 disclosure, not corruption, and both are tested: a personal value out of
 `config.local.json` and anything out of an `.env` file beyond a variable name.
 
-**Phase 10 — Editing.** (~4 h) — **in progress**
+**Phase 10 — Editing.** (~4 h) — **done 2026-11-01**
 The writing half of screen 8 and the editors of screens 2 and 3.
 
 *Done (t1102):* configuration as a form. Every scalar setting is editable and the write goes
@@ -396,7 +396,21 @@ the restart banner says when it is not in force yet. **They are set from the ter
 and a password on a LAN page is not a shell on the machine. The screen shows the levels and
 offers no switch.
 
-*Left:* the editors for `persona.md` and `CLAUDE.md`, and the timer times.
+*Done (t1103):* **the editors and the timer times** — the two most destructive writes in the
+project, so each guard answers a way the panel could destroy rather than change.
+`persona.md` and `CLAUDE.md` are editable by name from a fixed list, never by a path from a
+form; an empty save is refused; a save that halves the file is refused until the same press
+repeats with the confirmation box, because a truncated paste looks exactly like an edit; the
+write is versioned, and both files joined `versions.files` along with the systemd unit
+directory, which is in no repository at all. A timer's `OnCalendar` lines are editable with
+systemd's own parser validating every spec **before** anything is written, the unit versioned,
+then `daemon-reload` — and if the unit stops loading, the previous content is restored and
+reloaded automatically. A panel that can break a timer must be able to put it back without a
+human, because the symptom of a broken timer is silence. Interval timers are shown and not
+editable: rewriting a different directive is a separate decision.
+
+*The panel is now complete* — eleven screens, eleven phases, with phase 9 (Sent) the only one
+outstanding.
 
 **Phase 11 — Authentication.** (~4 h)
 Added on the owner's request, 2026-11-01. It was in "not a phase" until phase 8 showed what

@@ -20,9 +20,12 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from noosconf import conf                                              # noqa: E402
+from noosconf import atomic_write_text, conf                           # noqa: E402
 
 HOME = Path(__file__).resolve().parents[1]
+# The only two files this screen may write, by name. A path from a form never becomes a
+# target (t1103) — and these two are the ones the owner asked to edit in the panel.
+EDITABLE = {"persona.md", "CLAUDE.md"}
 # Characters per token, roughly, for Ukrainian prose in this tokenizer's neighbourhood. It is
 # an estimate and the screen says so: the point is the order of magnitude against a context
 # window, not a number anyone should budget against.
@@ -126,3 +129,33 @@ def by_name(name: str) -> dict | None:
         if str(item.get("name")) == name:
             return item
     return None
+
+
+def save_file(name: str, text: str, confirm: bool = False) -> tuple[bool, str]:
+    """Write one of the two editable files. Returns (written, what to say).
+
+    Every refusal here answers a way this could destroy the file rather than change it:
+    a name that is not on the list, an empty save, or a save that shrinks the file so much
+    that a truncated paste is the likelier explanation than an edit. The write itself goes
+    through the versioned atomic path, so even an approved mistake is one
+    `tools/versions.py restore` away.
+    """
+    if name not in EDITABLE:
+        return False, f"Тут редагуються лише {', '.join(sorted(EDITABLE))}."
+    if not (text or "").strip():
+        return False, "Порожній файл — не зберігаю. Це майже завжди не те, чого хотіли."
+    target = Path(HOME) / name
+    try:
+        before = target.read_text(encoding="utf-8")
+    except OSError:
+        return False, f"{name} не прочитався, тож і не перезаписую."
+    ratio = float(conf("panel.edit_min_ratio", 0.5))
+    if before and len(text) < len(before) * ratio and not confirm:
+        return False, (f"{name} скоротився б із {len(before)} до {len(text)} знаків — "
+                       "це схоже на обрізану вставку. Натисни ще раз, щоб підтвердити.")
+    try:
+        atomic_write_text(target, text)
+    except OSError as exc:
+        return False, f"Не записалось: {exc}"
+    return True, (f"{name} збережено ({len(text)} знаків). Діє після перезапуску сесії — "
+                  "банер вище про це й скаже.")

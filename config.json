@@ -231,7 +231,7 @@
     "projection_min_days": 5
   },
   "versions": {
-    "_": "Previous contents of the files whose loss would hurt, kept beside them on the same disk (t1080). Not everything that gets rewritten: a cursor or a cache rebuilds itself, and versioning status/state/youtube.json alone would be ten megabytes a day of copied cursors. `keep` is a safety belt, not a retention policy — thinning by age, encryption and a copy off this machine are phase 10 of the panel. Tools: tools/versions.py list|diff|restore.",
+    "_": "Previous contents of the files whose loss would hurt, kept beside them on the same disk (t1080). Not everything that gets rewritten: a cursor or a cache rebuilds itself, and versioning status/state/youtube.json alone would be ten megabytes a day of copied cursors. `keep` is a safety belt, not a retention policy — thinning by age, encryption and a copy off this machine are their own version. persona.md, CLAUDE.md and the systemd units joined the list with the panel's editors (t1103): git covers the first two only once something is committed, and a unit file is in no repository at all. Tools: tools/versions.py list|diff|restore.",
     "dir": "~/claude-home/.versions",
     "keep": 40,
     "files": [
@@ -241,7 +241,10 @@
       "status/state/news.json",
       "status/state/mail.json",
       "tasks/tasks.jsonl",
-      "status/topics"
+      "status/topics",
+      "persona.md",
+      "CLAUDE.md",
+      "~/.config/systemd/user"
     ]
   },
   "permissions_": "What may happen without asking — the one machine-readable copy of it (tools/permissions.py, t1102). start.sh renders this into the system prompt, so a change binds once the session restarts; the panel shows the levels and offers no switch, because permissions, secrets and tokens are set from the terminal only (the owner's standing rule). Levels: free | ask | never; anything unrecognised reads as never. Three rules are hard and absent from this block on purpose — see tools/permissions.py HARD.",
@@ -283,6 +286,7 @@
       {"name": "зміни за день", "what": "самарі журналу змін у кінці дня", "unit": "noos-changes.timer", "cmd": ["status/changes-send.sh"], "detach": true},
       {"name": "естафета", "what": "записка для наступної сесії (memory/handoff.md)", "unit": "noos-nightly-restart.timer", "cmd": ["memory/handoff.py"], "detach": true}
     ],
+    "edit_min_ratio": 0.5,
     "journal_lines": 40,
     "journal_chars": 12000,
     "journal_scope_": "What the Rules screen's journal pane may show. `systemd` (default) — systemd's own lines for the unit: Starting / Finished / Failed / exit code / CPU time. `full` — the unit's own stdout too, which for a headless unit is the content a model composed (the digest's calendar block, mail subjects, the nightly review's findings) and therefore waits for the panel to have authentication (t1094).",

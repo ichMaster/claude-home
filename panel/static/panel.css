@@ -357,3 +357,44 @@ form.login button:hover { color: var(--ink); border-color: var(--amber); }
 
 pre.journal.prompt { max-height: 40em; color: var(--ink); }
 .queues .id { font-size: 12px; }
+
+/* --- phase 10: the editors (t1103) ------------------------------------------------- */
+
+form.editor { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 20px; }
+
+form.editor textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--rule);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+form.editor label { color: var(--dim); font-size: 12px; }
+
+form.editor button, .settings form.inline button, .schedule form.inline button {
+  padding: 3px 10px;
+  border: 1px solid var(--rule);
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+form.editor button { align-self: flex-start; padding: 5px 14px; }
+
+form.editor button:hover, .settings form.inline button:hover,
+.schedule form.inline button:hover { color: var(--ink); border-color: var(--amber); }
+
+.settings form.inline input, .schedule form.inline input {
+  padding: 2px 6px;
+  border: 1px solid var(--rule);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12px;
+}

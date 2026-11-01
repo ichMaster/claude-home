@@ -32,7 +32,7 @@ HOME = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HOME))
 sys.path.insert(0, str(HOME / "panel"))
 
-from noosconf import conf                                               # noqa: E402
+from noosconf import atomic_write_text, conf                            # noqa: E402
 import bruno                                                           # noqa: E402
 import changes                                                         # noqa: E402
 import data                                                            # noqa: E402
@@ -46,6 +46,9 @@ import tasks_screen                                                    # noqa: E
 import zirka                                                           # noqa: E402
 
 STATIC = Path(__file__).resolve().parent / "static"
+# Where this user's systemd units live. The schedule editor writes here and nowhere else,
+# and only to a unit systemd itself named (t1103).
+UNIT_DIR = Path.home() / ".config" / "systemd" / "user"
 # screen → the phase that builds it, for the placeholder pages
 SOON = {
     "/chat": "фаза 9",
@@ -583,7 +586,7 @@ def prompt_html(message: str = "") -> str:
                                        dirty_files())
     if not ok:
         message = (message + " факти не зібрались: " + facts).strip()
-    return render.render_prompt(got, stale, files, message)
+    return render.render_prompt(got, stale, files, message, token=FORM_TOKEN)
 
 
 def scenarios_html(message: str = "") -> str:
@@ -603,6 +606,16 @@ def scenarios_html(message: str = "") -> str:
         timers[unit] = rows[0]
     return render.render_scenarios(prompt_screen.scenario_rows(items, timers),
                                    FORM_TOKEN, message)
+
+
+def prompt_action(form: dict) -> str:
+    """Screen 2's writes (t1103): `persona.md` and `CLAUDE.md`, by name, nothing else."""
+    if (form.get("action") or [""])[0] != "save":
+        return "Невідома дія."
+    ok, said = prompt_screen.save_file((form.get("file") or [""])[0],
+                                       (form.get("text") or [""])[0],
+                                       confirm=bool(form.get("confirm")))
+    return said if ok else f"Не збережено: {said}"
 
 
 def scenario_action(form: dict) -> str:
@@ -651,6 +664,51 @@ def _resolve(cmd: list[str]) -> list[str]:
     return out
 
 
+def schedule_action(form: dict) -> str:
+    """Rewrite a timer's `OnCalendar` lines (t1103).
+
+    The order is the whole design: validate with systemd's own parser, keep a version, write,
+    reload, then check the unit still loads — and if it does not, restore and reload again.
+    A panel that can break a timer must be able to put it back without a human, because the
+    symptom of a broken timer is silence.
+    """
+    unit = (form.get("unit") or [""])[0].strip()
+    allowed = set(data.timer_units())
+    if unit not in allowed:
+        return f"Не знаю таймера «{unit[:60]}» — редагую лише свої."
+    specs = [s.strip() for s in
+             (form.get("calendar") or [""])[0].replace(",", "\n").splitlines()
+             if s.strip()]
+    if not specs:
+        return "Розкладу не названо."
+    for spec in specs:
+        ok, said = run_script("systemd-analyze", "calendar", spec, timeout=20)
+        if not ok:
+            return f"systemd не приймає «{spec[:40]}»: {said.splitlines()[0] if said else ''}"
+    target = UNIT_DIR / unit
+    try:
+        before = target.read_text(encoding="utf-8")
+        body = rules_screen.replace_calendar(before, specs)
+    except OSError as exc:
+        return f"Юніт не прочитався: {exc}"
+    except ValueError as exc:
+        return str(exc)
+    try:
+        atomic_write_text(target, body)
+    except OSError as exc:
+        return f"Не записалось: {exc}"
+    run_script("systemctl", "--user", "daemon-reload", timeout=30)
+    ok, said = run_script("systemctl", "--user", "show", unit, "--property=LoadState",
+                          timeout=20)
+    if "LoadState=loaded" not in (said or ""):
+        atomic_write_text(target, before)
+        run_script("systemctl", "--user", "daemon-reload", timeout=30)
+        return (f"{unit} перестав завантажуватись — повернув попередній юніт і "
+                f"перезавантажив systemd. Нічого не змінилось.")
+    run_script("systemctl", "--user", "restart", unit, timeout=30)
+    return f"{unit}: розклад тепер {', '.join(specs)}. Попередній юніт — у .versions."
+
+
 def rules_action(form: dict) -> str:
     """Screen 8's writes (t1102): one setting at a time, into `config.local.json`.
 
@@ -665,6 +723,8 @@ def rules_action(form: dict) -> str:
     if what == "reset":
         ok, said = rules_screen.reset_setting(key)
         return said if ok else f"Не скинуто: {said}"
+    if what == "schedule":
+        return schedule_action(form)
     return "Невідома дія."
 
 
@@ -862,7 +922,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, zirka_html(day[:10]).encode("utf-8"),
                                   "text/html; charset=utf-8")
             if path == "/prompt":
-                return self._send(200, prompt_html().encode("utf-8"),
+                message = urllib.parse.parse_qs(
+                    urllib.parse.urlparse(self.path).query).get("m", [""])[0]
+                return self._send(200, prompt_html(message[:400]).encode("utf-8"),
                                   "text/html; charset=utf-8")
             if path == "/scenarios":
                 message = urllib.parse.parse_qs(
@@ -954,6 +1016,10 @@ class Handler(BaseHTTPRequestHandler):
                 if probe:
                     where += "p=" + urllib.parse.quote(probe[:300]) + "&"
                 return self._redirect(where.rstrip("&?") or "/sources")
+            if path == "/prompt":
+                # Post/Redirect/Get: an F5 must not re-save a file (t1078)
+                return self._redirect("/prompt?m=" +
+                                      urllib.parse.quote(prompt_action(form)[:400]))
             if path == "/rules":
                 # Post/Redirect/Get, like every other write on this panel (t1078)
                 return self._redirect("/rules?m=" +
