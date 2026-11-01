@@ -30,6 +30,13 @@ TASK_ID = re.compile(r"\((t\d{3,5})\)")
 SEVERITY_HEAD = re.compile(r"^##\s+(High|Medium|Low)\b", re.IGNORECASE | re.MULTILINE)
 ANY_HEAD = re.compile(r"^##\s", re.MULTILINE)
 FINDING_HEAD = re.compile(r"^###\s+(.+?)\s*$", re.MULTILINE)
+# The nightly review writes its findings as numbered or bulleted list items with the title
+# in bold, not as `###` headings — so the panel counted a night that found thirteen as zero,
+# and said «parsed» about it (t1110). Both shapes are ours; both are read.
+# DOTALL because a finding's bold title regularly wraps across two lines in these reports.
+FINDING_ITEM = re.compile(r"^\s*(?:\d+[.)]|[-*])\s+\*\*(.+?)\*\*",
+                          re.MULTILINE | re.DOTALL)
+VERDICT = re.compile(r"(\d+)\s*(High|Medium|Low)", re.IGNORECASE)
 LOG_FORMAT = "%H%x1f%cI%x1f%s%x1f%an"
 
 
@@ -98,12 +105,19 @@ def commit_detail(row: dict, tasks: dict | None = None) -> dict:
     # The committing session writes the reading while the panel may be reading it; a read
     # landing mid-character must cost a replacement char, not a 500 on the whole screen.
     review_text = None
-    review = COMMIT_REVIEW / f"{row['sha']}.md"
-    if review.is_file():
-        try:
-            review_text = review.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            review_text = None                    # unreadable = not recorded, never invented
+    # Both spellings of the sha are ours: the readings written by hand use the short form git
+    # prints, the scripted ones the long one. Looking up only the 40-character name made the
+    # screen say «не записано» about 25 of the 39 readings on disk — the one claim on this
+    # page a reader acts on, since the morning push depends on it (t1110).
+    sha = str(row.get("sha") or "")
+    for candidate in ([COMMIT_REVIEW / f"{sha}.md", COMMIT_REVIEW / f"{sha[:7]}.md"]
+                      if sha else []):
+        if candidate.is_file():
+            try:
+                review_text = candidate.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                review_text = None                # unreadable = not recorded, never invented
+            break
     title = ""
     if tasks and task_id in tasks:
         title = tasks[task_id].get("title", "")
@@ -151,9 +165,22 @@ def findings(report: str) -> dict[str, list[str]]:
         nxt = ANY_HEAD.search(report, m.end())
         end = nxt.start() if nxt else len(report)
         severity = m.group(1).lower()
-        titles = [t.group(1).strip() for t in FINDING_HEAD.finditer(report[m.end():end])]
+        section = report[m.end():end]
+        titles = [t.group(1).strip() for t in FINDING_HEAD.finditer(section)]
+        titles += [t.group(1).strip() for t in FINDING_ITEM.finditer(section)]
         out.setdefault(severity, []).extend(titles)
     return out
+
+
+def verdict_counts(report: str) -> dict[str, int]:
+    """Counts from a report's own verdict line — the fallback for a report whose findings
+    this parser does not recognise, and the only honest way to show a genuinely clean night
+    without inventing zeros (t1110)."""
+    head = (report or "")[:1500]
+    line = next((ln for ln in head.splitlines()
+                 if "ердикт" in ln or "erdict" in ln.lower()), "")
+    got = {m.group(2).lower(): int(m.group(1)) for m in VERDICT.finditer(line)}
+    return got if {"high", "medium", "low"} <= set(got) else {}
 
 
 def review_nights(report_dir: Path | None = None) -> list[dict]:
@@ -177,8 +204,15 @@ def review_nights(report_dir: Path | None = None) -> list[dict]:
         night[kind] = text
         if kind == "scan":
             found = findings(text)
-            night["counts"] = {k: len(v) for k, v in found.items()}
-            night["parsed"] = bool(found)
+            counts = {k: len(v) for k, v in found.items()}
+            # The report's own verdict line wins where it exists: it is the author's count,
+            # and this parser can miss an item whose shape it does not know. `{severity: []}`
+            # used to be truthy and rendered as real zeros — the one shape that slipped past
+            # both guards (t1110).
+            stated = verdict_counts(text)
+            night["counts"] = stated or counts
+            night["listed"] = counts
+            night["parsed"] = bool(stated) or any(counts.values())
     return sorted(nights.values(), key=lambda n: n["key"], reverse=True)
 
 
@@ -190,9 +224,14 @@ def open_lows(nights: list[dict]) -> list[dict]:
     for a fortnight says something an item raised last night does not.
     """
     seen: dict[str, dict] = {}
+    fixed = "\n".join(n.get("fixes", "") for n in nights).lower()
     for night in sorted(nights, key=lambda n: n["key"]):
         for title in findings(night.get("scan", "")).get("low", []):
             key = title.split("(")[0].strip().lower()
+            # A Low that a fix report names is no longer open. Listing it as the backlog of
+            # known-but-ignored was the opposite of what the screen promises (t1110).
+            if key and key[:60] in fixed:
+                continue
             seen.setdefault(key, {"title": title, "since": night["date"],
                                   "nights": 0})["nights"] += 1
     return list(seen.values())

@@ -271,3 +271,105 @@ def test_changes_page_names_the_missing_review():
                                  [], [], 2, [])
     assert "не записано" in html
     assert "без задачі" in html or "немає задачі" in html
+
+
+# --- t1110: the Changes screen told three untruths (full review: truth H1, H3, M8) -------
+
+NIGHTLY = """# Ревʼю 2026-11-01
+
+**Вердикт:** 0 High, 2 Medium, 3 Low. Оглянуто 36 комітів.
+
+## High
+
+Нічого.
+
+## Medium
+
+1. **panel/server.py:417 — клікджекінг: жодного X-Frame-Options.**
+   Деталі.
+2. **memory/facts.py:83 — set_pin пише невалідований рівень.**
+
+## Low
+
+3. **panel/server.py:532 — POST /zirka без Post/Redirect/Get.**
+4. **tasks/store.py:106 — номер версії зʼїдається як дедлайн.**
+5. **panel/render.py:648 — сортувальні лінки гублять запит.**
+"""
+
+
+def test_a_numbered_nightly_report_is_parsed_not_read_as_zero():
+    """The panel-phase scans use `###` headings; the actual nightly review writes numbered
+    list items. The screen reported «high: 0, medium: 0, low: 0» for a night that found
+    five, and `parsed` was True, so nothing said it had not understood the file."""
+    got = changes.findings(NIGHTLY)
+    assert len(got.get("medium", [])) == 2 and len(got.get("low", [])) == 3
+    assert "клікджекінг" in got["medium"][0]
+
+
+def test_a_report_in_neither_shape_is_not_counted_as_clean():
+    assert changes.findings("# Якийсь текст\n\nбез заголовків\n") == {}
+    assert changes.verdict_counts("# Якийсь текст") == {}
+
+
+def test_the_verdict_line_is_the_fallback_when_nothing_parses():
+    assert changes.verdict_counts(NIGHTLY) == {"high": 0, "medium": 2, "low": 3}
+
+
+def test_a_nights_counts_come_from_the_report_not_from_silence(tmp_path):
+    (tmp_path / "2026-11-01-scan.md").write_text(NIGHTLY, encoding="utf-8")
+    night = changes.review_nights(tmp_path)[0]
+    assert night["parsed"] and night["counts"] == {"high": 0, "medium": 2, "low": 3}
+
+
+def test_an_unparsable_report_says_so_rather_than_showing_zeros(tmp_path):
+    (tmp_path / "2026-11-02-scan.md").write_text("нічого схожого на звіт", encoding="utf-8")
+    night = changes.review_nights(tmp_path)[0]
+    assert not night["parsed"] and not any(night["counts"].values())
+
+
+def test_the_lows_of_a_numbered_report_reach_the_backlog(tmp_path):
+    (tmp_path / "2026-11-01-scan.md").write_text(NIGHTLY, encoding="utf-8")
+    lows = changes.open_lows(changes.review_nights(tmp_path))
+    assert len(lows) == 3
+
+
+def test_a_low_that_was_fixed_is_not_shown_as_open(tmp_path):
+    (tmp_path / "2026-11-01-scan.md").write_text(NIGHTLY, encoding="utf-8")
+    (tmp_path / "2026-11-01-fixes.md").write_text(
+        "# Виправлення\n\nПолагоджено: **panel/server.py:532 — POST /zirka без "
+        "Post/Redirect/Get.** (t1099)\n", encoding="utf-8")
+    lows = changes.open_lows(changes.review_nights(tmp_path))
+    assert all("/zirka" not in low["title"] for low in lows), \
+        "«Накопичені Low» is the open backlog, not a list of everything ever raised"
+    assert len(lows) == 2
+
+
+# --- H1: the commit reading is found under either spelling of the sha --------------------
+
+def test_the_reading_is_found_under_the_short_sha(tmp_path, monkeypatch):
+    """25 of 39 readings on disk are named with the 7-character sha, including every panel
+    commit of today — and the screen said «не записано» about all of them, which is the one
+    claim on this page a reader acts on."""
+    monkeypatch.setattr(changes, "COMMIT_REVIEW", tmp_path)
+    monkeypatch.setattr(changes, "SPECS", tmp_path / "specs")
+    monkeypatch.setattr(changes, "TESTS", tmp_path / "tests")
+    sha = "9006f16" + "a" * 33
+    (tmp_path / "9006f16.md").write_text("# читання", encoding="utf-8")
+    got = changes.commit_detail({"sha": sha, "task": "t1103"}, {})
+    assert got["review"] and "читання" in got["review"]
+
+
+def test_the_reading_is_still_found_under_the_full_sha(tmp_path, monkeypatch):
+    monkeypatch.setattr(changes, "COMMIT_REVIEW", tmp_path)
+    monkeypatch.setattr(changes, "SPECS", tmp_path / "specs")
+    monkeypatch.setattr(changes, "TESTS", tmp_path / "tests")
+    sha = "b" * 40
+    (tmp_path / f"{sha}.md").write_text("# повне", encoding="utf-8")
+    assert "повне" in changes.commit_detail({"sha": sha, "task": None}, {})["review"]
+
+
+def test_a_commit_with_no_reading_still_says_so(tmp_path, monkeypatch):
+    monkeypatch.setattr(changes, "COMMIT_REVIEW", tmp_path)
+    monkeypatch.setattr(changes, "SPECS", tmp_path / "specs")
+    monkeypatch.setattr(changes, "TESTS", tmp_path / "tests")
+    assert changes.commit_detail({"sha": "c" * 40, "task": None}, {})["review"] is None
