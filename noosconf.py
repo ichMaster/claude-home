@@ -47,21 +47,83 @@ def conf(dotted, default=None):
     return node
 
 
+FAILED_VERSIONS = set()          # targets whose last version copy did not happen
+
+
+def locked(target):
+    """A lock on one file, held across a read-modify-write.
+
+    The unique temp file below stops a torn file; this stops a *lost update*, which is the
+    other half of the same race: two callers that each read, change one key and write back
+    would otherwise keep only the last read's view. `flock` is held on a sidecar, so it
+    works between threads and between processes — the panel, the CLI tools and the timers
+    all write these files.
+    """
+    return _FileLock(Path(target))
+
+
+class _FileLock:
+    def __init__(self, target):
+        self.path = target.with_name(f".{target.name}.lock")
+        self.handle = None
+
+    def __enter__(self):
+        import fcntl
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.handle = open(self.path, "a+")
+            fcntl.flock(self.handle.fileno(), fcntl.LOCK_EX)
+        except OSError:
+            self.handle = None          # an unlockable directory must not block the write
+        return self
+
+    def __exit__(self, *exc):
+        if self.handle:
+            import fcntl
+            try:
+                fcntl.flock(self.handle.fileno(), fcntl.LOCK_UN)
+            finally:
+                self.handle.close()
+                self.handle = None
+        return False
+
+
+def version_failed(target) -> bool:
+    """Did the last `keep_version` for this target fail? The write still happens — losing a
+    version must never cost the write it was protecting — but the caller has to be able to
+    stop promising a copy that was never taken (t1104)."""
+    try:
+        return str(Path(target).resolve()) in FAILED_VERSIONS
+    except OSError:
+        return False
+
+
 def atomic_write_text(target, text, encoding="utf-8"):
     """Write via a temp file in the same directory + os.replace, so a crash mid-write can
     never leave the target torn. Keeps the target's permissions (config.local.json is 600).
 
+    The temp file gets a **unique** name. It used to be `name.tmp<pid>`, which is one name
+    for every thread of a process — and the panel is a threading server, so two saves of one
+    file interleaved inside a single temp and one thread's cleanup deleted the other's file
+    before it was renamed. Half the trials left `config.local.json` unparseable (t1104).
+    `os.replace` is atomic; the file it is handed has to be, too.
+
     Atomicity is not a backup (the owner, 2026-11-01): it protects against a write cut in
     half, not against a correct write of the wrong content, an `rm`, or a dead disk. The
-    previous content is kept by `keep_version()` for the files where losing it hurts.
+    previous content is kept by `keep_version()` for the files where losing it hurts; when
+    that copy could not be taken, `version_failed()` says so.
     """
+    import tempfile
     target = Path(target)
     keep_version(target)
-    tmp = target.with_name(f"{target.name}.tmp{os.getpid()}")
+    mode = target.stat().st_mode & 0o7777 if target.exists() else None
+    fd, tmp_name = tempfile.mkstemp(dir=str(target.parent),
+                                    prefix=f".{target.name}.", suffix=".tmp")
+    tmp = Path(tmp_name)
     try:
-        tmp.write_text(text, encoding=encoding)
-        if target.exists():
-            os.chmod(tmp, target.stat().st_mode & 0o7777)
+        with os.fdopen(fd, "w", encoding=encoding) as f:
+            f.write(text)
+        os.chmod(tmp, mode if mode is not None else 0o600)
         os.replace(tmp, target)
     finally:
         tmp.unlink(missing_ok=True)
@@ -119,6 +181,7 @@ def keep_version(target) -> "Path | None":
     try:
         target = Path(target)
         if not target.is_file() or not precious(target):
+            FAILED_VERSIONS.discard(str(target.resolve()))
             return None
         blob = target.read_bytes()
         digest = hashlib.sha256(blob).hexdigest()[:16]
@@ -141,8 +204,15 @@ def keep_version(target) -> "Path | None":
         keep = int(conf("versions.keep", 40))
         for old in kept[:max(0, len(kept) + 1 - keep)]:
             old.unlink(missing_ok=True)
+        FAILED_VERSIONS.discard(str(target.resolve()))
         return copy
     except Exception:                          # noqa: BLE001 — a version is never worth a write
+        # ...but silence about it is: `versions.dir` is editable from the panel's form, so a
+        # wrong value made every «копія лишилась» message a promise nobody kept (t1104, M6).
+        try:
+            FAILED_VERSIONS.add(str(Path(target).resolve()))
+        except OSError:
+            pass
         return None
 
 

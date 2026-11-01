@@ -27,7 +27,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from noosconf import ROOT, atomic_write_text, conf                     # noqa: E402
+from noosconf import ROOT, atomic_write_text, conf, locked            # noqa: E402
 
 LOCAL = ROOT / "config.local.json"
 LEVELS = {"free": "вільно", "ask": "з підтвердженням", "never": "ніколи"}
@@ -92,12 +92,15 @@ def set_level(key: str, value: str) -> bool:
     """Write one level into `config.local.json`. False means nothing was written."""
     if key in HARD or key not in DECISIONS or value not in LEVELS:
         return False
-    try:
-        blob = json.loads(LOCAL.read_text(encoding="utf-8")) if LOCAL.exists() else {}
-    except (OSError, json.JSONDecodeError):
-        return False
-    blob.setdefault("permissions", {})[key] = value
-    atomic_write_text(LOCAL, json.dumps(blob, ensure_ascii=False, indent=2) + "\n")
+    with locked(LOCAL):
+        try:
+            blob = json.loads(LOCAL.read_text(encoding="utf-8")) if LOCAL.exists() else {}
+        except (OSError, json.JSONDecodeError):
+            return False
+        if not isinstance(blob.get("permissions"), dict):
+            blob["permissions"] = {}     # a non-dict node would raise, loudly but uselessly
+        blob["permissions"][key] = value
+        atomic_write_text(LOCAL, json.dumps(blob, ensure_ascii=False, indent=2) + "\n")
     return True
 
 

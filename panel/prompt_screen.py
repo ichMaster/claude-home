@@ -20,7 +20,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from noosconf import atomic_write_text, conf                           # noqa: E402
+from noosconf import atomic_write_text, conf, locked, version_failed   # noqa: E402
 
 HOME = Path(__file__).resolve().parents[1]
 # The only two files this screen may write, by name. A path from a form never becomes a
@@ -154,8 +154,12 @@ def save_file(name: str, text: str, confirm: bool = False) -> tuple[bool, str]:
         return False, (f"{name} скоротився б із {len(before)} до {len(text)} знаків — "
                        "це схоже на обрізану вставку. Натисни ще раз, щоб підтвердити.")
     try:
-        atomic_write_text(target, text)
+        # under the file's lock, so a double-click cannot interleave two bodies (t1104)
+        with locked(target):
+            atomic_write_text(target, text)
     except OSError as exc:
         return False, f"Не записалось: {exc}"
+    warn = ("" if not version_failed(target) else
+            " УВАГА: копію попереднього вмісту зберегти не вдалось.")
     return True, (f"{name} збережено ({len(text)} знаків). Діє після перезапуску сесії — "
-                  "банер вище про це й скаже.")
+                  "банер вище про це й скаже." + warn)

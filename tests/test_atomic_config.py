@@ -21,12 +21,30 @@ def local_cfg(tmp_path, monkeypatch):
 
 
 def torn_write(monkeypatch):
-    """Every Path.write_text writes half the payload and dies — a crash mid-write."""
-    def torn(self, text, *args, **kwargs):
-        with open(self, "w") as fh:
-            fh.write(text[: len(text) // 2])
-        raise OSError("disk full")
-    monkeypatch.setattr(Path, "write_text", torn)
+    """Every write writes half the payload and dies — a crash mid-write.
+
+    Hooked at `os.fdopen`, which is where the temp file is written since t1104 gave each
+    write its own `mkstemp` name (the old hook on `Path.write_text` no longer sees it).
+    """
+    real_fdopen = noosconf.os.fdopen
+
+    class Torn:
+        def __init__(self, handle):
+            self.handle = handle
+
+        def write(self, text):
+            self.handle.write(text[: len(text) // 2])
+            raise OSError("disk full")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self.handle.close()
+            return False
+
+    monkeypatch.setattr(noosconf.os, "fdopen",
+                        lambda fd, *a, **kw: Torn(real_fdopen(fd, *a, **kw)))
 
 
 def test_failed_write_leaves_config_intact(monkeypatch, local_cfg):

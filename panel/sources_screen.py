@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from noosconf import ROOT, atomic_write_text, conf                      # noqa: E402
+from noosconf import ROOT, atomic_write_text, conf, locked              # noqa: E402
 
 HOME = Path(__file__).resolve().parents[1]
 LOCAL = HOME / "config.local.json"
@@ -134,7 +134,17 @@ def _save_local(data: dict) -> None:
 
 def set_channel(name: str, *, off: bool | None = None,
                 priority: bool | None = None) -> str:
-    """Disable a channel or star it. Writes the personal config through the versioned path."""
+    """Disable a channel or star it. Writes the personal config through the versioned path.
+
+    The whole read-modify-write is under the file's lock: four writers share this file and
+    without it the last reader wins, dropping the other's change (t1104).
+    """
+    with locked(LOCAL):
+        return _set_channel_locked(name, off=off, priority=priority)
+
+
+def _set_channel_locked(name: str, *, off: bool | None = None,
+                        priority: bool | None = None) -> str:
     data = _load_local()
     yt = data.setdefault("probes", {}).setdefault("youtube", {})
     rows = yt.setdefault("channels", [])

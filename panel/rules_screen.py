@@ -20,7 +20,8 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from noosconf import ROOT, atomic_write_text, conf                      # noqa: E402
+from noosconf import (ROOT, atomic_write_text, conf, locked,            # noqa: E402
+                      version_failed)
 
 HOME = Path(__file__).resolve().parents[1]
 LOCAL = HOME / "config.local.json"
@@ -159,14 +160,26 @@ def set_setting(key: str, raw: str) -> tuple[bool, str]:
         kind = {bool: "так/ні", int: "ціле число", float: "число"}.get(
             type(current), "рядок")
         return False, f"Не читається як {kind}: «{(raw or '')[:40]}»."
-    node = local
-    for part in key.split(".")[:-1]:
-        node = node.setdefault(part, {})
-        if not isinstance(node, dict):
-            return False, "Шлях конфліктує з уже наявним значенням."
-    node[key.split(".")[-1]] = value
-    atomic_write_text(LOCAL, json.dumps(local, ensure_ascii=False, indent=2) + "\n")
-    return True, f"{key} = {value_text(value)}; діє після перезапуску того, хто це читає."
+    # The whole read-modify-write is inside the lock: this file has four writers (the two
+    # panel screens, the permissions CLI, the channel list) and without it the last reader
+    # wins and the other's change is gone (t1104).
+    with locked(LOCAL):
+        local = _local_config()
+        node = local
+        for part in key.split(".")[:-1]:
+            node = node.setdefault(part, {})
+            if not isinstance(node, dict):
+                return False, "Шлях конфліктує з уже наявним значенням."
+        node[key.split(".")[-1]] = value
+        atomic_write_text(LOCAL, json.dumps(local, ensure_ascii=False, indent=2) + "\n")
+    return True, (f"{key} = {value_text(value)}; діє після перезапуску того, хто це читає."
+                  + _version_note())
+
+
+def _version_note() -> str:
+    """Say it when the copy did not happen, instead of implying it did (t1104)."""
+    return ("" if not version_failed(LOCAL) else
+            " УВАГА: копію попереднього вмісту зберегти не вдалось — перевір versions.dir.")
 
 
 def reset_setting(key: str) -> tuple[bool, str]:
@@ -175,6 +188,7 @@ def reset_setting(key: str) -> tuple[bool, str]:
     local = _local_config()
     parts = key.split(".")
     chain, node = [], local
+    # (the guards and the lock live in the body below)
     for part in parts[:-1]:
         if not isinstance(node, dict) or part not in node:
             return False, f"Локального перевизначення для «{key[:60]}» немає."
