@@ -164,6 +164,24 @@ def test_the_question_invites_a_miss():
     assert "не влучило" in text or "не було" in text
 
 
+def test_the_question_asks_about_a_feeling_not_an_event():
+    """«Астрологія показує які емоції і бажання будуть, а не події» (the owner,
+    2026-11-01). So the question asks whether the state was there."""
+    got, _ = mood.claims(ANSWER)
+    text = mood_feedback.questions(got)
+    assert "чи було так, що" in text
+    assert "Було таке?" not in text
+
+
+def test_the_prompts_forbid_predicting_events():
+    """The frame lives in the prompts, so this is where it is guarded: the first rework
+    turned the reading into event prediction, which is a different discipline."""
+    for name in ("pick.md", "day.md", "check.md"):
+        text = (ROOT / "status" / "mood" / name).read_text(encoding="utf-8")
+        assert "емоції й бажання" in text or "емоція або бажання" in text, name
+        assert "не поді" in text or "а не які стануться події" in text, name
+
+
 # --- TC7: the score ---------------------------------------------------------------------
 
 def test_the_score_counts_hits_and_misses(tmp_path):

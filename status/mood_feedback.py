@@ -179,9 +179,10 @@ def questions(items: list[dict]) -> str:
         claim = mood._unlabel(str(item.get("claim") or "")).rstrip(".")
         sign = mood._unlabel(str(item.get("sign") or "")).rstrip(".")
         order = ("Перше" if i == 1 else "Друге" if i == 2 else "Третє")
-        lines.append(f"{order}: {window} — {claim}" + (f", {sign}" if sign else "")
-                     + ". Було таке?")
-    lines.append("Якщо жодне не влучило — так і скажи, це корисніше за «нормально».")
+        lines.append(f"{order}: {window} — чи було так, що {claim}"
+                     + (f"; {sign}" if sign else "") + "?")
+    lines.append("Якщо жодного такого відчуття не було — так і скажи, це корисніше за "
+                 "«нормально».")
     return "\n\n".join(lines)
 
 

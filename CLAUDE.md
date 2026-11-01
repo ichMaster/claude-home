@@ -466,15 +466,27 @@ than the look reads as «почалось до …, щонайменше до �
 scan edge as «точність не раніше …». Stating those limits as dates was a real defect, and
 the review stage below is what caught it.
 
-### The pipeline — three calls, and claims that can be checked
+### The pipeline — three calls, and what a reading is about
 
-Rebuilt on 2026-11-01 (t1126) after the owner's verdict on what it used to produce: «те, що
-виходить, зовсім не працює і не дає ні прогнозу, ні читабельно». Two failures, both real.
-The old reading **described the day's air** — «напруга в комунікації» — so nothing in it
-could be checked in the evening or used in the morning, and the calibration loop had nothing
-to measure. And it was **built for an eye**: five blocks, 3300 characters, four minutes of
-audio, while he listens — in one spoken stream a heading means nothing and the long middle is
-where attention goes. Six stages and ~17 calls produced it.
+Rebuilt on 2026-11-01 (t1126), twice in one evening, because the first rebuild got the
+subject wrong.
+
+**What the old reading failed at.** It described the day's air — «напруга в комунікації» —
+so nothing in it could be checked or used, and the calibration loop had nothing to measure.
+And it was built for an eye: five blocks, 3300 characters, four minutes of audio, while he
+listens. His verdict: «те, що виходить, зовсім не працює і не дає ні прогнозу, ні
+читабельно».
+
+**What the first rebuild got wrong.** I replaced atmosphere with *event prediction* — «до
+обіду розмова, де тебе перепитають». His correction, the same evening: «зараз прогноз це як
+передбачування подій… але астрологія це про інше. Астрологія показує які емоції і бажання
+будуть а не події. Що буде хотітись, що буде нервувати, що буде захоплювати».
+
+**So the reading is about states.** What will pull, what will irritate, what will absorb,
+where there will be drive and where nothing at all. An event is only one possible expression
+of a state — the same configuration becomes a letter for one person, insomnia for another, a
+decision that finally ripened for a third — which is exactly why it cannot be predicted. The
+prompts forbid naming an event even as an example, and a test guards that frame.
 
     факти (локально, без моделі)  →  вибір  →  письмо  →  перевірка
 
@@ -482,32 +494,31 @@ where attention goes. Six stages and ~17 calls produced it.
    transits with their windows, bodies in natal houses, the Moon's aspects **with clock
    times**, retrogrades, the sky's own aspects. No model touches a number.
 2. **Вибір** (`status/mood/pick.md`) — one call: the arc that holds for weeks, two or three
-   claims the day can be held to, and the action that follows. A claim's window must exist
-   in the computed facts, so the timing is arithmetic and not invention.
-3. **Письмо** (`status/mood/day.md`) — one call, written for the ear, about 1200 characters
+   **states** the day will carry, and what to do with them. A window must exist in the
+   computed facts, so the timing is arithmetic and not invention — the Moon really does
+   change the inner weather by the hour.
+3. **Письмо** (`status/mood/day.md`) — one call, for the ear, about 1200 characters
    (`astro.budget_chars`), four parts and no spoken headings:
-   - `ДЕНЬ` — one sentence: what kind of day this is. No planets, no figures.
-   - `ПРОГНОЗ` — two or three lines, each `вікно | що станеться | ознака`: when, what, and
-     how it will look if it happened. A planet is named only where it explains a claim, in
-     half a sentence, never with a house gloss or a degree.
-   - `ДІЯ` — one line: what to do or not do today.
-   - `ДУГА` — one sentence: what holds for weeks and whether this is its peak. Time in
-     words.
+   - `ДЕНЬ` — one sentence: the day's emotional colour. No planets, no figures.
+   - `ПРОГНОЗ` — two or three lines, each `вікно | яка емоція або бажання | як це
+     відчувається зсередини`, at most 140 characters. A planet is named only where the state
+     makes no sense without it, in half a sentence, never with a house gloss or a degree.
+   - `ДІЯ` — one line: what to do with those states, not with events.
+   - `ДУГА` — one sentence: the long emotional line and whether this is its peak.
    - `ОСНОВА` — the figures, in a block **the voice never reads**; `spoken()` drops it and
      `scrub_voice()` is the net under that.
-4. **Перевірка** (`status/mood/check.md`) — one call that returns the reading *corrected*,
-   not criticised: every claim checkable, every window real, no figure in the spoken parts,
-   the arc matching the computed duration, nothing contradicting yesterday in silence. It
-   answers `ВИПРАВЛЕНО` + `ОЦІНКА`, and a correction that lost the structure is refused in
-   favour of what was written.
+4. **Перевірка** (`status/mood/check.md`) — one call that returns the reading *corrected*:
+   every line a state rather than an event, every window real, no figure in the spoken parts,
+   the arc matching the computed duration, nothing contradicting yesterday in silence. A
+   correction that lost the structure is refused in favour of what was written.
 
-**The claims are data.** Each goes to `status/state/forecast-claims.jsonl` (day, id, window,
-claim, sign, verified) — a second run of one morning replaces that day's set rather than
-duplicating it. The evening question is built from exactly those, with no model involved: one
-yes/no per claim naming its window and its sign, plus an invitation to say it missed, because
-«не влучило» is worth more than «нормально». No claims means no question.
-`mood_feedback.py score` reports the hit rate over `astro.score_days` days — which is what
-finally gives the calibration rules a score instead of a pile of 96 lines.
+**The states are data.** Each goes to `status/state/forecast-claims.jsonl` (day, id, window,
+claim, sign, verified) — a second run of one morning replaces that day's set. The evening
+question is built from exactly those with no model involved: «чи було так, що…» per state,
+naming the window and what it should have felt like, plus an invitation to say nothing of the
+sort happened. No states means no question. `mood_feedback.py score` reports the hit rate over
+`astro.score_days` days — the first thing in this project that can tell whether a calibration
+rule is worth keeping.
 
 Plus one separate call for the biorhythms (`ПОКАЗНИКИ` / `ВИСНОВОК`), which never mentions
 astrology. Four calls and two or three minutes a morning, against seventeen and nine before.
