@@ -48,6 +48,9 @@ def test_the_salt_is_random():
 # --- TC4: sessions -----------------------------------------------------------------------
 
 def test_a_fresh_session_is_valid_and_an_expired_one_is_not(monkeypatch):
+    # a session is only valid while a password is configured (t1108): clearing the password
+    # closes the open sessions, so the fixture has to set one
+    monkeypatch.setattr(auth, "stored_record", lambda: auth.hash_password("пароль"))
     monkeypatch.setattr(server, "SESSIONS", {})
     token = server.new_session()
     assert server.valid_session(token)
@@ -265,3 +268,75 @@ def test_logging_out_sends_you_back_to_the_login_page(live_panel):
     assert out.status == 303
     again, _ = ask(live_panel, "GET", "/", cookie=token)
     assert again.status == 303, "the dropped session must not open anything"
+
+
+# --- t1108: the HTTP surface itself (full review: security H1, H3, M2, M3, M4) -----------
+
+@pytest.mark.parametrize("header,want", [
+    ("10", 10), ("0", 0), ("", 0), (None, 0), ("abc", 0),
+    ("-1", 0), ("-999999999", 0),              # H1: a negative length disabled the cap
+    ("99999999999", "cap"),
+])
+def test_the_body_length_can_never_be_negative_or_unbounded(header, want):
+    """A negative Content-Length made `min(length, cap)` return the negative number, and
+    `rfile.read(-1)` reads until the client stops: one unauthenticated POST took the live
+    panel from 24 to 85 MiB, and a private instance to 3.8 GiB in six seconds."""
+    cap = int(server.conf("panel.max_post_bytes", 1_000_000))
+    got = server.body_length(header)
+    assert got >= 0
+    assert got == (cap if want == "cap" else want)
+
+
+def test_the_handler_has_a_read_deadline():
+    """M3: a connection that sends headers and then nothing parked a server thread for
+    ever — 200 parked and still alive, with no deadline anywhere."""
+    assert isinstance(server.Handler.timeout, (int, float)) and 0 < server.Handler.timeout
+
+
+def test_many_wrong_passwords_at_once_cannot_slip_one_through(monkeypatch, tmp_path):
+    """H3: the counter was read and written without a lock, so 43 of 60 attempts in one
+    window verified and the right password at slot 60 still got a cookie."""
+    import threading
+    record = auth.hash_password("правильний")
+    monkeypatch.setattr(auth, "stored_record", lambda: record)
+    monkeypatch.setattr(server, "ATTEMPTS", {})
+    monkeypatch.setattr(server, "SESSIONS", {})
+    monkeypatch.setattr(server, "AUTH_LOG", tmp_path / "auth.jsonl")
+    got = []
+
+    def attempt(password):
+        got.append(server.try_login(password, "192.168.1.9"))
+
+    threads = [threading.Thread(target=attempt, args=("хибний",)) for _ in range(30)]
+    threads.append(threading.Thread(target=attempt, args=("правильний",)))
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sum(1 for g in got if g) <= 1, "at most the one correct password may pass"
+    assert server.try_login("правильний", "192.168.1.9") is None, "and then it is locked"
+
+
+def test_the_attempt_log_cannot_be_grown_without_bound(monkeypatch, tmp_path):
+    """M2: the unauthenticated endpoint appended a line per request — 5.9 GiB a day
+    measured, on a disk with 13.7 GiB free. A locked address stops writing lines."""
+    log = tmp_path / "auth.jsonl"
+    monkeypatch.setattr(auth, "stored_record", lambda: auth.hash_password("правильний"))
+    monkeypatch.setattr(server, "ATTEMPTS", {})
+    monkeypatch.setattr(server, "AUTH_LOG", log)
+    for _ in range(500):
+        server.try_login("хибний", "192.168.1.9")
+    lines = log.read_text(encoding="utf-8").splitlines()
+    assert len(lines) < 20, f"{len(lines)} lines for 500 attempts from one address"
+    assert any("locked" in line for line in lines)
+
+
+def test_clearing_the_password_closes_the_open_sessions(monkeypatch):
+    """M4: `auth.py clear` says the panel lets nobody in, and every live session kept
+    working for its full twelve hours."""
+    monkeypatch.setattr(server, "SESSIONS", {})
+    monkeypatch.setattr(auth, "stored_record", lambda: auth.hash_password("правильний"))
+    token = server.new_session()
+    assert server.valid_session(token)
+    monkeypatch.setattr(auth, "stored_record", lambda: "")
+    assert not server.valid_session(token)

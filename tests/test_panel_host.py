@@ -15,6 +15,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "panel"))
 
+import auth                                                             # noqa: E402
 import server                                                           # noqa: E402
 
 
@@ -94,11 +95,20 @@ def test_post_with_foreign_host_is_refused_even_with_the_token(live_panel):
 
 # --- t1085: no response of the panel may be framed --------------------------------------
 
+def logged_in(record=[]):                                   # noqa: B006 — a tiny cache
+    """A live session, with a password set the way a real panel has one."""
+    if not record:
+        record.append(auth.hash_password("тест"))
+    auth.stored_record = lambda: record[0]
+    return server.new_session()
+
+
 def fetch_resp(port: int, method: str, path: str, body: str = ""):
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
     headers = {"Content-Type": "application/x-www-form-urlencoded"} if body else {}
-    # logged in: since t1100 every path but /login and /static needs a session cookie
-    headers["Cookie"] = f"{server.COOKIE}={server.new_session()}"
+    # logged in: since t1100 every path but /login and /static needs a session cookie, and
+    # since t1108 a session is only valid while a password is configured
+    headers["Cookie"] = f"{server.COOKIE}={logged_in()}"
     conn.request(method, path, body=body or None, headers=headers)
     resp = conn.getresponse()
     resp.read()

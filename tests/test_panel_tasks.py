@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "panel"))
 
 import render                                                           # noqa: E402
+import auth                                                             # noqa: E402
 import server                                                           # noqa: E402
 import tasks_screen as ts                                               # noqa: E402
 
@@ -209,6 +210,14 @@ def live_panel(monkeypatch):
     httpd.shutdown()
 
 
+def logged_in(record=[]):                                   # noqa: B006 — a tiny cache
+    """A live session; since t1108 one is valid only while a password is configured."""
+    if not record:
+        record.append(auth.hash_password("тест"))
+    auth.stored_record = lambda: record[0]
+    return server.new_session()
+
+
 def post_tasks(port, body, cookie=None):
     """A logged-in browser: since t1100 every request but /login and /static needs a
     session cookie, so the test mints one the way a successful login would."""
@@ -216,14 +225,14 @@ def post_tasks(port, body, cookie=None):
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
     conn.request("POST", "/tasks", urllib.parse.urlencode(body),
                  {"Content-Type": "application/x-www-form-urlencoded",
-                  "Cookie": cookie or f"{server.COOKIE}={server.new_session()}"})
+                  "Cookie": cookie or f"{server.COOKIE}={logged_in()}"})
     return conn, conn.getresponse()
 
 
 def test_post_redirects_so_refresh_cannot_rewrite(live_panel):
     """TC1+TC2: the page left in the browser must be a GET, never the form submission."""
     port, fired = live_panel
-    cookie = f"{server.COOKIE}={server.new_session()}"
+    cookie = f"{server.COOKIE}={logged_in()}"
     conn, r = post_tasks(port, {"token": server.FORM_TOKEN,
                                 "action": "add", "text": "нова"}, cookie)
     assert r.status == 303, "a 200 here means F5 re-fires the action into the log"

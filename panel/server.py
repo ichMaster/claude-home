@@ -21,6 +21,7 @@ import json
 import secrets
 import subprocess
 import sys
+import threading
 import time
 import traceback
 import urllib.parse
@@ -105,9 +106,14 @@ def changes_html(query: str = "") -> str:
 # is a lockout rather than a leak, so the escape hatch is `panel/auth.py clear` in a
 # terminal — the one place that proves who is asking.
 SESSIONS: dict[str, float] = {}          # token -> expiry, unix seconds
-ATTEMPTS: dict[str, dict] = {}           # source address -> {fails, until}
+ATTEMPTS: dict[str, dict] = {}           # source address -> {fails, until, logged}
 AUTH_LOG = HOME / "status" / "state" / "panel-auth.jsonl"
 COOKIE = "noos_panel"
+# Every login attempt is serialised. Without it the counter was read and written by many
+# threads at once, so a burst from one address verified 43 of 60 passwords inside a window
+# that should have allowed five, and the right password at the end still got a session
+# (t1108). The cost is that logins queue — one person, one login a day; that is free.
+AUTH_LOCK = threading.Lock()
 
 
 def configured() -> bool:
@@ -127,6 +133,10 @@ def new_session() -> str:
 
 def valid_session(token: str) -> bool:
     if not token:
+        return False
+    if not configured():
+        # `auth.py clear` says the panel lets nobody in; it has to be true of the sessions
+        # already open, or «прибрано» means "in twelve hours" (t1108)
         return False
     for known, expiry in SESSIONS.items():
         if secrets.compare_digest(known, token):
@@ -182,25 +192,35 @@ def _log_attempt(source: str, result: str) -> None:
 
 def try_login(password: str, source: str) -> str | None:
     """A token on success, None otherwise. Rate-limited per source address, because a
-    password on a local network without a limit is a dictionary and five minutes."""
+    password on a local network without a limit is a dictionary and five minutes.
+
+    The whole check is under one lock: counting and verifying have to happen together, or a
+    burst of concurrent attempts each reads `fails` before any of them writes it (t1108).
+    """
     limit = int(conf("panel.auth.max_attempts", 5))
     lock_s = float(conf("panel.auth.lock_min", 5)) * 60
-    state = ATTEMPTS.setdefault(source, {"fails": 0, "until": 0.0})
-    if state["until"] > time.time():
-        _log_attempt(source, "locked")
-        return None
-    if not configured() or not auth.check_password(password, auth.stored_record()):
-        state["fails"] += 1
-        if state["fails"] >= limit:
-            state["until"] = time.time() + lock_s
-            state["fails"] = 0
-            _log_attempt(source, "locked")
-        else:
-            _log_attempt(source, "fail")
-        return None
-    state["fails"], state["until"] = 0, 0.0
-    _log_attempt(source, "ok")
-    return new_session()
+    with AUTH_LOCK:
+        state = ATTEMPTS.setdefault(source, {"fails": 0, "until": 0.0, "logged": 0})
+        if state["until"] > time.time():
+            # One line per lockout, not per attempt: this endpoint needs no session, and a
+            # line per request grew the log by gigabytes a day on a disk with 13 GB free.
+            if state.get("logged", 0) < 1:
+                _log_attempt(source, "locked")
+                state["logged"] = 1
+            return None
+        if not configured() or not auth.check_password(password, auth.stored_record()):
+            state["fails"] += 1
+            if state["fails"] >= limit:
+                state["until"] = time.time() + lock_s
+                state["fails"] = 0
+                state["logged"] = 1
+                _log_attempt(source, "locked")
+            else:
+                _log_attempt(source, "fail")
+            return None
+        state["fails"], state["until"], state["logged"] = 0, 0.0, 0
+        _log_attempt(source, "ok")
+        return new_session()
 
 
 # Minted once per process and required on every POST. This is not authentication and does
@@ -843,8 +863,28 @@ def rules_html(unit: str = "", message: str = "") -> str:
         token=FORM_TOKEN, message=message)
 
 
+def body_length(header: str | None) -> int:
+    """How many bytes of body to read — never negative, never above the cap.
+
+    `min(int(header), cap)` returns the header when it is negative, and `rfile.read(-1)`
+    reads until the client stops sending: one unauthenticated POST with
+    `Content-Length: -1` took the live panel from 24 to 85 MiB, and a private instance to
+    3.8 GiB in six seconds, with no memory limit on the unit (t1108).
+    """
+    cap = int(conf("panel.max_post_bytes", 1_000_000))
+    try:
+        length = int(str(header or "0").strip())
+    except (TypeError, ValueError):
+        return 0
+    return max(0, min(length, cap))
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "noos-panel"
+    # A connection that sends a header and then nothing used to park a server thread for
+    # ever; 200 of them stayed alive with no deadline anywhere (t1108). `timeout` is what
+    # BaseHTTPRequestHandler passes to the socket.
+    timeout = 30
 
     def end_headers(self) -> None:                                       # noqa: N802
         # no response of this panel may be framed: the token and Host checks stop
@@ -961,8 +1001,7 @@ class Handler(BaseHTTPRequestHandler):
             if not host_ok(self.headers.get("Host")):
                 return self._send(403, "Невідомий Host — запит не до цієї панелі."
                                   .encode("utf-8"), "text/plain; charset=utf-8")
-            length = min(int(self.headers.get("Content-Length") or 0),
-                         int(conf("panel.max_post_bytes", 1_000_000)))
+            length = body_length(self.headers.get("Content-Length"))
             body = self.rfile.read(length).decode("utf-8", "replace")
             form = urllib.parse.parse_qs(body, keep_blank_values=True)
             if path == "/login":
