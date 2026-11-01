@@ -340,3 +340,21 @@ def test_clearing_the_password_closes_the_open_sessions(monkeypatch):
     assert server.valid_session(token)
     monkeypatch.setattr(auth, "stored_record", lambda: "")
     assert not server.valid_session(token)
+
+
+def test_the_status_line_says_how_to_set_a_password(capsys, monkeypatch):
+    """t1118: run with no argument it printed «пароля немає» and stopped there, so the next
+    thing to type was not on the screen (the owner, 2026-11-01)."""
+    monkeypatch.setattr(auth, "stored_record", lambda: "")
+    monkeypatch.setattr(sys, "argv", ["auth.py"])
+    assert auth.main() == 0
+    said = capsys.readouterr().out
+    assert "auth.py set" in said
+
+
+def test_the_status_line_is_quiet_when_a_password_exists(capsys, monkeypatch):
+    monkeypatch.setattr(auth, "stored_record", lambda: auth.hash_password("пароль"))
+    monkeypatch.setattr(sys, "argv", ["auth.py"])
+    auth.main()
+    said = capsys.readouterr().out
+    assert "встановлено" in said and "auth.py set" not in said

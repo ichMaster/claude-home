@@ -84,8 +84,13 @@ def clear_record() -> None:
 def main() -> int:
     what = sys.argv[1] if len(sys.argv) > 1 else "show"
     if what == "show":
-        print("пароль встановлено" if stored_record() else
-              "пароля немає — панель віддає лише сторінку входу")
+        if stored_record():
+            print("пароль встановлено")
+        else:
+            # The status without the next step left the owner re-running this and getting
+            # the same line (2026-11-01, t1118).
+            print("пароля немає — панель віддає лише сторінку входу.")
+            print("щоб поставити:  ./panel/auth.py set")
         return 0
     if what == "clear":
         clear_record()
