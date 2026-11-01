@@ -496,6 +496,9 @@ def schedule_rows(blobs: list[tuple[str, str, str]],
             "service": _one(t, "Unit"),
             "description": _one(t, "Description") or _one(s, "Description"),
             "command": _command(s),
+            # `calendars` is what can be edited; `schedules` is what is shown, intervals
+            # included (t1106: the field used to be offered for an interval timer too)
+            "calendars": _calendars(t),
             "schedules": _calendars(t) + _monotonic(t),
             "persistent": _one(t, "Persistent") == "yes",
             "next": when,

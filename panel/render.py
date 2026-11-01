@@ -766,6 +766,12 @@ def _permissions_block(p: dict) -> str:
             'під яким можна було б дозволити собі більше.</p>')
 
 
+def schedule_prefill(specs: list[str]) -> str:
+    """What the field offers — joined with the separator the action splits on, so what the
+    form shows can be submitted back unchanged (t1106)."""
+    return "; ".join(s for s in specs if s)
+
+
 def _schedule_table(rows: list[dict], unit: str = "", token: str = "") -> str:
     if not rows:
         return '<p class="empty">Таймерів не знайдено.</p>'
@@ -784,12 +790,13 @@ def _schedule_table(rows: list[dict], unit: str = "", token: str = "") -> str:
         service = r["service"] or r["unit"].replace(".timer", ".service")
         here = ' class="on"' if unit == service else ""
         edit = ""
-        if token and any("OnCalendar" not in s and ":" in s for s in r["schedules"]):
+        if token and r.get("calendars"):
             edit = (f'<form method="post" action="/rules" class="inline">'
                     f'<input type="hidden" name="token" value="{e(token)}">'
                     f'<input type="hidden" name="action" value="schedule">'
                     f'<input type="hidden" name="unit" value="{e(r["unit"])}">'
-                    f'<input name="calendar" value="{e("; ".join(r["schedules"]))}" '
+                    f'<input name="calendar" '
+                    f'value="{e(schedule_prefill(r["calendars"]))}" '
                     f'size="22"><button type="submit">змінити</button></form>')
         out.append(
             f'<tr><td class="id">{e(r["unit"])}{off}<br>'

@@ -685,6 +685,22 @@ def _resolve(cmd: list[str]) -> list[str]:
     return out
 
 
+def schedule_specs(value: str) -> list[str]:
+    """Split a submitted schedule into specs on `;` and newlines — never on a comma.
+
+    A comma is systemd's own separator *inside* one spec (`Mon,Tue *-*-* 09:00:00`,
+    `*-*-* 09,11,13:05:00`), so splitting on it turned a legitimate schedule into two
+    different ones and called it a success, while the three timers that really do carry
+    several times could not be submitted at all (t1106).
+    """
+    out = []
+    for line in str(value or "").splitlines():
+        for part in line.split(";"):
+            if part.strip():
+                out.append(part.strip())
+    return out
+
+
 def schedule_action(form: dict) -> str:
     """Rewrite a timer's `OnCalendar` lines (t1103).
 
@@ -697,9 +713,7 @@ def schedule_action(form: dict) -> str:
     allowed = set(data.timer_units())
     if unit not in allowed:
         return f"Не знаю таймера «{unit[:60]}» — редагую лише свої."
-    specs = [s.strip() for s in
-             (form.get("calendar") or [""])[0].replace(",", "\n").splitlines()
-             if s.strip()]
+    specs = schedule_specs((form.get("calendar") or [""])[0])
     if not specs:
         return "Розкладу не названо."
     for spec in specs:
@@ -718,9 +732,17 @@ def schedule_action(form: dict) -> str:
         atomic_write_text(target, body)
     except OSError as exc:
         return f"Не записалось: {exc}"
-    run_script("systemctl", "--user", "daemon-reload", timeout=30)
+    reloaded, reload_said = run_script("systemctl", "--user", "daemon-reload", timeout=30)
     ok, said = run_script("systemctl", "--user", "show", unit, "--property=LoadState",
                           timeout=20)
+    if not reloaded:
+        # `LoadState` still answers «loaded» for the unit systemd holds in memory, so a
+        # failed reload cannot be caught downstream — it has to be caught here, or the file
+        # and the running timer disagree while the screen says it worked (t1106).
+        atomic_write_text(target, before)
+        run_script("systemctl", "--user", "daemon-reload", timeout=30)
+        return (f"systemd не перезавантажив юніти ({reload_said.splitlines()[0] if reload_said else 'daemon-reload'}) "
+                f"— повернув попередній {unit}. Нічого не змінилось.")
     if "LoadState=loaded" not in (said or ""):
         atomic_write_text(target, before)
         run_script("systemctl", "--user", "daemon-reload", timeout=30)

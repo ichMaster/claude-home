@@ -178,3 +178,67 @@ def test_the_editor_and_the_schedule_field_are_rendered():
     sched = render.render_rules([], rules_screen.permissions("", [], {}), rows, [],
                                 "", "", token="tok")
     assert 'name="calendar"' in sched
+
+
+# --- t1106: the field could not express two times (full review: writes H3, M3) -----------
+
+def specs_of(value):
+    return server.schedule_specs(value)
+
+
+def test_the_separator_is_the_one_the_form_produces():
+    """The field is a single-line input prefilled with «; », and the action split on «,» —
+    systemd's own separator *inside* one spec. So the three timers with two or more times
+    could never be edited, and `Mon,Tue *-*-* 09:00:00` was silently written as two
+    different schedules."""
+    assert specs_of("*-*-* 08:03:00; *-*-* 20:03:00") == ["*-*-* 08:03:00",
+                                                          "*-*-* 20:03:00"]
+    assert specs_of("*-*-* 08:03:00\n*-*-* 20:03:00") == ["*-*-* 08:03:00",
+                                                          "*-*-* 20:03:00"]
+
+
+def test_a_comma_belongs_to_systemd_and_is_left_alone():
+    assert specs_of("Mon,Tue *-*-* 09:00:00") == ["Mon,Tue *-*-* 09:00:00"]
+    assert specs_of("*-*-* 09,11,13:05:00") == ["*-*-* 09,11,13:05:00"]
+
+
+def test_the_prefill_round_trips():
+    """What the form offers must be submittable unchanged — the digest's own schedule was
+    not."""
+    # `schedule_rows` reads `systemctl show` output, not the unit file
+    show = ("TimersCalendar={ OnCalendar=*-*-* 08:03:00 ; next_elapse=… }\n"
+            "TimersCalendar={ OnCalendar=*-*-* 20:03:00 ; next_elapse=… }\n")
+    rows = rules_screen.schedule_rows([("noos-digest.timer", show, "")])
+    prefill = render.schedule_prefill(rows[0]["calendars"])
+    assert specs_of(prefill) == ["*-*-* 08:03:00", "*-*-* 20:03:00"]
+
+
+def test_an_interval_line_is_not_offered_as_a_calendar_spec():
+    rows = rules_screen.schedule_rows([(
+        "noos-watch.timer",
+        "TimersMonotonic={ OnUnitActiveUSec=15min ; next_elapse=1h }\n", "")])
+    html = render.render_rules([], rules_screen.permissions("", [], {}), rows, [],
+                               "", "", token="tok")
+    assert 'name="calendar"' not in html, "an interval timer has no OnCalendar to edit"
+
+
+def test_a_failed_daemon_reload_is_not_reported_as_success(unit_file, monkeypatch):
+    """M3: the reload's result was discarded, and `LoadState` still answers «loaded» for the
+    old unit systemd holds in memory — so the file and the running timer disagreed while the
+    screen said it worked."""
+    calls = []
+
+    def fake(*cmd, **kwargs):
+        calls.append(cmd)
+        if "systemd-analyze" in cmd[0]:
+            return True, ""
+        if "daemon-reload" in cmd:
+            return False, "Failed to reload daemon"
+        if cmd[0] == "systemctl" and "show" in cmd:
+            return True, "LoadState=loaded"
+        return True, ""
+    monkeypatch.setattr(server, "run_script", fake)
+    said = server.schedule_action({"unit": ["noos-digest.timer"],
+                                   "calendar": ["*-*-* 09:00:00"]})
+    assert "не перезавантаж" in said.lower() or "daemon-reload" in said
+    assert unit_file.read_text(encoding="utf-8") == UNIT, "and the unit is put back"
