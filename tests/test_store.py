@@ -124,3 +124,33 @@ def test_old_defer_events_replay_unchanged(task_log):
     t = store.state()["t001"]
     assert t["due"] == "2026-11-07"
     assert t.get("period") is None
+
+
+# --- t1088: a numeric dd.mm date must roll into the next year like the named months ----
+
+class _Nov1(store.date):
+    @classmethod
+    def today(cls):
+        return store.date(2026, 11, 1)
+
+
+def test_numeric_date_already_past_rolls_to_next_year(monkeypatch):
+    """t1088 TC1 — «до 15.01» sent in November is January *next* year, exactly like
+    «до 15 січня»; before the fix it became a task 290 days overdue."""
+    monkeypatch.setattr(store, "date", _Nov1)
+    due, _ = store.parse_due("звіт до 15.01")
+    assert (due.year, due.month, due.day) == (2027, 1, 15)
+
+
+def test_numeric_date_with_explicit_year_is_never_touched(monkeypatch):
+    """t1088 TC2 — a spelled-out year is the user's word, past or not."""
+    monkeypatch.setattr(store, "date", _Nov1)
+    due, _ = store.parse_due("звіт до 15.01.2026")
+    assert (due.year, due.month, due.day) == (2026, 1, 15)
+
+
+def test_numeric_date_still_ahead_stays_this_year(monkeypatch):
+    """t1088 TC3."""
+    monkeypatch.setattr(store, "date", _Nov1)
+    due, _ = store.parse_due("звіт до 15.12")
+    assert (due.year, due.month, due.day) == (2026, 12, 15)

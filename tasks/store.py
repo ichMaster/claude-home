@@ -108,6 +108,10 @@ def parse_due(text):
         d, mo = int(m.group(1)), int(m.group(2))
         y = int(m.group(3) or today.year)
         y += 2000 if y < 100 else 0
+        # no explicit year: a date already past means next year, exactly like the
+        # month-name branch above — «до 15.01» in November is January coming (t1088)
+        if not m.group(3) and (mo, d) < (today.month, today.day):
+            y += 1
         try:
             when = date(y, mo, d)
         except ValueError:      # «python 3.14», «31.11» — a number, not a date (t1048)
