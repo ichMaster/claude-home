@@ -35,10 +35,67 @@ def _load():
 
 
 DATA = _load()
+_CHECKED = 0.0                 # when the files were last stat-ed
+_STAMPS = None                 # their (mtime, size) pairs at the last load
+# How long a loaded configuration is trusted without a stat. This used to be forever: `DATA`
+# was an import-time snapshot, and the panel is a process that lives for weeks and now
+# writes configuration itself — so three screens kept stating the value the file held when
+# the panel started, including the channel toggle that writes the file it was reading
+# (t1109). A stat is cheap; a stat per `conf()` call in a request loop is not.
+FRESH_FOR = 2.0
+
+
+def _stamps():
+    # ROOT is part of the key: a test (or a tool) that repoints it must get its own files
+    # read immediately rather than inheriting the previous load.
+    out = [str(ROOT)]
+    for name in ("config.json", "config.local.json"):
+        try:
+            st = (ROOT / name).stat()
+            out.append((st.st_mtime_ns, st.st_size))
+        except OSError:
+            out.append(None)
+    return tuple(out)
+
+
+def _refresh():
+    """Re-read the configuration when the files have changed. Never leaves a running process
+    without a configuration: a half-written file keeps the last good one."""
+    global DATA, _CHECKED, _STAMPS
+    import time
+    now = time.monotonic()
+    if now - _CHECKED < FRESH_FOR:
+        return
+    _CHECKED = now
+    stamps = _stamps()
+    if _STAMPS is None:
+        _STAMPS = stamps
+        return
+    if stamps == _STAMPS:
+        return
+    if stamps[0] != _STAMPS[0]:
+        _CHECKED = 0.0                      # a different ROOT: do not cache this decision
+    try:
+        DATA = _load()
+        _STAMPS = stamps
+    except (OSError, json.JSONDecodeError, ValueError):
+        pass                   # a torn write mid-save: keep what we have and try later
+
+
+def reload():
+    """Force a re-read now — for a caller that has just written a config file itself."""
+    global _CHECKED, _STAMPS
+    _CHECKED, _STAMPS = 0.0, None
+    try:
+        globals()["DATA"] = _load()
+    except (OSError, json.JSONDecodeError, ValueError):
+        pass
+    _STAMPS = _stamps()
 
 
 def conf(dotted, default=None):
     """conf("probes.loe.queue") -> value, or `default` if the key is absent."""
+    _refresh()
     node = DATA
     for part in dotted.split("."):
         if not isinstance(node, dict) or part not in node:
