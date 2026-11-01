@@ -5,44 +5,36 @@ They are two different things and the owner wants them apart (2026-10-27): biorh
 three sine curves from a birth date, astrology is a sky; mixed into one verdict, it stops
 being visible which claim came from which. So two messages go out, each with its own voice.
 
-The astrology half is a **pipeline of model calls in layers**, not one call and not a flat
-list of atoms. The shape is the owner's (2026-10-27), and the layering is the fix to the
-first version: when all 26 facts were read one by one, "Mars opposite your ASC" and "Mars
-crossing your 7th" went to two calls that could not see each other, and houses suffered
-most — a house is about distribution, which is only visible with all twelve in view.
+**The astrology half is three calls and is built to be checked** (t1126, 2026-11-01). It
+used to be six stages and about seventeen calls, one per transit, producing 3300 characters
+in five blocks — and the owner, who listens rather than reads, said it plainly: «те, що
+виходить, зовсім не працює і не дає ні прогнозу, ні читабельно». Two separate failures. It
+described the day's air, so nothing in it could be checked in the evening or used in the
+morning; and it was written for an eye, so in one spoken stream a heading means nothing and
+the long middle is where attention goes.
 
-    transits, one by one  ┐
-    houses, all together  ├→  weigh by natal sensitivity  →  write with arguments
-    the Moon, on its own  │   and by duration/exactness
-    the background        ┘
+What replaced it:
 
-1. `status/astro.py` computes the day and tags every fact with its `layer`: each transit to
-   a natal point (with its window — when it came into orb, when it is exact, how many days
-   the passage holds), each transiting body standing in a natal house, the Moon in all its
-   forms, the retrograde set, the sky's own aspects.
-2. **Transits** — one call per transit, in parallel. These are the sharp, dated facts, and
-   one per call means none is quietly dropped because another was more interesting.
-3. **Houses** — a single call over every placement at once, with the house rulers: where
-   the load is, which areas are quiet, what is background and what is today.
-4. **The Moon** — its own call: the phase, the house it crosses, what it lands on natally.
-   It sets the emotional ground of the day, so it never competes for a slot with a slow
-   transit, and the summary must name it every time.
-5. **The background** — one call for the retrogrades and the sky's own aspects, which are
-   generational air rather than anybody's day.
-6. **Weighing** — one call over the transits plus the three summaries, ranking them by what
-   hits *this* chart (ЧУТЛИВЕ — planets on angles, loaded houses, natal aspects a transit
-   re-opens) and by duration and exactness. Answers ОСНОВНЕ / ФОН / ЧУТЛИВЕ / ЧОМУ.
-7. **Writing** — ГОЛОВНЕ (one to three facts that carry the day, each with why it matters)
-   and ПІДСУМОК (the day in three or four sentences, each followed by the fact it stands
-   on). Short on purpose: he asked not to be sent the whole fact list.
+    facts (local, no model)  →  pick  →  write  →  check
 
-Why the split pays: a single call has to invent its own sense of weight, and it reliably
-mistakes the exact-today Moon for the news of the day. The weighing stage is handed the
-arithmetic — «тримається 91 дн, точно зараз» against «тримається 1 дн» — so the ranking
-has a basis. The full fact list with every reading stays in the log.
+1. `status/astro.py` computes the day: every transit with its window (when it came into orb,
+   when it is exact, how long the passage holds), every body standing in a natal house, the
+   Moon's aspects **with their clock times**, the retrogrades, the sky's own aspects. No
+   model touches a number.
+2. **pick** (`mood/pick.md`) — one call: which arc holds for weeks, which two or three
+   claims the day can be held to, which action follows. A claim's window must exist in the
+   computed facts, so timing is arithmetic rather than invention.
+3. **write** (`mood/day.md`) — one call: the four parts, for the ear. ДЕНЬ (one sentence,
+   no planets), ПРОГНОЗ (`вікно | що станеться | ознака`), ДІЯ (one line), ДУГА (one
+   sentence), and ОСНОВА — the figures, in a block the voice never reads.
+4. **check** (`mood/check.md`) — one call that returns the reading *corrected*: every claim
+   checkable, every window real, no figure in the spoken parts, the arc matching the
+   computed duration, nothing contradicting yesterday in silence.
 
-The numbers never come from a model: `astro.py` computes them from the Swiss Ephemeris. A
-model handed real positions stops inventing them.
+**The claims are data.** Each is stored in `status/state/forecast-claims.jsonl`; the evening
+question (`mood_feedback.py ask`) is built from exactly those, one yes/no each, naming the
+window and the sign it was promised by; and `mood_feedback.py score` reports the hit rate.
+That is what finally gives the calibration rules a score instead of a pile.
 
 **IMPORTANT** about the headless calls: the Telegram plugin must be off
 (`status/digest-settings.json`), or a second session hijacks `getUpdates` and the main one
@@ -52,6 +44,7 @@ stops seeing messages. These calls need no connectors, so MCP is stripped too.
     mood.py --day 2026-10-27
     mood.py --dry-run       the whole pipeline, printed; nothing sent, nothing logged
     mood.py --facts         just the computed facts, no model at all
+    mood.py --resume        redo the writing from the pick already in the log
     mood.py --show          what was already read today
 """
 from __future__ import annotations
@@ -79,7 +72,10 @@ SETTINGS = HOME / "status" / "digest-settings.json"
 FACT_TIMEOUT = 180      # one short interpretation
 CALL_TIMEOUT = 420      # the weighing and the writing are longer
 
-_BLOCK_RE = re.compile(r"^[\s*#_>•·—-]*(ЧИТАННЯ|КОРОТКО|ГОЛОВНЕ|ФАКТИ|ПІДСУМОК|ІСТОРІЯ|НАСАМКІНЕЦЬ|ЧОМУ|ПРАВКИ|ОЦІНКА|ПОКАЗНИКИ|ВИСНОВОК)[\s*_#]*:?[\s*_#]*(.*)$",
+# The markers of every stage's answer. ДЕНЬ/ПРОГНОЗ/ДІЯ/ДУГА/ОСНОВА are the sent reading
+# since t1126; ДУГА/ПРОГНОЗИ/ВИПРАВЛЕНО belong to the pick and check stages; the rest are
+# the biorhythms, the reference and the older stages that still answer in this shape.
+_BLOCK_RE = re.compile(r"^[\s*#_>•·—-]*(ЧИТАННЯ|ДЕНЬ|ПРОГНОЗИ|ПРОГНОЗ|ДІЯ|ДУГА|ОСНОВА|ВИПРАВЛЕНО|КОРОТКО|ГОЛОВНЕ|ФАКТИ|ПІДСУМОК|ІСТОРІЯ|НАСАМКІНЕЦЬ|ЧОМУ|ПРАВКИ|ОЦІНКА|ПОКАЗНИКИ|ВИСНОВОК)[\s*_#]*:?[\s*_#]*(.*)$",
                        re.IGNORECASE | re.MULTILINE)
 _ID_RE = re.compile(r"[A-Za-zА-Яа-яІіЇїЄєҐґ0-9_-]+")
 
@@ -274,48 +270,6 @@ def yesterday_block(day: date) -> str:
     return ""
 
 
-def interpret_facts(natal: str, day: date, facts: list[dict], note=lambda *a: None) -> list[dict]:
-    """Stage 2 — one call per fact, in parallel.
-
-    A fact whose call fails keeps its text and loses only its interpretation: one broken
-    transit must not cost the whole day.
-    """
-    model = conf("astro.models.fact", "sonnet")
-    workers = int(conf("astro.parallel", 5))
-
-    def one(f: dict) -> dict:
-        prompt = fill("fact.md", НАТАЛ=natal, ДАТА=day.isoformat(),
-                      ФАКТ=f["text"], ВІКНО=f.get("window_text", ""))
-        try:
-            return {**f, "reading": plain(run_claude(prompt, model, FACT_TIMEOUT))}
-        except Exception as e:
-            note(f"  факт {f['id']} не прочитався: {e}")
-            return {**f, "reading": ""}
-
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        return list(pool.map(one, facts))
-
-
-def summarise_layer(name: str, prompt: str, natal: str, day: date, facts: list[dict],
-                    label: str, extra: dict[str, str] | None = None,
-                    note=lambda *a: None) -> dict | None:
-    """One call over a whole layer (the houses, the Moon, the background) → a fact-shaped
-    dict, so the weighing and writing stages treat a summary exactly like an atom."""
-    if not facts:
-        return None
-    body = "\n".join(f["text"] + (f" [{f['window_text']}]" if f.get("window_text") else "")
-                      for f in facts)
-    try:
-        reading = plain(run_claude(fill(prompt, НАТАЛ=natal, ДАТА=day.isoformat(),
-                                        **{name: body}, **(extra or {})),
-                                   conf("astro.models.layer", "sonnet"), CALL_TIMEOUT))
-    except Exception as e:
-        note(f"  шар {label} не прочитався: {e}")
-        return None
-    return {"id": label, "kind": "layer", "layer": label.lower(), "text": body,
-            "window_text": "", "reading": reading}
-
-
 def fact_lines(facts: list[dict]) -> str:
     """The facts as the weighing call reads them: id, the fact, its window, its reading."""
     out = []
@@ -325,38 +279,85 @@ def fact_lines(facts: list[dict]) -> str:
     return "\n".join(out)
 
 
-def weigh(natal: str, day: date, facts: list[dict]) -> dict:
-    """Stage 3 — rank the facts from the position of a month or a quarter."""
-    answer = run_claude(fill("rank.md", НАТАЛ=natal, ДАТА=day.isoformat(),
-                             КАЛІБРУВАННЯ=calibration(),
-                             ЕТАЛОН=reference_block(day),
-                             ФАКТИ=fact_lines(facts)),
-                        conf("astro.models.judge", ""))
-    known = {f["id"] for f in facts}
-
-    def ids(label: str) -> list[str]:
-        m = re.search(rf"^[\s*#_>-]*{label}[\s*_#]*:(.*)$", answer, re.MULTILINE | re.IGNORECASE)
-        return [i for i in _ID_RE.findall(m.group(1)) if i in known] if m else []
-
-    main, back, tender = ids("ОСНОВНЕ"), ids("ФОН"), ids("ЧУТЛИВЕ")
-    why = re.search(r"^[\s*#_>-]*ЧОМУ[\s*_#]*:(.*)", answer, re.MULTILINE | re.DOTALL | re.IGNORECASE)
-    if not main:                                   # the markers went missing — keep the computed order
-        main = [f["id"] for f in facts[:4]]
-        back = [f["id"] for f in facts[4:12]]
-    return {"main": main, "background": [i for i in back if i not in main],
-            "tender": tender, "why": plain(why.group(1)) if why else "", "raw": answer}
+BLOCKS_SENT = ("ДЕНЬ", "ПРОГНОЗ", "ДІЯ", "ДУГА", "ОСНОВА")
+SPOKEN_BLOCKS = ("ДЕНЬ", "ПРОГНОЗ", "ДІЯ", "ДУГА")       # ОСНОВА is text only
+MAX_CLAIMS = 3
+CLAIMS = None                                            # set in state_path terms below
 
 
-def _chosen(by_id: dict[str, dict], ids: list[str]) -> str:
-    """The picked facts with their windows and readings, as the final call reads them."""
-    return "\n".join(
-        by_id[i]["text"]
-        + (f" [{by_id[i]['window_text']}]" if by_id[i].get("window_text") else "")
-        + (f"\n    {by_id[i]['reading']}" if by_id[i].get("reading") else "")
-        for i in ids if i in by_id)
+def claims(text: str) -> tuple[list[dict], int]:
+    """The ПРОГНОЗ block as data: `вікно | що станеться | ознака` per line.
+
+    A claim with no window or no sign is **dropped and counted**, never sent: the whole point
+    of the new shape is that the evening can check it, and a line without those two cannot be
+    checked. Returns (claims, dropped).
+    """
+    block = split_blocks(text).get("ПРОГНОЗ", "")
+    out, dropped = [], 0
+    for line in block.splitlines():
+        line = line.strip().lstrip("-•— ").strip()
+        if not line:
+            continue
+        parts = [p.strip() for p in line.split("|")]
+        if len(parts) < 3 or not all(parts[:3]):
+            dropped += 1
+            continue
+        out.append({"window": parts[0], "claim": parts[1], "sign": parts[2]})
+    return out[:MAX_CLAIMS], dropped
 
 
-BLOCKS_SENT = ("КОРОТКО", "ПІДСУМОК", "ІСТОРІЯ", "ГОЛОВНЕ", "НАСАМКІНЕЦЬ")
+def claims_file() -> "Path":
+    return CLAIMS or path("astro.claims", "status/state/forecast-claims.jsonl")
+
+
+def save_claims(day: date, items: list[dict]) -> None:
+    """Store the day's claims, replacing any earlier run of the same day.
+
+    Not append-only, deliberately: a second run of one morning is a correction of the first,
+    and the evening question has to ask about what was actually sent.
+    """
+    f = claims_file()
+    f.parent.mkdir(parents=True, exist_ok=True)
+    kept = [r for r in _claim_rows(f) if r.get("day") != day.isoformat()]
+    for i, item in enumerate(items, 1):
+        kept.append({"day": day.isoformat(), "id": f"{day.isoformat()}-{i}",
+                     "window": item["window"], "claim": item["claim"],
+                     "sign": item["sign"], "verified": None})
+    f.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in kept),
+                 encoding="utf-8")
+
+
+def _claim_rows(f: "Path") -> list[dict]:
+    try:
+        lines = f.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    out = []
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return out
+
+
+def load_claims(day: date, f=None) -> list[dict]:
+    rows = _claim_rows(f or claims_file())
+    return [r for r in rows if r.get("day") == day.isoformat()]
+
+
+def scrub_voice(text: str) -> str:
+    """Last safety net for the spoken copy: no degrees, no `dd.mm` dates.
+
+    The prompt forbids them and the review stage checks, but this is cheap and deterministic,
+    and a figure read aloud is the thing that made the old reading unlistenable. A clock time
+    (`16:00`) is kept — that is what makes a claim checkable.
+    """
+    out = re.sub(r"\s*\(?\d+[.,]?\d*\s*°\)?", "", text)
+    out = re.sub(r"\b(\d{1,2})\.(\d{2})(?!\d)", lambda m: "", out)
+    return re.sub(r"[ \t]{2,}", " ", out).strip()
 
 
 def fit_budget(answer: str, note=lambda *a: None) -> str:
@@ -367,9 +368,9 @@ def fit_budget(answer: str, note=lambda *a: None) -> str:
     than truncate mid-sentence, ask once for a cut. Over by a little is left alone; the
     call only pays for itself when the overshoot is real.
     """
-    limit = int(conf("astro.budget_chars", 2400))
+    limit = int(conf("astro.budget_chars", 1200))
     blocks = split_blocks(answer)
-    size = sum(len(blocks.get(k, "")) for k in BLOCKS_SENT)
+    size = sum(len(blocks.get(k, "")) for k in SPOKEN_BLOCKS)
     note(f"    довжина: {size} знаків (ліміт {limit})")
     if size <= limit * 1.2:
         return answer
@@ -380,82 +381,120 @@ def fit_budget(answer: str, note=lambda *a: None) -> str:
         note(f"    скорочення не вдалося: {e}")
         return answer
     got = split_blocks(shorter)
-    if not got.get("КОРОТКО") and not got.get("ПІДСУМОК"):
+    if not got.get("ДЕНЬ") and not got.get("ПРОГНОЗ"):
         return answer                             # the cut lost the structure — keep the original
-    note(f"    після скорочення: {sum(len(got.get(k, '')) for k in BLOCKS_SENT)} знаків")
+    note(f"    після скорочення: {sum(len(got.get(k, '')) for k in SPOKEN_BLOCKS)} знаків")
     return shorter
 
 
-def summary_call(day: date, facts_text: str, moon_text: str,
-                 draft: str, fixes: str, before: str) -> str:
-    """The last stage on its own: apply the review's edits and compress to what is sent."""
-    return run_claude(fill("summary.md", ДАТА=day.isoformat(),
-                           КАЛІБРУВАННЯ=calibration(),
-                           ФОКУС=astro.focus_lines(astro.day_focus(day), day),
-                           ЗНАЧЕННЯ=astro.glossary_lines(),
-                           КОНТЕКСТ=life_context(),
-                           ФАКТИ=facts_text, МІСЯЦЬ=moon_text,
-                           ЧЕРНОВИК=draft, ПРАВКИ=fixes, УЧОРА=before),
-                      conf("astro.models.final", ""))
+def corrected(answer: str) -> str:
+    """The check stage's corrected reading, or "" if it did not return one.
 
-
-def write_forecast(natal: str, day: date, facts: list[dict], rank: dict,
-                   note=lambda *a: None, partial: dict | None = None) -> dict[str, str]:
-    """The last three stages: a detailed draft, a review of it, then the short result.
-
-    The owner's shape (2026-10-27): the draft is written long and the review checks *it* —
-    not the summary — against the facts, and only then is everything compressed to what
-    actually gets sent. Reviewing the short version would be reviewing prose; reviewing the
-    long one catches the claim that has no fact behind it.
-
-    `partial`, when given, receives each stage's output as it is produced, so a failed call
-    does not discard the stages already paid for — the caller logs it and --resume can pick
-    the draft up (t1051).
+    Sliced by hand rather than by `split_blocks`, because the correction **contains** the
+    reading's own markers: splitting by marker ended the ВИПРАВЛЕНО block at the ДЕНЬ line
+    immediately inside it, so the first live run sent the unchecked draft — with the typo,
+    the invented window and the scan edges the editor had just fixed (t1126).
     """
-    by_id = {f["id"]: f for f in facts}
-    # The Moon always reaches the writing stages, whatever the ranking said: it sets the
-    # day's emotional ground, and the owner wants it in the summary every time.
-    moon = [f["id"] for f in facts if f["id"] == "МІСЯЦЬ" or f.get("layer") == "moon"]
+    text = answer or ""
+    low = text.upper()
+    at = low.find("ВИПРАВЛЕНО")
+    if at < 0:
+        return ""
+    body = text[at + len("ВИПРАВЛЕНО"):]
+    end = body.upper().find("ОЦІНКА")
+    if end >= 0:
+        body = body[:end]
+    body = body.strip()
+    got = split_blocks(body)
+    # a correction that lost the structure is not a correction
+    return body if got.get("ДЕНЬ") and got.get("ПРОГНОЗ") else ""
+
+
+def forecast_parts(answer: str) -> dict[str, str]:
+    """The sent reading as its four spoken parts plus the reference."""
+    blocks = split_blocks(answer)
+    return {"day": plain(blocks.get("ДЕНЬ", "")),
+            "claims": plain(blocks.get("ПРОГНОЗ", "")),
+            "action": plain(blocks.get("ДІЯ", "")),
+            "arc": plain(blocks.get("ДУГА", "")),
+            "basis": plain(blocks.get("ОСНОВА", "")),
+            "raw": plain(answer)}
+
+
+def moon_lines(facts: list[dict]) -> str:
+    """The day's Moon events with their clock times — where a claim's window comes from."""
+    return "\n".join(
+        f"  {f['text']}" + (f"  [{f['window_text']}]" if f.get("window_text") else "")
+        for f in facts if f.get("layer") == "moon" or f["id"].startswith("m"))
+
+
+def write_forecast(natal: str, day: date, facts: list[dict], rank: dict | None = None,
+                   note=lambda *a: None, partial: dict | None = None,
+                   picked: str = "") -> dict[str, str]:
+    """Three calls: pick the material, write the reading, check it (t1126).
+
+    The old shape was six stages and about seventeen calls, most of them one per transit —
+    and the weighing threw most of those away. What the owner needs is not more material: it
+    is two or three claims he can check in the evening, in sixty to ninety seconds. So the
+    stages are: **pick** (which arc, which claims, which action — windows taken from the
+    ephemeris, never invented), **write** (the four parts, for the ear), **check** (every
+    claim has a window and a sign, no figures in the spoken copy, the arc matches the
+    computed duration) — and the check returns the corrected text, so there is no fourth call.
+    """
     before = yesterday_block(day)
     model = conf("astro.models.final", "")
+    budget = str(int(conf("astro.budget_chars", 1200)))
 
-    note("    черновик")
-    draft_raw = run_claude(fill("draft.md", НАТАЛ=natal, ДАТА=day.isoformat(),
-                                ФОКУС=astro.focus_lines(astro.day_focus(day), day),
-                                ЗНАЧЕННЯ=astro.glossary_lines(),
-                                КОНТЕКСТ=life_context(),
-                                КАЛІБРУВАННЯ=calibration(),
-                                ОСНОВНЕ=_chosen(by_id, rank["main"]),
-                                ФОН=_chosen(by_id, [i for i in rank["background"] if i not in moon]),
-                                МІСЯЦЬ=_chosen(by_id, moon),
-                                ЧУТЛИВЕ=_chosen(by_id, rank.get("tender", [])),
-                                ЧОМУ=rank["why"], УЧОРА=before),
-                           model)
-    draft = plain(split_blocks(draft_raw).get("ЧИТАННЯ", "")) or plain(draft_raw)
+    if picked:
+        note("    вибір узято з лога")
+    else:
+        note("    вибір")
+        picked = plain(run_claude(
+            fill("pick.md", НАТАЛ=natal, ДАТА=day.isoformat(),
+                 ФАКТИ=fact_lines(facts), МІСЯЦЬ=moon_lines(facts),
+                 ФОКУС=astro.focus_lines(astro.day_focus(day), day),
+                 КОНТЕКСТ=life_context(), КАЛІБРУВАННЯ=calibration(), УЧОРА=before),
+            conf("astro.models.judge", "")))
     if partial is not None:
-        partial["черновик"] = draft
+        partial["вибір"] = picked
 
-    note("    ревʼю")
-    review_raw = run_claude(fill("review.md", ДАТА=day.isoformat(),
-                                 ФАКТИ=fact_lines(facts), ЗВАЖУВАННЯ=rank["raw"],
-                                 ЕТАЛОН=reference_block(day),
-                                 ЧЕРНОВИК=draft, УЧОРА=before),
-                            conf("astro.models.review", ""))
-    review = split_blocks(review_raw)
+    note("    письмо")
+    written = plain(run_claude(fill("day.md", ДАТА=day.isoformat(), ВИБІР=picked,
+                                    ЗНАЧЕННЯ=astro.glossary_lines(),
+                                    КОНТЕКСТ=life_context(),
+                                    КАЛІБРУВАННЯ=calibration(),
+                                    ЕТАЛОН=reference_block(day), БЮДЖЕТ=budget),
+                               model))
     if partial is not None:
-        partial["ревʼю"] = review_raw
-    fixes = plain(review.get("ПРАВКИ", "")) or "немає"
-    note(f"    оцінка: {plain(review.get('ОЦІНКА', ''))[:120]}")
+        partial["письмо"] = written
 
-    note("    підсумок")
-    answer = fit_budget(summary_call(day, fact_lines(facts), _chosen(by_id, moon),
-                                     draft, fixes, before), note)
-    blocks = split_blocks(answer)
-    return {"main": plain(blocks.get("ГОЛОВНЕ", "")), "summary": plain(blocks.get("ПІДСУМОК", "")),
-            "lead": plain(blocks.get("КОРОТКО", "")),
-            "story": plain(blocks.get("ІСТОРІЯ", "")),
-            "closing": plain(blocks.get("НАСАМКІНЕЦЬ", "")),
-            "draft": draft, "review": review_raw, "fixes": fixes, "raw": answer}
+    note("    перевірка")
+    try:
+        checked_raw = run_claude(fill("check.md", ДАТА=day.isoformat(), ПРОГНОЗ=written,
+                                      ВИБІР=picked, ФАКТИ=fact_lines(facts),
+                                      УЧОРА=before, БЮДЖЕТ=budget),
+                                 conf("astro.models.review", ""))
+        fixed = corrected(checked_raw)
+        note(f"    оцінка: {plain(split_blocks(checked_raw).get('ОЦІНКА', ''))[:120]}")
+    except Exception as e:                                              # noqa: BLE001
+        note(f"    перевірка не вдалася: {e}")
+        checked_raw, fixed = "", ""
+    # `corrected()` already refuses a correction that lost the structure, so an empty
+    # string here means "keep what was written".
+    answer = fixed or written
+    if partial is not None:
+        partial["перевірка"] = checked_raw
+
+    answer = fit_budget(answer, note)
+    parts = forecast_parts(answer)
+    found, dropped = claims(answer)
+    if dropped:
+        note(f"    {dropped} прогноз(ів) без вікна або ознаки — відкинуто")
+    parts["picked"] = picked
+    parts["checked"] = checked_raw
+    parts["claim_list"] = found
+    parts["dropped"] = dropped
+    return parts
 
 
 def write_biorhythms(day: date, bio: str) -> dict[str, str]:
@@ -475,31 +514,39 @@ def bio_message(day: date, bio: dict, computed: str) -> str:
 
 
 def astro_message(day: date, forecast: dict) -> str:
-    """The point first, then the day, the arithmetic last (the owner, 2026-10-27).
+    """The day, the claims, the action, the arc — then the basis, which is text only.
 
-    The summary is the air of the day written as prose — no figures, no planet names, no
-    dates. Then two or three sentences of why, in general terms. Then, at the end, the
-    facts that were picked, where numbers are allowed. The full fact list stays in the log.
+    Built for the ear (t1126): no spoken headings, and the figures live in one block at the
+    end that the voice never reads.
     """
-    parts = [f"🜚 Астрологія на {day.strftime('%d.%m')}"]
-    if forecast.get("lead"):                      # the whole day in two sentences, up front
-        parts.append(forecast["lead"])
-    if forecast["summary"]:
-        parts.append(f"Опис дня\n{forecast['summary']}")
-    if forecast.get("story"):
-        parts.append(f"Історія дня\n{forecast['story']}")
-    if forecast["main"]:
-        parts.append(f"Головне, на чому це стоїть\n{forecast['main']}")
-    if forecast.get("closing"):                   # a flat statement of the day, not advice
-        parts.append(forecast["closing"])
+    parts = [f"🜚 Прогноз на {day.strftime('%d.%m')}"]
+    if forecast.get("day"):
+        parts.append(forecast["day"])
+    if forecast.get("claims"):
+        parts.append("\n".join(
+            "— " + " · ".join(p.strip() for p in line.split("|") if p.strip())
+            for line in forecast["claims"].splitlines() if line.strip()))
+    if forecast.get("action"):
+        parts.append(forecast["action"])
+    if forecast.get("arc"):
+        parts.append(forecast["arc"])
+    if forecast.get("basis"):
+        parts.append(f"На чому стоїть\n{forecast['basis']}")
     return "\n\n".join(parts) if len(parts) > 1 else f"{parts[0]}\n\n{plain(forecast['raw'])}"
 
 
 def spoken(text: str) -> str:
-    """What the voice reads: the message without its header line of symbols and the
-    computed row of signed numbers, neither of which survives being read aloud."""
-    body = [p for p in text.split("\n\n")[1:] if not p.startswith("Пораховано:")]
-    return "\n\n".join(body).strip() or text
+    """What the voice reads: everything but the header line and the reference block.
+
+    «На чому стоїть» is where the degrees and dates live, and a figure read aloud is what
+    made the old reading unlistenable (t1126). `scrub_voice` is the net under that.
+    """
+    body = []
+    for part in text.split("\n\n")[1:]:
+        if part.startswith(("На чому стоїть", "Пораховано:")):
+            continue
+        body.append(part)
+    return scrub_voice("\n\n".join(body).strip() or text)
 
 
 def with_tags(text: str, note=lambda *a: None) -> str:
@@ -619,27 +666,19 @@ def main() -> int:
         except Exception as e:
             note(f"    калібрування не вдалося: {e}")
 
-    if args.resume:                               # one call: redo the summary from the log
+    if args.resume:                               # redo the writing from the logged pick
         parts = logged_sections(day)
-        if not parts.get("черновик"):
-            print("у лозі немає черновика на сьогодні", file=sys.stderr)
+        if not parts.get("вибір"):
+            print("у лозі немає вибору на сьогодні", file=sys.stderr)
             return 1
-        fixes = split_blocks(parts.get("ревʼю", "")).get("ПРАВКИ", "") or "немає"
-        moon = "\n".join(ln for ln in parts.get("факти", "").splitlines()
-                          if "Місяць" in ln or ln.startswith("МІСЯЦЬ"))
-        answer = fit_budget(summary_call(day, parts.get("факти", ""), moon,
-                                         parts["черновик"], fixes, yesterday_block(day)), note)
-        blocks = split_blocks(answer)
-        forecast = {"main": plain(blocks.get("ГОЛОВНЕ", "")),
-                    "lead": plain(blocks.get("КОРОТКО", "")),
-                    "summary": plain(blocks.get("ПІДСУМОК", "")),
-                    "story": plain(blocks.get("ІСТОРІЯ", "")),
-                    "closing": plain(blocks.get("НАСАМКІНЕЦЬ", "")), "raw": answer}
+        forecast = write_forecast(natal_text(), day, facts, note=note,
+                                  partial=None, picked=parts["вибір"])
         text = astro_message(day, forecast)
         if args.dry_run:
             print(text)
             return 0
-        log_run(day, {"підсумок (перероблено)": answer})
+        log_run(day, {"письмо (перероблено)": forecast["raw"]})
+        save_claims(day, forecast["claim_list"])
         send(text, note=note)
         return 0
 
@@ -654,62 +693,37 @@ def main() -> int:
         return 0
 
     natal = natal_text()
-    by_layer = {}
-    for f in facts:
-        by_layer.setdefault(f.get("layer", "transit"), []).append(f)
-
-    note(f"1/5 транзити поштучно: {len(by_layer.get('transit', []))}")
-    read = interpret_facts(natal, day, by_layer.get("transit", []), note)
-
-    note("2/5 шари: доми, Місяць, фон")
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        jobs = [
-            pool.submit(summarise_layer, "ДОМИ", "houses.md", natal, day,
-                        by_layer.get("house", []), "ДОМИ", None, note),
-            pool.submit(summarise_layer, "МІСЯЦЬ", "moon.md", natal, day,
-                        by_layer.get("moon", []), "МІСЯЦЬ",
-                        {"НАТАЛЬНИЙ_МІСЯЦЬ": astro.natal_moon_lines()}, note),
-            pool.submit(summarise_layer, "ФОН", "background.md", natal, day,
-                        by_layer.get("background", []), "ФОН-НЕБА", None, note),
-        ]
-    layers = [j.result() for j in jobs]
-    read = read + [x for x in layers if x]
-
-    note("3/5 зважування")
-    # a transient CLI failure here used to throw away all ~14 completed interpretation
-    # calls with nothing in the log and no --resume possible (t1051)
-    partial = {"факти": fact_lines(read)}
+    note(f"1/3 вибір матеріалу: {len(facts)} фактів")
+    partial = {"факти": fact_lines(facts)}
     try:
-        rank = weigh(natal, day, read)
-        partial["зважування"] = rank["raw"]
-        note(f"    основне: {', '.join(rank['main'])}")
-        note(f"    чутливе: {', '.join(rank.get('tender', []))}")
-        note("4/5 черновик → ревʼю → підсумок")
-        forecast = write_forecast(natal, day, read, rank, note, partial)
+        forecast = write_forecast(natal, day, facts, note=note, partial=partial)
     except Exception:
         if not args.dry_run:
             log_run(day, partial)
             print("збій на пізній стадії — зроблене записано в лог "
-                  f"({', '.join(partial)}); якщо є черновик, допоможе --resume",
+                  f"({', '.join(partial)}); якщо є вибір, допоможе --resume",
                   file=sys.stderr)
         raise
-    note("5/5 біоритми")
+    note("3/3 біоритми")
     bio = ({"figures": "", "conclusion": "", "raw": ""} if args.only == "astro"
            else write_biorhythms(day, computed))
 
     bio_text, astro_text = bio_message(day, bio, computed), astro_message(day, forecast)
 
     if args.dry_run:
-        print("\n=== ЗВАЖУВАННЯ ===\n" + rank["raw"])
-        print("\n=== РЕВʼЮ ===\n" + forecast["review"])
+        print("\n=== ВИБІР ===\n" + forecast["picked"])
+        print("\n=== ПЕРЕВІРКА ===\n" + forecast["checked"])
         print("\n=== БІОРИТМИ ===\n" + bio_text)
-        print("\n=== АСТРОЛОГІЯ ===\n" + astro_text)
+        print("\n=== ПРОГНОЗ ===\n" + astro_text)
+        print(f"\n(прогнозів: {len(forecast['claim_list'])}, "
+              f"відкинуто: {forecast['dropped']})")
         return 0
 
-    log_run(day, {"факти": fact_lines(read), "зважування": rank["raw"],
-                  "черновик": forecast["draft"], "ревʼю": forecast["review"],
-                  "підсумок": forecast["raw"], "біоритми": bio["raw"]})
+    log_run(day, {"факти": fact_lines(facts), "вибір": forecast["picked"],
+                  "письмо": forecast["raw"], "перевірка": forecast["checked"],
+                  "біоритми": bio["raw"]})
     save_state(day, bio, forecast, computed)
+    save_claims(day, forecast["claim_list"])
     if args.only != "astro":
         send(bio_text, note=note)
     send(astro_text, note=note)

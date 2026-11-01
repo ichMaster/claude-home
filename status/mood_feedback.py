@@ -156,27 +156,74 @@ QUESTION = ("Як день насправді пройшов? Скажи сво�
             "прогнозом, а що ні. Коротко, двома реченнями, цього досить.")
 
 
-def question_for(day: date) -> str:
-    """The evening question, built from that morning's own claims.
+def questions(items: list[dict]) -> str:
+    """The evening question, built straight from the morning's claims — no model involved.
 
-    A generic "how was your day" gets a generic answer. The owner asked for the diary
-    version — «чи відчувалось це або це?» — so one cheap call turns two or three of the
-    day's specific promises into questions that can be answered yes or no. Without a
-    forecast to quote, the generic question stands.
+    The owner's shape (2026-11-01): «десь в такому стилі треба б було питати про день, який
+    пройшов». One yes/no per claim, each naming the window it was promised for and the sign
+    it was promised by, in the forecast's own words, and an invitation to say it missed —
+    «не влучило» is more useful than «нормально». No claims means no question: inventing one
+    out of nothing is worse than silence.
     """
-    given = forecast_of(day)
-    if not given:
-        return QUESTION
+    if not items:
+        return ""
+    head = ("Одне питання про сьогоднішнє." if len(items) == 1
+            else f"{'Два' if len(items) == 2 else 'Три'} питання про сьогоднішнє.")
+    lines = [head]
+    for i, item in enumerate(items, 1):
+        window = str(item.get("window") or "").strip()
+        claim = str(item.get("claim") or "").strip().rstrip(".")
+        sign = str(item.get("sign") or "").strip().rstrip(".")
+        order = ("Перше" if i == 1 else "Друге" if i == 2 else "Третє")
+        lines.append(f"{order}: {window} — {claim}" + (f", {sign}" if sign else "")
+                     + ". Було таке?")
+    lines.append("Якщо жодне не влучило — так і скажи, це корисніше за «нормально».")
+    return "\n\n".join(lines)
+
+
+def question_for(day: date) -> str:
+    """This evening's question: the day's own claims, or the generic one if there were none.
+
+    Deterministic by design since t1126 — the claims already carry the window and the sign,
+    so a model call could only paraphrase them, and paraphrasing is where a promise turns
+    back into atmosphere.
+    """
     sys.path.insert(0, str(HOME / "status"))
     import mood  # noqa: E402
 
-    prompt = ((PROMPTS / "ask.md").read_text(encoding="utf-8")
-              .replace("{{ДАТА}}", day.isoformat()).replace("{{ПРОГНОЗ}}", given))
-    try:
-        return mood.plain(mood.run_claude(prompt, conf("astro.models.layer", "sonnet"),
-                                          mood.FACT_TIMEOUT)) or QUESTION
-    except Exception:
-        return QUESTION
+    # No claims means no question (t1126): the day either had promises to check or it did
+    # not, and «як пройшов день» gets the generic answer it deserves. The generic form stays
+    # for the days before the claims existed.
+    return questions(mood.load_claims(day)) or QUESTION
+
+
+def score_rows(rows: list[dict]) -> dict:
+    """Hits, misses and the hit rate over the given claim records.
+
+    `verified` is True, False or None: None means the evening never answered that one, and it
+    counts in neither direction — a rate computed over silence would be the same kind of
+    decoration the old reading was (t1126).
+    """
+    hits = sum(1 for r in rows if r.get("verified") is True)
+    misses = sum(1 for r in rows if r.get("verified") is False)
+    unanswered = sum(1 for r in rows if r.get("verified") is None)
+    answered = hits + misses
+    return {"hits": hits, "misses": misses, "unanswered": unanswered,
+            "total": len(rows), "rate": (hits / answered) if answered else None}
+
+
+def score(days: int | None = None) -> dict:
+    """The same, over the last `astro.score_days` days of stored claims."""
+    sys.path.insert(0, str(HOME / "status"))
+    import mood  # noqa: E402
+
+    span = int(days or conf("astro.score_days", 14))
+    first = (today() - timedelta(days=span)).isoformat()
+    rows = [r for r in mood._claim_rows(mood.claims_file())
+            if str(r.get("day", "")) >= first]
+    got = score_rows(rows)
+    got["days"] = span
+    return got
 
 
 def answered_tonight(day: date) -> bool:
@@ -227,7 +274,21 @@ def main() -> int:
     p_rules = sub.add_parser("rules", help="накопичені правила")
     p_rules.add_argument("--limit", type=int, default=8)
 
+    p_score = sub.add_parser("score", help="влучність прогнозів за останні дні")
+    p_score.add_argument("--days", type=int)
+
     args = ap.parse_args()
+
+    if args.cmd == "score":
+        got = score(args.days)
+        if got["rate"] is None:
+            print(f"за {got['days']} дн: {got['total']} прогнозів, "
+                  f"жоден не підтверджений і не відкинутий — немає даних")
+            return 0
+        print(f"за {got['days']} дн: влучність {got['rate']*100:.0f}% "
+              f"({got['hits']} влучило, {got['misses']} ні, "
+              f"{got['unanswered']} без відповіді, усього {got['total']})")
+        return 0
 
     if args.cmd == "add":
         day = date.fromisoformat(args.day) if args.day else today()

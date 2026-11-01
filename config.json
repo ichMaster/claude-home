@@ -342,7 +342,7 @@
       "review": ""
     },
     "parallel": 5,
-    "budget_chars": 3300,
+    "budget_chars": 1200,
     "feedback": "status/state/mood-feedback.jsonl",
     "calibration": "status/state/mood-calibration.md",
     "reference": "status/state/astro-reference.jsonl",
@@ -351,6 +351,8 @@
     "recalc_unit": "noos-mood-recalc",
     "ask_at": "21:00",
     "rules_in_prompt": 8,
+    "claims": "status/state/forecast-claims.jsonl",
+    "score_days": 14,
     "ask_after_hour": 18
   }
 }

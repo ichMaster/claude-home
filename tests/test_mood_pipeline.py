@@ -36,17 +36,7 @@ def test_yesterday_block_sees_resumed_summary(monkeypatch, tmp_path):
     assert "перероблений текст дня" in block
 
 
-def test_write_forecast_failure_keeps_draft(monkeypatch):
-    """TC2: the review call dies — the already-written draft survives in `partial`."""
-    calls = []
-
-    def fake_run(prompt, model="", timeout=0):
-        calls.append(prompt)
-        if len(calls) == 1:
-            return "ЧИТАННЯ: довгий черновик дня"
-        raise RuntimeError("виклик не вдався")
-
-    monkeypatch.setattr(mood, "run_claude", fake_run)
+def stub_context(monkeypatch):
     monkeypatch.setattr(mood, "yesterday_block", lambda d: "")
     monkeypatch.setattr(mood, "calibration", lambda: "")
     monkeypatch.setattr(mood, "life_context", lambda: "")
@@ -54,11 +44,49 @@ def test_write_forecast_failure_keeps_draft(monkeypatch):
     monkeypatch.setattr(mood.astro, "day_focus", lambda d: {})
     monkeypatch.setattr(mood.astro, "focus_lines", lambda f, d: "")
     monkeypatch.setattr(mood.astro, "glossary_lines", lambda: "")
-    rank = {"main": [], "background": [], "tender": [], "why": "", "raw": ""}
+
+
+def test_write_forecast_failure_keeps_what_was_paid_for(monkeypatch):
+    """TC2, in the three-stage shape (t1126): the writing call dies and the pick survives
+    in `partial`, so --resume does not pay for it twice."""
+    calls = []
+
+    def fake_run(prompt, model="", timeout=0):
+        calls.append(prompt)
+        if len(calls) == 1:
+            return "ДУГА\nробота тягне\n\nПРОГНОЗИ\nдо обіду | лист | перепитають\n"
+        raise RuntimeError("виклик не вдався")
+
+    monkeypatch.setattr(mood, "run_claude", fake_run)
+    stub_context(monkeypatch)
     partial = {}
     with pytest.raises(RuntimeError):
-        mood.write_forecast("НАТАЛ", date(2026, 10, 31), [], rank, partial=partial)
-    assert "черновик" in partial and "довгий черновик дня" in partial["черновик"]
+        mood.write_forecast("НАТАЛ", date(2026, 10, 31), [], partial=partial)
+    assert "вибір" in partial and "робота тягне" in partial["вибір"]
+
+
+def test_a_failed_check_keeps_the_written_reading(monkeypatch):
+    """The check is the third call and the least important: if it dies, the reading that was
+    written still goes out — losing the morning over an editor is worse than an unchecked
+    line (t1126)."""
+    calls = []
+    written = ("ДЕНЬ\nпонеділок, у якому легко бути почутим не так\n\n"
+               "ПРОГНОЗ\nдо обіду | лист, де перепитають | про гроші\n\n"
+               "ДІЯ\nнічого не підписувати\n\nДУГА\nробота тягне з вересня\n")
+
+    def fake_run(prompt, model="", timeout=0):
+        calls.append(prompt)
+        if len(calls) == 1:
+            return "ДУГА\nробота тягне\n\nПРОГНОЗИ\nдо обіду | лист | перепитають\n"
+        if len(calls) == 2:
+            return written
+        raise RuntimeError("редактор не відповів")
+
+    monkeypatch.setattr(mood, "run_claude", fake_run)
+    stub_context(monkeypatch)
+    got = mood.write_forecast("НАТАЛ", date(2026, 10, 31), [])
+    assert "легко бути почутим" in got["day"]
+    assert len(got["claim_list"]) == 1 and got["claim_list"][0]["window"] == "до обіду"
 
 
 def test_subject_never_inherits_owner_portrait(monkeypatch, tmp_path):

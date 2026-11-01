@@ -466,94 +466,51 @@ than the look reads as «почалось до …, щонайменше до �
 scan edge as «точність не раніше …». Stating those limits as dates was a real defect, and
 the review stage below is what caught it.
 
-### The pipeline
+### The pipeline — three calls, and claims that can be checked
 
-Layers, not a flat list of atoms — the first version read all 26 facts one by one, so
-"Mars opposite your ASC" and "Mars crossing your 7th" went to calls that could not see
-each other, and houses suffered most: a house is about distribution, which is only visible
-with all twelve in view.
+Rebuilt on 2026-11-01 (t1126) after the owner's verdict on what it used to produce: «те, що
+виходить, зовсім не працює і не дає ні прогнозу, ні читабельно». Two failures, both real.
+The old reading **described the day's air** — «напруга в комунікації» — so nothing in it
+could be checked in the evening or used in the morning, and the calibration loop had nothing
+to measure. And it was **built for an eye**: five blocks, 3300 characters, four minutes of
+audio, while he listens — in one spoken stream a heading means nothing and the long middle is
+where attention goes. Six stages and ~17 calls produced it.
 
-    транзити поштучно  ┐
-    доми разом         ├→  зважування  →  детальний черновик  →  ревʼю  →  стислий підсумок
-    Місяць окремо      │   (чутливість карти,
-    фон неба           ┘    тривалість, точність)
+    факти (локально, без моделі)  →  вибір  →  письмо  →  перевірка
 
-1. **Transits**, one call each, in parallel (`astro.parallel`, model `astro.models.fact`).
-   The sharp dated facts; one per call means none is dropped for being less interesting.
-2. **Houses**, one call over every placement at once with the house rulers: where the load
-   is, which areas are quiet, what is background and what is today.
-3. **The Moon**, its own call — phase, the house it crosses, what it lands on natally. It
-   sets the emotional ground, so it never competes for a slot with a slow transit, and the
-   summary must name it every time.
-4. **The background**, one call for the retrogrades and the sky's own aspects, which are
-   generational air rather than anybody's day.
-5. **Weighing**, one call over the transits plus the three summaries. Ranks by what hits
-   *this* chart (`ЧУТЛИВЕ` — planets on angles, loaded houses, natal aspects a transit
-   re-opens) and by duration and exactness. Answers `ОСНОВНЕ` / `ФОН` / `ЧУТЛИВЕ` / `ЧОМУ`.
-6. **The draft** — written long and detailed, with every number, because nobody but the
-   reviewer reads it.
-7. **The review** — a strict editor checks the *draft*, not the summary: does every claim
-   rest on a named fact, is a one-day trigger sold as a season, are there signs or degrees
-   the facts never mentioned, does it contradict yesterday, is the Moon there, is there
-   padding or advice. Answers `ПРАВКИ` / `ОЦІНКА`.
-8. **The summary** — applies the edits and compresses to what is actually sent, in four
-   blocks, modelled on two examples the owner supplied (2026-10-27):
-   - `КОРОТКО` — two or three sentences at the very top: the whole day's point and what to
-     watch. **The only block where advice belongs** — say plainly what today is for and what
-     it is not. No planets, houses or figures; someone who reads only this paragraph should
-     already know their day.
-   - `ПІДСУМОК` — the day described in three or four short sentences: which planet sets the
-     tone, which house is the arena, the theme holding the day, where it is easy and where
-     friction builds, and the daily mood. Prose, planets and houses named, **no figures at
-     all**, and no listing of aspects — the detail belongs to the blocks below it.
-   - `ІСТОРІЯ` — the detailed half, told as **one story with a plot** rather than a
-     catalogue. The main bodies are characters (sign, house, dignity, retrogradation, who
-     presses on whom) and they interact; the leading house is the stage; two or three
-     concrete everyday manifestations are woven into the telling. What makes it a story
-     rather than a description is **depth in time**: each line says when it began and how
-     much of it is left («тягнеться ще з середини вересня», «буде щонайменше до початку
-     зими», «пік минув два тижні тому»), and one or two **hooks** point at what has not
-     ripened yet («точним стане ближче до середини листопада, і тоді буде цікавіше»). Where
-     yesterday's reading said the same thing, it says so — «третій день та сама лінія».
-     Time in words, never in figures; prose that flows, no lists, no inner headings.
+1. **The facts** stay as they were: `status/astro.py` computes the day from the ephemeris —
+   transits with their windows, bodies in natal houses, the Moon's aspects **with clock
+   times**, retrogrades, the sky's own aspects. No model touches a number.
+2. **Вибір** (`status/mood/pick.md`) — one call: the arc that holds for weeks, two or three
+   claims the day can be held to, and the action that follows. A claim's window must exist
+   in the computed facts, so the timing is arithmetic and not invention.
+3. **Письмо** (`status/mood/day.md`) — one call, written for the ear, about 1200 characters
+   (`astro.budget_chars`), four parts and no spoken headings:
+   - `ДЕНЬ` — one sentence: what kind of day this is. No planets, no figures.
+   - `ПРОГНОЗ` — two or three lines, each `вікно | що станеться | ознака`: when, what, and
+     how it will look if it happened. A planet is named only where it explains a claim, in
+     half a sentence, never with a house gloss or a degree.
+   - `ДІЯ` — one line: what to do or not do today.
+   - `ДУГА` — one sentence: what holds for weeks and whether this is its peak. Time in
+     words.
+   - `ОСНОВА` — the figures, in a block **the voice never reads**; `spoken()` drops it and
+     `scrub_voice()` is the net under that.
+4. **Перевірка** (`status/mood/check.md`) — one call that returns the reading *corrected*,
+   not criticised: every claim checkable, every window real, no figure in the spoken parts,
+   the arc matching the computed duration, nothing contradicting yesterday in silence. It
+   answers `ВИПРАВЛЕНО` + `ОЦІНКА`, and a correction that lost the structure is refused in
+   favour of what was written.
 
-     **Thesis first, cause second** — the single most important rule here, and the one the
-     first versions got backwards (the owner, 2026-10-27: «таке відчуття, що це прогноз для
-     астролога»). Each of the three paragraphs opens with what happens *in his life*, in
-     plain words with concrete examples, and only then says «це тому що Венера ретроградна —
-     а це повернення до минулих прив'язаностей», with the fact's meaning glossed in the same
-     breath and the time depth after it. A paragraph that opens with a planet's name is
-     wrong and gets rewritten.
-
-     **The ratio is 80/20**: four sentences of life to one of cause, never more. At most
-     three lines are told at all. Examples come from his actual life — the sketch of it is
-     `astro.context` in `config.local.json`, personal and git-ignored, and the prompts are
-     handed it at run time — always as possibility, never as invented events. Houses and planets are always glossed
-     in a few words from `astro.glossary_lines()` — fixed reference text, so «восьмий дім
-     (спільні ресурси, борги)» reads the same every morning.
-   - `ГОЛОВНЕ` — the reference: the one to three facts that were picked, with their names and
-     degrees. The day first, the arithmetic last.
-   - `НАСАМКІНЕЦЬ` — three flat lines at the very end, statements and not advice: `Важливе:`
-     what will remain of the day once the detail is forgotten, `Приємне:` what is good or
-     easy in it, `Неприємне:` what presses or tires. No «варто», no astrology, no numbers.
-
-   Reviewing the short version would be reviewing prose; reviewing the long one catches the
-   claim with no fact behind it.
-
-   **Length is a budget, not a wish.** Each block carries a character limit in the prompt
-   (300 / 400 / 1800 / 350, `astro.budget_chars` 3000 in total), and `fit_budget()`
-   measures the result: more than 20% over and one extra call cuts it down
-   (`status/mood/compress.md`), keeping the markers and the order. Truncating mid-sentence
-   would be worse than being long, so nothing is cut mechanically. The detail blocks are
-   what he wanted short — the day description itself was already right.
+**The claims are data.** Each goes to `status/state/forecast-claims.jsonl` (day, id, window,
+claim, sign, verified) — a second run of one morning replaces that day's set rather than
+duplicating it. The evening question is built from exactly those, with no model involved: one
+yes/no per claim naming its window and its sign, plus an invitation to say it missed, because
+«не влучило» is worth more than «нормально». No claims means no question.
+`mood_feedback.py score` reports the hit rate over `astro.score_days` days — which is what
+finally gives the calibration rules a score instead of a pile of 96 lines.
 
 Plus one separate call for the biorhythms (`ПОКАЗНИКИ` / `ВИСНОВОК`), which never mentions
-astrology. About 17 calls and 7-9 minutes a morning (hence `TimeoutStartSec=1800` on the
-unit); prompts in `status/mood/{fact,houses,moon,background,rank,draft,review,summary,bio}.md`.
-
-**Continuity.** `yesterday_block()` parses the previous day's `ПІДСУМОК` out of the log and
-hands it to the draft, the review and the summary: a day inside a three-month passage is
-not news, and a forecast that contradicts yesterday without saying so is noise.
+astrology. Four calls and two or three minutes a morning, against seventeen and nine before.
 
 ### One source per reading
 
@@ -568,23 +525,29 @@ weather is worth mentioning, mention it separately and say so.
 
 ### The shape of the reading
 
-The owner's rules, learned over 2026-10-27 — he tuned this one hard:
+The owner's rules, learned over 2026-10-27 and sharpened on 2026-11-01:
 
+- **A forecast is a checkable claim, not an atmosphere.** «Напруга в комунікації» is neither
+  a prediction nor usable. Each claim carries a time window and a sign by which the evening
+  can say it happened or it did not. Two or three, never more; two beats three if the third
+  is vague.
+- **It is made for the ear.** Sixty to ninety seconds in one stream, no spoken headings, no
+  figures anywhere except `ОСНОВА`, which the voice never reads. A degree read aloud is what
+  made the old reading unlistenable.
 - **No theory.** Not "a square means tension", not "the eighth house is about…". He knows
-  the vocabulary; the explanation is padding. The fact, then what it gives today.
-- **Short.** Do not send the fact list — it stays in the log.
-- **Dry irony is required**, exactly one stroke in `КОРОТКО` and one in `ПІДСУМОК`: a look
-  from the side, not a pun. It colours the observation and never softens it — a bad day gets
-  bitter irony, not cheer. The story and the facts stay straight-faced.
-- **The summary is prose, not a report**: the day's air, no figures anywhere in it. Planets
-  and houses may be named — that is the language he thinks in; degrees and dates may not.
-- **Everyday anchors are required**: each main planet and the leading house must land in
-  something recognisable — a conversation, an errand, a document — not only in atmosphere.
-- The picked facts come last, as a reference, and only there do numbers appear.
-- **The Moon is mandatory in the summary**: it sets the emotional background of the day.
-- **Biorhythms are one line of figures and one or two sentences.** Nothing else.
-- Houses count as much as aspects — which of his houses a transit crosses, and where that
-  house's ruler stands.
+  the vocabulary; the explanation is padding. A planet appears only where it explains a
+  claim, in half a sentence and in plain words.
+- **Everyday anchors are required**: a claim lands in something recognisable — a
+  conversation, a document, an errand, a time of evening — not in a mood.
+- **Dry irony, exactly one stroke**, in `ДЕНЬ` or in `ДІЯ`: a look from the side, not a pun.
+  It colours and never softens — a bad day is called bad.
+- **The arc says whether it is new.** The same line three days running is normal and is said
+  to be the same; a new arc every morning would mean it is being invented.
+- **Time in words in the spoken parts** («з вересня», «до зими», «після десятої»), figures
+  only in `ОСНОВА`. A clock time is the one exception, because it is what makes a claim
+  checkable.
+- **Biorhythms are one line of figures and one or two sentences.** Nothing else, and never
+  a planet.
 
 ### Learning from a real astrologer (`status/astro_learn.py`)
 
@@ -632,20 +595,25 @@ A forecast nobody checks is decoration, and the owner put it plainly (2026-10-27
    session writing it down whenever he says something about how a day felt.** He speaks
    rather than types, so a transcribed voice message saying "сьогодні було спокійніше, ніж
    ти казав" is calibration data: record it with `add` instead of only replying to it.
-2. **The evening question**, `noos-mood-ask.timer` at **21:00**: not "how was your day" but
-   the diary version he asked for — one call turns two or three of that morning's specific
-   claims into questions that can be answered yes or no, **each carrying a concrete example**
-   so there is something to catch on — «чи коротка фраза комусь із близьких вийшла різкішою,
-   ніж хотілось, або лист довелось переписувати не раз?». Asked in Ада's voice, like the forecast, and skipped if he already said something about
-   the day after `astro.ask_after_hour` (18:00) — no prodding someone who got there first.
+2. **The evening question**, `noos-mood-ask.timer` at **21:00**: built from that morning's
+   stored claims with **no model involved** (t1126) — one yes/no per claim, naming the window
+   it was promised for and the sign it was promised by («до обіду — розмова, де тебе
+   перепитають або зрозуміють навпаки, про гроші чи спільні домовленості. Було таке?»), and
+   an invitation to say it missed, because «не влучило» is worth more than «нормально». A
+   model could only paraphrase the claims, and paraphrasing is where a promise turns back
+   into atmosphere. Asked in the forecast's own voice, and skipped if he already said
+   something about the day after `astro.ask_after_hour` (18:00) — no prodding someone who got
+   there first. Days with no claims get the generic question.
 3. **Comparison.** `calibrate [--day]` puts that day's forecast next to its remarks and
    answers `ЗБІГЛОСЯ` / `РОЗІЙШЛОСЯ` / `ПРАВИЛО:`. The rules accumulate in
    `status/state/mood-calibration.md`, append-only; a rule that proves wrong is superseded
    by a new line, never edited away. Run automatically for yesterday at the start of each
    morning run, so a rule learned last night is in force this morning.
 4. **Feeding back.** `rules` returns the latest `astro.rules_in_prompt` (8) rules, and they
-   are injected into **three** stages — the weighing, the draft and the summary — with the
-   instruction that a rule outranks the textbook. A rule must be actionable: not "be more
+   are injected into **both** model stages — the pick and the writing — with the instruction
+   that a rule outranks the textbook. `score` reports the hit rate over
+   `astro.score_days` (14) days, so a rule can finally be judged by whether the claims it
+   shaped came true. A rule must be actionable: not "be more
    accurate" but «для цієї карти Місяць в опозиції до Сонця дає менше, ніж здається — не
    виносити його в головне».
 
@@ -681,8 +649,9 @@ than leaving the reading alone.
   system that merged the two readings back into one — everything else keeps them apart, and
   merged it stops being visible which claim came from where.
 - `config.json` (`astro`): house system, per-aspect orbs, window length, fact caps, the
-  model per stage (`models.fact`/`layer` default to Sonnet, the rest to the session model),
-  parallelism, file paths, the send time.
+  model per stage (`models.layer` defaults to Sonnet, the rest to the session model), file
+  paths, the claims file, `score_days`, `budget_chars` (1200 — the spoken parts only), the
+  send time.
 - Dependency: `pyswisseph` in `.venv-voice` (`.venv-voice/bin/pip install pyswisseph`). The
   Moshier model ships inside the wheel, so nothing is downloaded at run time.
 - The voice costs about 5k characters a day against the 1.8M monthly ElevenLabs quota
@@ -694,12 +663,13 @@ status/astro.py --sky            today's sky, transits with houses, biorhythms
 status/mood.py --facts           the computed facts with their windows, no model at all
 status/mood.py --dry-run         the whole pipeline printed; nothing sent, nothing logged
 status/mood.py --only bio|astro  one half of the morning, for iterating on prompts
-status/mood.py --resume          redo only the summary from today's logged draft and review
+status/mood.py --resume          redo the writing from today's logged pick
 status/mood.py --show            what was already read today
 status/mood_feedback.py add "…"  record how a day actually felt
 status/mood_feedback.py ask      the evening diary question
 status/mood_feedback.py calibrate --day 2026-10-27
 status/mood_feedback.py rules    the rules the prompts are currently obeying
+status/mood_feedback.py score    the hit rate of the claims over the last 14 days
 ```
 
 ## Facebook
