@@ -205,3 +205,51 @@ def test_reset_refuses_a_parent_that_holds_more_than_the_key(tmp_path, monkeypat
     assert not ok and "блок" in said.lower()
     assert json.loads(f.read_text(encoding="utf-8")) == {
         "probes": {"loe": {"queue": "3.2", "ttl": 900}}}
+
+
+# --- t1106: an unreadable config.local.json must stop a save, not be replaced ------------
+# Found by the full review (writes H2). `_local_config` swallowed JSONDecodeError and
+# returned {}, so one press of «зберегти» on a damaged file wrote a stub holding only the
+# edited key — the 603 channels, the birth data and the calendar id gone, reported as a
+# success. The other two writers of that file refuse correctly, which is what made it a bug
+# and not a design choice.
+
+@pytest.fixture
+def broken(tmp_path, monkeypatch):
+    f = tmp_path / "config.local.json"
+    f.write_text('{"probes": {"youtube": {"channels": [{"name": "a"}, {"nam',
+                 encoding="utf-8")
+    monkeypatch.setattr(rules_screen, "LOCAL", f)
+    monkeypatch.setattr(rules_screen, "_default_config", lambda: DEFAULT)
+    monkeypatch.setattr(rules_screen, "masked_keys", lambda: [])
+    return f
+
+
+def test_a_save_on_a_damaged_local_config_refuses_and_says_why(broken):
+    before = broken.read_text(encoding="utf-8")
+    ok, said = rules_screen.set_setting("probes.loe.ttl", "900")
+    assert not ok and "не читається" in said.lower()
+    assert broken.read_text(encoding="utf-8") == before
+
+
+def test_a_reset_on_a_damaged_local_config_refuses_too(broken):
+    before = broken.read_text(encoding="utf-8")
+    ok, said = rules_screen.reset_setting("probes.loe.queue")
+    assert not ok and "не читається" in said.lower()
+    assert broken.read_text(encoding="utf-8") == before
+
+
+def test_the_refusal_names_the_recovery(broken):
+    _, said = rules_screen.set_setting("probes.loe.ttl", "900")
+    assert "versions" in said.lower()
+
+
+def test_an_absent_local_config_is_not_an_error(tmp_path, monkeypatch):
+    """A fresh machine has no local config at all, and the first save must create it."""
+    f = tmp_path / "config.local.json"
+    monkeypatch.setattr(rules_screen, "LOCAL", f)
+    monkeypatch.setattr(rules_screen, "_default_config", lambda: DEFAULT)
+    monkeypatch.setattr(rules_screen, "masked_keys", lambda: [])
+    ok, said = rules_screen.set_setting("probes.loe.ttl", "900")
+    assert ok, said
+    assert json.loads(f.read_text(encoding="utf-8"))["probes"]["loe"]["ttl"] == 900

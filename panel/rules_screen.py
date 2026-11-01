@@ -94,11 +94,27 @@ def _default_config() -> dict:
         return {}
 
 
+class LocalUnreadable(RuntimeError):
+    """`config.local.json` is there and will not parse. Never treated as "empty": a save
+    that treated it that way replaced 64 KB of personal configuration with a stub holding
+    the one edited key, and reported success (t1107)."""
+
+
 def _local_config() -> dict:
-    try:
-        return json.loads(LOCAL.read_text(encoding="utf-8")) if LOCAL.exists() else {}
-    except (OSError, json.JSONDecodeError):
+    if not LOCAL.exists():
         return {}
+    try:
+        got = json.loads(LOCAL.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise LocalUnreadable(
+            f"config.local.json не читається ({exc.msg}, рядок {exc.lineno}) — "
+            "нічого не записую. Попередні копії: tools/versions.py list "
+            "config.local.json") from exc
+    except OSError as exc:
+        raise LocalUnreadable(f"config.local.json не відкрився: {exc}") from exc
+    if not isinstance(got, dict):
+        raise LocalUnreadable("config.local.json не є обʼєктом — нічого не записую.")
+    return got
 
 
 def editable(key: str, value, masked: list[str]) -> bool:
@@ -143,7 +159,10 @@ def set_setting(key: str, raw: str) -> tuple[bool, str]:
     The committed `config.json` is never touched: it holds the defaults, and a panel that
     edited them would make the repository's own copy of the truth drift.
     """
-    default, local = _default_config(), _local_config()
+    try:
+        default, local = _default_config(), _local_config()
+    except LocalUnreadable as exc:
+        return False, str(exc)
     flat_default, flat_local = flatten(default), flatten(local)
     if key not in flat_default and key not in flat_local:
         return False, f"Такого ключа немає: «{key[:60]}». Форма не вигадує налаштувань."
@@ -162,7 +181,10 @@ def set_setting(key: str, raw: str) -> tuple[bool, str]:
     # panel screens, the permissions CLI, the channel list) and without it the last reader
     # wins and the other's change is gone (t1104).
     with locked(LOCAL):
-        local = _local_config()
+        try:
+            local = _local_config()
+        except LocalUnreadable as exc:
+            return False, str(exc)
         node = local
         for part in key.split(".")[:-1]:
             node = node.setdefault(part, {})
@@ -211,7 +233,10 @@ def reset_setting(key: str) -> tuple[bool, str]:
     if refusal:
         return False, refusal
     with locked(LOCAL):
-        local = _local_config()
+        try:
+            local = _local_config()
+        except LocalUnreadable as exc:
+            return False, str(exc)
         parts = key.split(".")
         chain, node = [], local
         for part in parts[:-1]:
