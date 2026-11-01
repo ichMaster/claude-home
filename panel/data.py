@@ -93,7 +93,13 @@ def timer_rows(blobs: list[tuple[str, str, str]]) -> list[dict]:
         else:
             result = s.get("Result") or ""
         status = s.get("ExecMainStatus")
+        # `Result` is the previous run's verdict while the next one is in flight, so a run
+        # that is going must not be rendered «успішно» — worst on the eight-minute forecast
+        # and the digest (t1114).
+        running = (s.get("ActiveState") or "") in ("activating", "active", "reloading",
+                                                   "deactivating")
         rows.append({
+            "running": running,
             "unit": unit,
             "service": t.get("Unit") or "",
             "next": t.get("NextElapseUSecRealtime") or "",
@@ -143,19 +149,36 @@ def _load(f: Path) -> dict:
         return {}
 
 
-def queues(state_dir: Path | None = None) -> dict:
-    """The three counters worth watching between runs."""
+def queues(state_dir: Path | None = None, now: datetime | None = None) -> dict:
+    """The three counters worth watching between runs.
+
+    Two values are deliberately `None` rather than `0` or `""` when there is nothing to say:
+    a mailbox whose state file does not exist has an **unknown** last UID, and «UID 0» read
+    as a fact about the mailbox (t1114). The YouTube pause is dropped once it has expired —
+    it was rendered in amber for the rest of the day.
+    """
     d = state_dir or STATE
+    now = now or datetime.now(timezone.utc)
     youtube = _load(d / "youtube.json")
     mail = _load(d / "mail.json")
     watch = _load(d / "watch.json")
     loud = sorted(k for k, v in watch.items()
                   if isinstance(v, dict) and v.get("sev") in ("warn", "alert"))
+    blocked = str(youtube.get("blocked_until") or "")
+    if blocked:
+        try:
+            until = datetime.fromisoformat(blocked)
+            if until.tzinfo is None:
+                until = until.replace(tzinfo=now.tzinfo)
+            if until <= now:
+                blocked = ""
+        except ValueError:
+            pass                      # an unreadable stamp stays shown, marked as it is
     return {
         "youtube_pending": len(youtube.get("pending") or []),
         "youtube_seen": len(youtube.get("seen") or []),
-        "youtube_blocked": youtube.get("blocked_until") or "",
-        "mail_last_uid": mail.get("last_uid") or 0,
+        "youtube_blocked": blocked,
+        "mail_last_uid": mail.get("last_uid") if "last_uid" in mail else None,
         "mail_checked": mail.get("checked") or "",
         "watch_loud": loud,
     }

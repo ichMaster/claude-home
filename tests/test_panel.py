@@ -97,8 +97,10 @@ def test_queues_from_state(tmp_path):
 
 
 def test_queues_on_a_fresh_machine(tmp_path):
+    """A fresh machine has no state files. A count of nothing is 0; a UID nobody has read
+    yet is **unknown**, and this test used to assert the wrong one of those (t1114)."""
     q = data.queues(tmp_path)
-    assert q["youtube_pending"] == 0 and q["mail_last_uid"] == 0 and q["watch_loud"] == []
+    assert q["youtube_pending"] == 0 and q["mail_last_uid"] is None and q["watch_loud"] == []
 
 
 def test_queues_survive_a_torn_state_file(tmp_path):
@@ -275,3 +277,49 @@ def test_resolve_host_falls_back_to_loopback(monkeypatch):
         raise OSError("tailscale not installed")
     monkeypatch.setattr(server.subprocess, "run", boom)
     assert server.resolve_host("tailscale") == "127.0.0.1"
+
+
+# --- t1114: Pulse must not state what is no longer so (full review: truth M3, M4, M5) ----
+
+def test_an_expired_youtube_pause_is_not_shown_as_current(tmp_path):
+    """M3: the pause was rendered in amber 44 minutes after it had expired."""
+    past = "2026-11-01T08:44:00+00:00"
+    (tmp_path / "youtube.json").write_text(
+        json.dumps({"blocked_until": past, "pending": [], "seen": []}), encoding="utf-8")
+    q = data.queues(tmp_path, now=datetime(2026, 11, 1, 9, 30, tzinfo=timezone.utc))
+    assert q["youtube_blocked"] == "", "an expired pause is not a pause"
+    q2 = data.queues(tmp_path, now=datetime(2026, 11, 1, 8, 0, tzinfo=timezone.utc))
+    assert q2["youtube_blocked"] == past
+
+
+def test_an_absent_mail_state_is_unknown_not_zero(tmp_path):
+    """M4: «останній UID 0» read as a fact about the mailbox; there was no state file."""
+    q = data.queues(tmp_path)
+    assert q["mail_last_uid"] is None
+    html = render.render_pulse([], [], q, [], 0)
+    assert "UID 0" not in html and "невідомо" in html
+
+
+def test_a_known_mail_uid_is_still_shown(tmp_path):
+    (tmp_path / "mail.json").write_text(json.dumps({"last_uid": 4821}), encoding="utf-8")
+    assert data.queues(tmp_path)["mail_last_uid"] == 4821
+
+
+def test_a_run_still_in_flight_is_not_called_successful():
+    """M5: `Result=success` is the *previous* run's result while the next one is going —
+    worst on the eight-minute forecast and the digest."""
+    row = data.timer_rows([("noos-mood.timer",
+                            "LastTriggerUSec=Sun 2026-11-01 08:15:00 EET\n",
+                            "Result=success\nActiveState=activating\n")])[0]
+    assert row["running"] and not row["failed"]
+    html = render.render_pulse([], [row], data.queues(Path("/nonexistent")), [], 0)
+    assert "виконується" in html and "успішно" not in html
+
+
+def test_a_finished_run_still_reads_as_successful():
+    row = data.timer_rows([("noos-mood.timer",
+                            "LastTriggerUSec=Sun 2026-11-01 08:15:00 EET\n",
+                            "Result=success\nActiveState=inactive\n")])[0]
+    assert not row["running"]
+    assert "успішно" in render.render_pulse([], [row], data.queues(Path("/nonexistent")),
+                                            [], 0)

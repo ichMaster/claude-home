@@ -45,10 +45,17 @@ def facts() -> dict:
                     key=lambda f: (f["pin"], f["added"]))
     unpinned = [f for f in rows if f["pin"] <= 0]
 
+    max_chars = int(conf("memory.max_fact_chars", 240))
+
     def shape(f, fits):
         text = " ".join(f["text"].split())
+        # `facts.prompt()` cuts a fact at `memory.max_fact_chars`; printing it in full here
+        # shows more than the session is told, which is the one thing this screen must not
+        # do (t1114).
         return {"id": f["id"], "pin": f["pin"], "added": f["added"],
-                "tags": f["tags"], "text": text, "chars": len(text), "fits": fits}
+                "tags": f["tags"], "text": text, "chars": len(text), "fits": fits,
+                "truncated": fits and len(text) > max_chars,
+                "in_prompt_chars": min(len(text), max_chars) if fits else 0}
 
     out = [shape(f, True) for f in pinned[:limit]]
     cut = [shape(f, False) for f in pinned[limit:]]

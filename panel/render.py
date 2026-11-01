@@ -82,7 +82,9 @@ def _timer_table(rows: list[dict]) -> str:
     out = ['<table class="timers"><tr><th>юніт<th>наступний<th>останній<th>як пройшов</tr>']
     for r in rows:
         verdict = "—"
-        if r["failed"]:
+        if r.get("running"):
+            verdict = '<span class="warn">виконується</span>'
+        elif r["failed"]:
             verdict = f'<span class="alert">{e(r["result"])}' + \
                       (f' ({e(r["exit"])})' if r["exit"] else "") + "</span>"
         elif r["result"]:
@@ -97,13 +99,17 @@ def _queue_list(q: dict) -> str:
     blocked = (f' <span class="warn">пауза до {e(q["youtube_blocked"][11:16])} UTC</span>'
                if q.get("youtube_blocked") else "")
     loud = ", ".join(q.get("watch_loud") or []) or "тиша"
+    # An absent mail state means the last UID is unknown, not zero (t1114): «UID 0» read as
+    # a fact about the mailbox, and .env.gmail is in fact missing on this machine.
+    uid = ("невідомо (стану ще немає)" if q.get("mail_last_uid") is None
+           else e(q["mail_last_uid"]))
+    checked = (f', перевірено {e(q["mail_checked"][:16].replace("T", " "))}'
+               if q.get("mail_checked") else "")
     return (
         '<ul class="queues">'
         f'<li>ютюб: {q["youtube_pending"]} чекає на дайджест, '
         f'{q["youtube_seen"]} у памʼяті{blocked}</li>'
-        f'<li>пошта: останній UID {e(q["mail_last_uid"])}'
-        + (f', перевірено {e(q["mail_checked"][:16].replace("T", " "))}'
-           if q.get("mail_checked") else "") + "</li>"
+        f'<li>пошта: останній UID {uid}{checked}</li>'
         f'<li>вартовий голосно про: {e(loud)}</li>'
         "</ul>")
 
@@ -536,7 +542,10 @@ def _facts_table(rows: list[dict], token: str, cut: bool = False) -> str:
             f'<tr><td>{pin}<td class="age">{e(f.get("added"))}'
             f'<td class="text">{e(f["text"])}'
             f'<br><span class="dim">{f["chars"]} знаків · {e(f["id"])}</span>'
-            f'<td class="controls">'
+            + ('<br><span class="warn">у підказку йде обрізаний, '
+               f'перші {f.get("in_prompt_chars")} знаків</span>'
+               if f.get("truncated") else "")
+            + f'<td class="controls">'
             f'<form method="post" action="/memory" class="inline">'
             f'<input type="hidden" name="token" value="{e(token)}">'
             f'<input type="hidden" name="id" value="{e(f["id"])}">'
@@ -587,6 +596,8 @@ def render_memory(facts: dict, archive: dict, found: list[dict], query: str,
         f'<td class="text">{e(h["text"])}</tr>' for h in found)
     body = (
         f"<h1>Памʼять</h1>{note}"
+        '<p class="dim">Тут видно особисті факти — ті самі, що йдуть у системну підказку. '
+        'Сторінка за паролем (фаза 11), і це єдина причина, чому вона може їх показувати.</p>'
         f"<section><h2>Факти</h2>{counters}{add}"
         f"{_facts_table(facts['in_prompt'], token)}</section>"
         f"<section><h2>Не влізли в підказку</h2>{cut_note}"

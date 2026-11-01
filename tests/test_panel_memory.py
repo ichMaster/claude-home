@@ -11,6 +11,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "panel"))
 
+import memory_screen                                                     # noqa: E402
+import render                                                            # noqa: E402
 import server                                                            # noqa: E402
 
 
@@ -49,3 +51,33 @@ def test_down_walks_away_from_critical(monkeypatch):
 def test_a_hand_edited_pin_does_not_crash_the_post(monkeypatch):
     """t1084 TC4 — a pin outside 0/1/2 in a hand-edited file is treated as 1."""
     assert action(monkeypatch, "pin_up", 7) in ("0", "1", "2")
+
+
+# --- t1114: what the prompt actually carries (full review: truth M9, security M6) --------
+
+def test_a_fact_longer_than_the_prompt_limit_is_marked(monkeypatch):
+    """M9: the screen printed in-prompt facts in full while `facts.prompt()` truncates them
+    at `memory.max_fact_chars`, so six of the 25 are shown longer than the session sees."""
+    import types
+    rows = [{"file": None, "id": "f1", "pin": 1, "tags": "", "added": "2026-01-01",
+             "text": "я" * 400},
+            {"file": None, "id": "f2", "pin": 1, "tags": "", "added": "2026-01-02",
+             "text": "коротко"}]
+    monkeypatch.setattr(memory_screen, "_facts_module",
+                        lambda: types.SimpleNamespace(load=lambda: rows))
+    got = memory_screen.facts()
+    long_one, short_one = got["in_prompt"][0], got["in_prompt"][1]
+    assert long_one["truncated"] and not short_one["truncated"]
+    assert long_one["in_prompt_chars"] == got["max_chars"]
+    html = render.render_memory(got, {"exists": False}, [], "", "tok")
+    assert "обрізаний" in html or "обрізано" in html
+
+
+def test_the_screen_says_it_shows_personal_material():
+    """Security M6: disclosure rule 1 names the Prompt screen as its one exception, and
+    this screen shows the same facts. The exemption is the login — so the page says so,
+    exactly as the Prompt screen does."""
+    html = render.render_memory({"in_prompt": [], "cut": [], "unpinned": [], "stored": 0,
+                                 "max_stored": 100, "max_in_prompt": 25, "max_chars": 240},
+                                {"exists": False}, [], "", "tok")
+    assert "за паролем" in html
