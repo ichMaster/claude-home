@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """What I may do without asking — the one machine-readable copy of it.
 
     tools/permissions.py prompt          render the block the system prompt carries
@@ -72,6 +72,17 @@ def levels() -> dict:
     return dict(got) if isinstance(got, dict) else {}
 
 
+def local_levels() -> dict:
+    """Only what `config.local.json` overrides — `levels()` is the merged view, so asking it
+    "is this set locally?" answered yes for every decision, defaults included (t1117)."""
+    try:
+        blob = json.loads(LOCAL.read_text(encoding="utf-8")) if LOCAL.exists() else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+    got = blob.get("permissions") if isinstance(blob, dict) else None
+    return dict(got) if isinstance(got, dict) else {}
+
+
 def level(key: str, current: dict | None = None) -> str:
     """The level in force. An unrecognised value reads as `never`: a corrupt or hand-edited
     permission must fail closed, because the alternative is a typo granting something."""
@@ -118,9 +129,9 @@ def main() -> int:
         print(prompt_block())
         return 0
     if what == "list":
-        current = levels()
+        current, overridden = levels(), local_levels()
         for key, meta in DECISIONS.items():
-            where = "локально" if key in current else "типове"
+            where = "локально" if key in overridden else "типове"
             print(f"{key:24} {level(key, current):6} ({where})  {meta['what']}")
         for key, text in HARD.items():
             print(f"{key:24} {'тверде':6} (незмінне) {text}")

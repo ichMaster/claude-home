@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """Previous contents of the files whose loss would hurt — list, compare, restore.
 
     tools/versions.py list [<file>]            what is kept, newest first

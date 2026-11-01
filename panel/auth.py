@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """The panel's password — one secret, hashed, set from a terminal.
 
     panel/auth.py set      prompt for a password and store its hash

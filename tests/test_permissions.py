@@ -104,3 +104,29 @@ def test_a_permissions_node_that_is_not_a_block_does_not_raise(blob, monkeypatch
     assert permissions.levels() == {}
     text = permissions.prompt_block()
     assert "не обговорюється" in text, "the block must still be rendered"
+
+
+# --- t1117: «локально» must mean locally overridden -------------------------------------
+
+def test_a_default_level_is_not_reported_as_a_local_override(tmp_path, monkeypatch):
+    """`levels()` reads the merged configuration, so every decision looked overridden —
+    `./tools/permissions.py list` printed «(локально)» for all seven, including the ones
+    nobody has ever touched."""
+    local = tmp_path / "config.local.json"
+    local.write_text(json.dumps({"permissions": {"mail.send": "free"}}), encoding="utf-8")
+    monkeypatch.setattr(permissions, "LOCAL", local)
+    got = permissions.local_levels()
+    assert got == {"mail.send": "free"}
+    assert "calendar.create" not in got
+
+
+def test_no_local_file_means_no_overrides(tmp_path, monkeypatch):
+    monkeypatch.setattr(permissions, "LOCAL", tmp_path / "nothing.json")
+    assert permissions.local_levels() == {}
+
+
+def test_a_broken_local_file_does_not_raise(tmp_path, monkeypatch):
+    f = tmp_path / "config.local.json"
+    f.write_text('{"permissions": ', encoding="utf-8")
+    monkeypatch.setattr(permissions, "LOCAL", f)
+    assert permissions.local_levels() == {}
