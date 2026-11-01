@@ -582,31 +582,32 @@ def prompt_html(message: str = "") -> str:
     ok, facts = run_script(str(HOME / ".venv-voice" / "bin" / "python"),
                            str(HOME / "memory" / "facts.py"), "prompt",
                            timeout=60, cap=40000)
-    handoff = None
-    note = HOME / "memory" / "handoff.md"
-    if note.is_file():
-        try:
-            handoff = note.read_text(encoding="utf-8")
-        except OSError:
-            handoff = None
+    started = session_started()
+    state = prompt_screen.handoff_state(HOME / "memory", started=started)
+    # A consumed note IS part of the live prompt: start.sh archives it as it reads it, so
+    # the file being gone is the proof the session carries it (t1111).
+    handoff = state["text"] if state["state"] in ("pending", "consumed") else None
     perms = ""
     try:
-        sys.path.append(str(HOME / "tools"))
+        _on_path(HOME / "tools")
         import permissions as perm_tool                                 # noqa: E402
         perms = perm_tool.prompt_block()
     except Exception:                                                   # noqa: BLE001
         perms = ""                      # a missing block is visible as a missing part
     got = prompt_screen.assembled(persona, facts if ok else "", handoff,
                                   permissions=perms)
-    started = session_started()
-    watched = [HOME / "persona.md", HOME / "CLAUDE.md",
+    # configuration and the permission block are read at launch too, and three places on
+    # this screen promise the banner covers them (t1111)
+    watched = [HOME / "persona.md", HOME / "CLAUDE.md", HOME / "config.json",
+               HOME / "config.local.json",
                *sorted((HOME / "memory" / "facts").glob("*.md"))]
     stale = prompt_screen.stale_files(started, watched) if started else []
     files = prompt_screen.prompt_files([HOME / "persona.md", HOME / "CLAUDE.md"],
                                        dirty_files())
     if not ok:
         message = (message + " факти не зібрались: " + facts).strip()
-    return render.render_prompt(got, stale, files, message, token=FORM_TOKEN)
+    return render.render_prompt(got, stale, files, message, token=FORM_TOKEN,
+                                started=started, handoff=state)
 
 
 def scenarios_html(message: str = "") -> str:
@@ -777,6 +778,14 @@ def journal_text(unit: str, limit: int | None = None) -> str:
     return said if ok else f"Журнал не прочитався: {said}"
 
 
+def _on_path(folder) -> None:
+    """Put a directory on `sys.path` once. Appending per request is the leak t1067 and
+    t1071 closed on two other screens (t1111)."""
+    d = str(folder)
+    if d not in sys.path:
+        sys.path.append(d)
+
+
 def journal_full() -> bool:
     """Is the pane allowed to show a unit's own output? `systemd` (default) says no.
 
@@ -829,7 +838,7 @@ def permission_levels() -> dict:
     system prompt is rendered from, so the screen cannot drift from what the session is
     told."""
     try:
-        sys.path.append(str(HOME / "tools"))
+        _on_path(HOME / "tools")
         import permissions as perm_tool                                 # noqa: E402
         current = perm_tool.levels()
         return {key: (perm_tool.LEVELS[perm_tool.level(key, current)], meta["what"])

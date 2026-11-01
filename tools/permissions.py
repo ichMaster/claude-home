@@ -26,7 +26,9 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+_root = str(Path(__file__).resolve().parents[1])
+if _root not in sys.path:                      # imported by the panel per request (t1111)
+    sys.path.insert(0, _root)
 from noosconf import ROOT, atomic_write_text, conf, locked            # noqa: E402
 
 LOCAL = ROOT / "config.local.json"

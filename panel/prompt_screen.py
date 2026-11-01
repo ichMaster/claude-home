@@ -32,25 +32,68 @@ EDITABLE = {"persona.md", "CLAUDE.md"}
 CHARS_PER_TOKEN = 3.5
 
 
+HANDOFF_HEAD = "## Естафета з попередньої сесії"
+
+
 def assembled(persona: str, facts: str, handoff: str | None,
               permissions: str | None = None) -> dict:
-    """The prompt in the exact order `start.sh` concatenates it.
+    """The prompt in the exact order and shape `start.sh` concatenates it.
 
-    The handoff note is part of it only while `memory/handoff.md` exists: `start.sh` moves
-    the file to `handoff-last.md` as it reads it, so a consumed note is history and showing
-    it as part of the live prompt would be a lie.
+    The handoff note **is** part of the live prompt when the running session consumed one —
+    `start.sh` moves `handoff.md` to `handoff-last.md` as it reads it, so the file being gone
+    is the proof the session carries the note, not the proof it does not. Reading it the
+    other way understated this session's prompt by 36 % and left out the whole thread of
+    yesterday (t1111). `handoff_state()` decides which case this is; the heading below is
+    what the shell writes before the note, and without it the block is not what the session
+    sees.
     """
-    parts = [{"name": "persona.md", "text": persona or ""},
-             {"name": "факти", "text": facts or ""}]
+    # Command substitution strips trailing newlines, so each part is stripped the same way
+    # the shell strips it — otherwise the total is a couple of characters off the real one,
+    # and this screen's whole claim is that its arithmetic is the shell's (t1111).
+    parts = [{"name": "persona.md", "text": (persona or "").rstrip("\n")},
+             {"name": "факти", "text": (facts or "").rstrip("\n")}]
     if permissions:
-        parts.append({"name": "дозволи", "text": permissions})
-    if handoff:
-        parts.append({"name": "естафета", "text": handoff})
+        parts.append({"name": "дозволи", "text": permissions.rstrip("\n")})
     text = "\n".join(p["text"] for p in parts if p["text"])
+    if handoff:
+        note = handoff.rstrip("\n")
+        parts.append({"name": "естафета", "text": note})
+        text += f"\n\n{HANDOFF_HEAD}\n{note}"
     for p in parts:
         p["chars"] = len(p["text"])
     return {"parts": parts, "text": text, "chars": len(text),
             "tokens": int(len(text) / CHARS_PER_TOKEN)}
+
+
+def handoff_state(folder: Path | None = None, started: float = 0.0,
+                  now: float | None = None) -> dict:
+    """Which handoff note the running session actually has.
+
+    Four answers, and the difference matters because the screen claims to show what the
+    session sees: `pending` — `handoff.md` is still on disk, so the *next* start will take
+    it; `consumed` — it was archived before this session came up, i.e. this session has it;
+    `unknown` — the archive is newer than this session's start, so it belongs to a session
+    that has not started yet, and claiming it would be worse than silence; `none`.
+    """
+    import time
+    base = Path(folder or (HOME / "memory"))
+    now = time.time() if now is None else now
+    pending = base / "handoff.md"
+    archived = base / "handoff-last.md"
+    try:
+        if pending.is_file():
+            return {"state": "pending", "text": pending.read_text(encoding="utf-8"),
+                    "when": pending.stat().st_mtime}
+    except OSError:
+        pass
+    try:
+        when = archived.stat().st_mtime
+        if started and when > started:
+            return {"state": "unknown", "text": "", "when": when}
+        return {"state": "consumed", "text": archived.read_text(encoding="utf-8"),
+                "when": when}
+    except OSError:
+        return {"state": "none", "text": "", "when": 0.0}
 
 
 def stale_files(started: float, paths: list[Path]) -> list[dict]:

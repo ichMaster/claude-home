@@ -915,7 +915,13 @@ def _prompt_parts(got: dict) -> str:
             'масштабу, а не для бюджету.</p>')
 
 
-def _restart_banner(stale: list[dict]) -> str:
+def _restart_banner(stale: list[dict], started: float = 1.0) -> str:
+    """When something is stale, say so. When nothing is, say so only if we know the session's
+    start time — the banner's absence used to read as «усе актуально» even when the start
+    time was unknown, which is a claim we cannot make (t1111)."""
+    if not started:
+        return ('<p class="warn">Час старту сесії невідомо, тож чи діють поточні файли — '
+                'сказати не можу.</p>')
     if not stale:
         return ('<p class="dim">Усе, з чого складено підказку, не змінювалось після '
                 'старту сесії.</p>')
@@ -962,13 +968,34 @@ def _file_block(rows: list[dict], token: str = "") -> str:
         'галочкою. Після збереження потрібен перезапуск сесії.</p>')
 
 
+def _handoff_note(handoff: dict | None) -> str:
+    """Say which handoff note the session has, because the file's absence means the opposite
+    of what it looks like: `start.sh` archives the note as it reads it (t1111)."""
+    state = (handoff or {}).get("state", "")
+    if state == "consumed":
+        return ('<p class="dim">Естафетну записку ця сесія підхопила на старті — '
+                'файл перейменовано в <code>memory/handoff-last.md</code>, і текст вище '
+                'містить її.</p>')
+    if state == "pending":
+        return ('<p class="warn">У <code>memory/handoff.md</code> лежить записка, якої '
+                'ця сесія ще не бачила — її підхопить наступний старт.</p>')
+    if state == "unknown":
+        return ('<p class="warn">Архівна записка новіша за старт цієї сесії, тож вона не '
+                'її — не показую.</p>')
+    if state == "none":
+        return '<p class="dim">Естафетної записки немає.</p>'
+    return ""
+
+
 def render_prompt(got: dict, stale: list[dict], files: list[dict],
-                  message: str = "", token: str = "") -> str:
+                  message: str = "", token: str = "", started: float = 1.0,
+                  handoff: dict | None = None) -> str:
     """Screen 2 — the assistant shown to itself: the prompt it actually wakes up with."""
     note = f'<p class="note">{e(message)}</p>' if message else ""
     body = (
         f"<h1>Промпт</h1>{note}"
-        f"<section><h2>Склад</h2>{_prompt_parts(got)}{_restart_banner(stale)}</section>"
+        f"<section><h2>Склад</h2>{_prompt_parts(got)}"
+        f"{_restart_banner(stale, started)}{_handoff_note(handoff)}</section>"
         f"<section><h2>Файли</h2>{_file_block(files, token)}</section>"
         f'<section><h2>Системна підказка</h2>'
         '<p class="dim">Тут видно те, що бачить сесія, включно з особистими фактами — '
