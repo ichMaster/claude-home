@@ -139,13 +139,16 @@ def test_the_filters_narrow_by_bot_and_by_kind(tmp_path):
 # --- TC6-TC7: what the screen shows ------------------------------------------------------
 
 def test_the_body_is_hidden_unless_the_setting_says_otherwise(tmp_path):
-    rows = [row(text="сьогодні 12:00 поминки, 17:00 день народження")]
+    # Shaped like a calendar line, because that is what must not leak — but invented.
+    # The first version of this fixture reproduced an actual line out of the owner's own
+    # digest, which has no business in a public repository (t1120).
+    rows = [row(text="завтра 09:30 техогляд, 18:00 вечеря з Х")]
     hidden = render.render_sent(rows, sent_screen.counters(rows), ["main"], ["x"], "", "",
                                bodies=False)
-    assert "поминки" not in hidden, "a digest's text is the owner's calendar"
+    assert "техогляд" not in hidden, "a digest's text is the owner's calendar"
     shown = render.render_sent(rows, sent_screen.counters(rows), ["main"], ["x"], "", "",
                                bodies=True)
-    assert "поминки" in shown
+    assert "техогляд" in shown
 
 
 def test_everything_interpolated_is_escaped(tmp_path):
