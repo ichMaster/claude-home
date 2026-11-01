@@ -161,3 +161,47 @@ def test_an_unknown_action_does_nothing(monkeypatch):
     monkeypatch.setattr(rules_screen, "set_setting",
                         lambda k, v: pytest.fail("must not be called"))
     assert "невідом" in server.rules_action({"action": ["drop"], "key": ["x"]}).lower()
+
+
+# --- t1105: reset had none of save's guards (full review: writes M1, security H2) --------
+# «Повернути типове» is rendered only on editable rows, but a crafted POST with a live form
+# token reached `reset_setting` directly — and it deleted the birth data, the 603-channel
+# list and the whole permissions block, the two writes the design says can never come from
+# a page.
+
+@pytest.mark.parametrize("key", ["astro.birth.place", "astro.birth", "astro",
+                                 "probes.youtube.channels", "permissions",
+                                 "permissions.mail.send", "user.name"])
+def test_reset_refuses_exactly_what_save_refuses(tmp_path, monkeypatch, key):
+    f = tmp_path / "config.local.json"
+    before = {"astro": {"birth": {"place": "десь", "lat": 1.0}, "context": "життя"},
+              "probes": {"youtube": {"channels": [{"name": "a"}]}},
+              "permissions": {"mail.send": "free"},
+              "user": {"name": "хтось"}}
+    f.write_text(json.dumps(before, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(rules_screen, "LOCAL", f)
+    monkeypatch.setattr(rules_screen, "_default_config", lambda: DEFAULT)
+    monkeypatch.setattr(rules_screen, "masked_keys", lambda: ["astro.birth", "astro.context",
+                                                              "user"])
+    ok, said = rules_screen.reset_setting(key)
+    assert not ok and said
+    assert json.loads(f.read_text(encoding="utf-8")) == before, "a refusal writes nothing"
+
+
+def test_reset_still_works_on_an_ordinary_setting(local):
+    ok, said = rules_screen.reset_setting("probes.loe.queue")
+    assert ok and "probes" not in saved(local)
+
+
+def test_reset_refuses_a_parent_that_holds_more_than_the_key(tmp_path, monkeypatch):
+    """`key=astro` wiped fourteen leaves in one press. A reset is for one setting."""
+    f = tmp_path / "config.local.json"
+    f.write_text(json.dumps({"probes": {"loe": {"queue": "3.2", "ttl": 900}}}),
+                 encoding="utf-8")
+    monkeypatch.setattr(rules_screen, "LOCAL", f)
+    monkeypatch.setattr(rules_screen, "_default_config", lambda: DEFAULT)
+    monkeypatch.setattr(rules_screen, "masked_keys", lambda: [])
+    ok, said = rules_screen.reset_setting("probes.loe")
+    assert not ok and "блок" in said.lower()
+    assert json.loads(f.read_text(encoding="utf-8")) == {
+        "probes": {"loe": {"queue": "3.2", "ttl": 900}}}

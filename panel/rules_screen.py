@@ -148,12 +148,10 @@ def set_setting(key: str, raw: str) -> tuple[bool, str]:
     if key not in flat_default and key not in flat_local:
         return False, f"Такого ключа немає: «{key[:60]}». Форма не вигадує налаштувань."
     current = flat_local.get(key, flat_default.get(key))
+    refusal = _edit_refusal(key)
+    if refusal:
+        return False, refusal
     if not editable(key, current, masked_keys()):
-        if is_masked(key, masked_keys()):
-            return False, "Це особисте значення — ставиться лише з термінала."
-        if any(key == p or key.startswith(p + ".") for p in NO_EDIT_PREFIXES):
-            return False, ("Дозволи змінюються лише з термінала: "
-                           "tools/permissions.py set <ключ> <рівень>.")
         return False, "Списки й блоки тут не редагуються."
     ok, value = _parse_like(raw, current)
     if not ok:
@@ -182,26 +180,60 @@ def _version_note() -> str:
             " УВАГА: копію попереднього вмісту зберегти не вдалось — перевір versions.dir.")
 
 
+def _edit_refusal(key: str) -> str:
+    """Why this key may not be written from a page, or "" if it may.
+
+    Both `set_setting` and `reset_setting` ask this. They used to ask different questions:
+    save refused a masked value, a permission, a list and an unknown key, while reset checked
+    only that the key was present — so a crafted POST deleted the birth data, the 603-channel
+    list and the whole permissions block, which are exactly the two writes the design says
+    can never come from a page (t1105).
+    """
+    if not key or key.startswith("_") or key.endswith("_"):
+        return "Ключ не названо."
+    if is_masked(key, masked_keys()):
+        return "Це особисте значення — ставиться лише з термінала."
+    if any(key == p or key.startswith(p + ".") for p in NO_EDIT_PREFIXES):
+        return ("Дозволи змінюються лише з термінала: "
+                "tools/permissions.py set <ключ> <рівень>.")
+    return ""
+
+
 def reset_setting(key: str) -> tuple[bool, str]:
-    """Remove an override so the committed default takes over again. Empty parent blocks
-    are pruned: a trail of `{}` left behind is noise that looks like configuration."""
-    local = _local_config()
-    parts = key.split(".")
-    chain, node = [], local
-    # (the guards and the lock live in the body below)
-    for part in parts[:-1]:
-        if not isinstance(node, dict) or part not in node:
+    """Remove one override so the committed default takes over again.
+
+    One override: a key naming a whole block is refused, because «повернути типове» on a
+    parent deleted every leaf under it in a single press — and for keys `config.json` has no
+    default for, «повернуто до типового» was false twice over: the value does not fall back,
+    it ceases to exist (t1105).
+    """
+    refusal = _edit_refusal(key)
+    if refusal:
+        return False, refusal
+    with locked(LOCAL):
+        local = _local_config()
+        parts = key.split(".")
+        chain, node = [], local
+        for part in parts[:-1]:
+            if not isinstance(node, dict) or part not in node:
+                return False, f"Локального перевизначення для «{key[:60]}» немає."
+            chain.append((node, part))
+            node = node[part]
+        if not isinstance(node, dict) or parts[-1] not in node:
             return False, f"Локального перевизначення для «{key[:60]}» немає."
-        chain.append((node, part))
-        node = node[part]
-    if not isinstance(node, dict) or parts[-1] not in node:
-        return False, f"Локального перевизначення для «{key[:60]}» немає."
-    node.pop(parts[-1])
-    for parent, part in reversed(chain):
-        if isinstance(parent.get(part), dict) and not parent[part]:
-            parent.pop(part)
-    atomic_write_text(LOCAL, json.dumps(local, ensure_ascii=False, indent=2) + "\n")
-    return True, f"{key} повернуто до типового; діє після перезапуску."
+        if isinstance(node[parts[-1]], (dict, list)):
+            return False, ("Це блок або список, а не одне налаштування — "
+                           "скидається лише окремий ключ.")
+        node.pop(parts[-1])
+        for parent, part in reversed(chain):
+            if isinstance(parent.get(part), dict) and not parent[part]:
+                parent.pop(part)
+        atomic_write_text(LOCAL, json.dumps(local, ensure_ascii=False, indent=2) + "\n")
+    had_default = key in flatten(_default_config())
+    return True, ((f"{key} повернуто до типового; діє після перезапуску." + _version_note())
+                  if had_default else
+                  (f"{key} прибрано з локального конфігу. Типового значення для нього немає, "
+                   f"тож ключа тепер просто нема." + _version_note()))
 
 
 def setting_rows(default: dict, local: dict, masked: list[str]) -> list[dict]:
