@@ -62,10 +62,28 @@ def sort_channels(rows: list[dict], order: str = "activity") -> list[dict]:
     return sorted(rows, key=lambda c: (c["last"] or "", c["name"].lower()), reverse=True)
 
 
+def _mail_defaults() -> dict:
+    """The mail probe's own seed lists: the probe starts from DEFAULT_RULES and merges the
+    rules file over them, so a screen that starts from empty lists answers the opposite of
+    what the probe does whenever the file is absent or partial (t1086)."""
+    import importlib.util
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "noos_mail_probe", HOME / "status" / "probes" / "mail.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return {k: list(v) for k, v in mod.DEFAULT_RULES.items()}
+    except Exception:                                                    # noqa: BLE001
+        return {"шум": [], "важливе": []}
+
+
+MAIL_DEFAULTS = _mail_defaults()
+
+
 def filters() -> dict:
     """The mail and social filters, as the probes read them."""
     rules = HOME / "status" / "mail-rules.json"
-    mail = {"шум": [], "важливе": []}
+    mail = {k: list(v) for k, v in MAIL_DEFAULTS.items()}
     if rules.is_file():
         try:
             got = json.loads(rules.read_text(encoding="utf-8", errors="replace"))

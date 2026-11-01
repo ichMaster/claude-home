@@ -209,3 +209,45 @@ def test_sources_page_escapes_channel_names():
         topics=[], probe="", token="SECRET", message="", query="", order="activity")
     assert "<img src=x>" not in html and "<b>n</b>" not in html
     assert "&lt;img src=x&gt;" in html
+
+
+# --- t1086: the Filters screen must read the same rules the probe does ------------------
+
+def mail_probe_defaults():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "mail_probe_t1086", ROOT / "status" / "probes" / "mail.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.DEFAULT_RULES
+
+
+def test_filters_without_rules_file_match_the_probe(monkeypatch, tmp_path):
+    """t1086 TC1 — mail-rules.json is absent (the live state of this machine): the screen
+    must show the probe's DEFAULT_RULES, and the test box must give the probe's verdict."""
+    monkeypatch.setattr(sources_screen, "HOME", tmp_path)
+    got = sources_screen.filters()["mail"]
+    assert got == mail_probe_defaults()
+    assert sources_screen.classify("billing@corp.com", "Invoice 42", got).startswith("важливе")
+
+
+def test_partial_rules_file_keeps_probe_defaults_for_missing_keys(monkeypatch, tmp_path):
+    """t1086 TC2 — the probe merges the file over its defaults, so a file defining only
+    шум keeps the default важливе list; the screen must do the same."""
+    (tmp_path / "status").mkdir()
+    (tmp_path / "status" / "mail-rules.json").write_text(
+        json.dumps({"шум": ["only@noise"]}), encoding="utf-8")
+    monkeypatch.setattr(sources_screen, "HOME", tmp_path)
+    got = sources_screen.filters()["mail"]
+    assert got["шум"] == ["only@noise"]
+    assert got["важливе"] == mail_probe_defaults()["важливе"]
+
+
+def test_full_rules_file_overrides_both_lists(monkeypatch, tmp_path):
+    """t1086 TC3 — a file defining both keys is honoured exactly as before."""
+    (tmp_path / "status").mkdir()
+    (tmp_path / "status" / "mail-rules.json").write_text(
+        json.dumps({"шум": ["a@b"], "важливе": ["c@d"]}), encoding="utf-8")
+    monkeypatch.setattr(sources_screen, "HOME", tmp_path)
+    got = sources_screen.filters()["mail"]
+    assert got == {"шум": ["a@b"], "важливе": ["c@d"]}
