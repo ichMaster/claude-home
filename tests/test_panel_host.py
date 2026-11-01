@@ -90,3 +90,34 @@ def test_post_with_foreign_host_is_refused_even_with_the_token(live_panel):
     body = f"token={server.FORM_TOKEN}&action=noop-t1069"
     status, _ = fetch(live_panel, "POST", "/zirka", "evil.example:8091", body)
     assert status == 403
+
+
+# --- t1085: no response of the panel may be framed --------------------------------------
+
+def fetch_resp(port: int, method: str, path: str, body: str = ""):
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+    headers = {"Content-Type": "application/x-www-form-urlencoded"} if body else {}
+    conn.request(method, path, body=body or None, headers=headers)
+    resp = conn.getresponse()
+    resp.read()
+    conn.close()
+    return resp
+
+
+def test_pages_refuse_framing(live_panel):
+    """t1085 TC1 — the FORM_TOKEN and Host checks stop cross-origin posting, but an iframe
+    with an overlaid decoy fires same-origin POSTs with the live token; the browser has to
+    be told never to frame the panel at all."""
+    r = fetch_resp(live_panel, "GET", "/static/panel.css")
+    assert r.getheader("X-Frame-Options") == "DENY"
+    assert "frame-ancestors 'none'" in (r.getheader("Content-Security-Policy") or "")
+
+
+def test_redirects_refuse_framing_too(live_panel, monkeypatch):
+    """t1085 TC2 — the 303 after a write is a response of the panel like any other."""
+    monkeypatch.setattr(server, "memory_action", lambda form: "ok")
+    r = fetch_resp(live_panel, "POST", "/memory",
+                   f"token={server.FORM_TOKEN}&action=noop-t1085")
+    assert r.status == 303
+    assert r.getheader("X-Frame-Options") == "DENY"
+    assert "frame-ancestors 'none'" in (r.getheader("Content-Security-Policy") or "")

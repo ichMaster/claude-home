@@ -412,6 +412,14 @@ def zirka_action(form: dict) -> str:
 class Handler(BaseHTTPRequestHandler):
     server_version = "noos-panel"
 
+    def end_headers(self) -> None:                                       # noqa: N802
+        # no response of this panel may be framed: the token and Host checks stop
+        # cross-origin posting, but an iframe with an overlaid decoy fires same-origin
+        # POSTs carrying the live token the framed page embeds (t1085)
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
+        super().end_headers()
+
     def _send(self, code: int, body: bytes, kind: str) -> None:
         self.send_response(code)
         self.send_header("Content-Type", kind)
