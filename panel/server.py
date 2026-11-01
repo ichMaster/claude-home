@@ -35,6 +35,7 @@ sys.path.insert(0, str(HOME / "panel"))
 
 from noosconf import atomic_write_text, conf                            # noqa: E402
 import bruno                                                           # noqa: E402
+import changelog_write                                                  # noqa: E402
 import changes                                                         # noqa: E402
 import data                                                            # noqa: E402
 import memory_screen                                                   # noqa: E402
@@ -374,11 +375,15 @@ def tasks_action(form: dict) -> str:
         if not text:
             return "Порожній рядок — задачу не додано."
         ok, said = run_script(py, store, "add", text, timeout=60)
+        if ok:
+            changelog_write.record("panel-task", "tasks/tasks.jsonl", f"add: {text}")
         return said if ok else f"Не вдалося додати: {said}"
     if what in ("done", "start", "stop", "cancel"):
         if not tid:
             return "Задачу не названо."
         ok, said = run_script(py, store, what, tid, timeout=60)
+        if ok:
+            changelog_write.record("panel-task", "tasks/tasks.jsonl", f"{what}: {tid}")
         return said if ok else f"Не вдалося: {said}"
     if what == "defer":
         when = (form.get("when") or [""])[0].strip()
@@ -417,11 +422,15 @@ def memory_action(form: dict) -> str:
         if pin not in ("0", "1", "2"):
             return "Рівень закріплення буває 0, 1 або 2."
         ok, said = run_script(py, facts_py, "add", "--pin", pin, text, timeout=60)
+        if ok:
+            changelog_write.record("panel-fact", "memory/facts", f"add pin {pin}")
         return said if ok else f"Не вдалося додати: {said}"
     if not fid:
         return "Факт не названо."
     if what == "rm":
         ok, said = run_script(py, facts_py, "rm", fid, timeout=60)
+        if ok:
+            changelog_write.record("panel-fact", "memory/facts", f"rm {fid}")
         return (said + " — повернути можна через tools/versions.py restore") if ok \
             else f"Не вдалося видалити: {said}"
     if what in ("pin_up", "pin_down"):
@@ -477,6 +486,7 @@ def sources_action(form: dict) -> tuple[str, str]:
                 name, priority=(form.get("priority") or ["1"])[0] == "1")
     except RuntimeError as exc:
         return str(exc), ""
+    changelog_write.record("panel-source", "config.local.json", f"{what}: {name}")
     return said, ""
 
 
@@ -529,6 +539,8 @@ def zirka_action(form: dict) -> str:
                               "--file", str(f), "--day", f.stem.split("-", 2)[-1],
                               "--period", "день", "--learn", timeout=900)
         return (f"Внесено: {said}" if ok else f"Внести не вдалося: {said}")
+    if what in ("recalc", "ask", "calibrate", "ingest", "reference"):
+        changelog_write.record("panel-zirka", what, day)
     if what == "recalc":
         unit = str(conf("astro.recalc_unit", "noos-mood-recalc"))
         ok, said = run_script("systemd-run", "--user", f"--unit={unit}", "--collect",
@@ -669,6 +681,8 @@ def scenario_action(form: dict) -> str:
                           "--setenv", f"HOME={HOME.parent}", *cmd, timeout=60)
     if not ok and "exists" in said:
         return f"«{name}» уже виконується."
+    if ok:
+        changelog_write.record("panel-run", name, " ".join(cmd[-2:]))
     return (f"«{name}» запущено відчепленим; результат прийде туди, куди він пише завжди."
             if ok else f"Не запустилось: {said}")
 
@@ -749,6 +763,7 @@ def schedule_action(form: dict) -> str:
         return (f"{unit} перестав завантажуватись — повернув попередній юніт і "
                 f"перезавантажив systemd. Нічого не змінилось.")
     run_script("systemctl", "--user", "restart", unit, timeout=30)
+    changelog_write.record("panel-schedule", unit, "; ".join(specs))
     return f"{unit}: розклад тепер {', '.join(specs)}. Попередній юніт — у .versions."
 
 

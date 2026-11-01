@@ -772,6 +772,51 @@ Planning (step 2, not built yet): blocks go **only** into the `Noos` calendar (i
 `config.local.json`), at any time except the 00:00–08:00 sleep window, routing around
 power outages from the `loe` probe. The user's own events are never edited.
 
+## The admin panel (`panel/`)
+
+A local web board on port 8091, `noos-panel.service`, eleven screens; the specification is
+`docs/features/ADMIN-PANEL.md`. It exists for the three things chat is bad at — lists, tables
+and state — and for one chat cannot do at all: showing the assistant the exact system prompt
+it wakes up with.
+
+**The panel has no store of its own.** It reads and writes the same files the session reads:
+`config.json`, `config.local.json`, `persona.md`, `CLAUDE.md`, `memory/facts/`,
+`tasks/tasks.jsonl`, the systemd units. Every write it makes is appended to `changelog/` by
+`panel/changelog_write.py` with `session: panel`, because the `PostToolUse` hook only sees the
+session's own tool calls (t1113).
+
+**The panel asks for a password.** One shared secret, `hashlib.scrypt`, in `.env.panel`
+(mode 600, git-ignored), set with `./panel/auth.py set` **from a terminal** — never over HTTP
+or Telegram, because a request does not prove who sent it. A session token lives in the
+process for `panel.auth.ttl_hours` (12) and dies with a restart; five failed attempts from one
+address lock it for five minutes and every attempt is logged to
+`status/state/panel-auth.jsonl`. No password configured means the panel serves only the login
+page: unconfigured is not open. Locked out? `./panel/auth.py clear` in a terminal.
+
+`panel.host` is `0.0.0.0` by the owner's choice of 2026-10-31 — he works from another machine
+on the same network. The narrower setting is `tailscale`, one word, the day Tailscale is on
+that machine. There is no TLS.
+
+**What the panel may write**, and what it may not:
+
+| may | may not |
+|---|---|
+| scalar settings → `config.local.json` (versioned, locked) | masked personal values (birth data, the calendar id, the owner's name, voice ids) |
+| `persona.md`, `CLAUDE.md` (versioned; empty refused, halving needs confirming) | permissions — `tools/permissions.py set` from a terminal |
+| a timer's `OnCalendar` (validated by systemd, rolled back if the unit stops loading) | anything that protects the panel itself: `panel.auth.*`, `panel.journal_scope`, `panel.host`, `panel.port`, `panel.edit_min_ratio`, `versions.*` |
+| facts, tasks, channels, Zirka's buttons — through the same scripts the session uses | secrets of any kind, in any form |
+
+**Permissions are machine-readable now.** `config.json` → `permissions` holds
+`free` / `ask` / `never` per named decision; `tools/permissions.py prompt` renders the block
+and `start.sh` appends it to the system prompt, so a change binds at the next restart and the
+panel's Prompt screen shows it as a part. Three rules are hard and are not switches:
+`secrets.reveal`, `rules.from_chat`, `changelog.edit`. An unrecognised level reads as `never`.
+
+**A screen must never state something false.** A wrong value shown confidently is worse than
+a blank: an unknown age renders as unknown, an unparsed report as «не розібрано», a missing
+record as «не записано», and a value that must not be shown as «значення приховано». The three
+reviews of 2026-11-01 are in `status/state/code-review/2026-11-01-panel-full-*.md`.
+
 ## Documents
 
 Every concept, specification and design note lives in `docs/` — nothing of that kind at

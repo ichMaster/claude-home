@@ -22,6 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from noosconf import (ROOT, atomic_write_text, conf, locked,            # noqa: E402
                       version_failed)
+import changelog_write                                                  # noqa: E402
 
 HOME = Path(__file__).resolve().parents[1]
 LOCAL = HOME / "config.local.json"
@@ -202,6 +203,8 @@ def set_setting(key: str, raw: str) -> tuple[bool, str]:
                 return False, "Шлях конфліктує з уже наявним значенням."
         node[key.split(".")[-1]] = value
         atomic_write_text(LOCAL, json.dumps(local, ensure_ascii=False, indent=2) + "\n")
+    changelog_write.record("panel-save", "config.local.json",
+                           f"{key} = {value_text(value)}")
     return True, (f"{key} = {value_text(value)}; діє після перезапуску того, хто це читає."
                   + _version_note())
 
@@ -267,6 +270,7 @@ def reset_setting(key: str) -> tuple[bool, str]:
             if isinstance(parent.get(part), dict) and not parent[part]:
                 parent.pop(part)
         atomic_write_text(LOCAL, json.dumps(local, ensure_ascii=False, indent=2) + "\n")
+    changelog_write.record("panel-reset", "config.local.json", key)
     had_default = key in flatten(_default_config())
     return True, ((f"{key} повернуто до типового; діє після перезапуску." + _version_note())
                   if had_default else
@@ -335,13 +339,21 @@ STANDING = [
     {"rule": "Події у власних календарях власника не редагую — лише свій календар Noos.",
      "source": "CLAUDE.md", "anchor": "The user's own events are never edited"},
     {"rule": "Панель не має власного сховища: читає й пише ті самі файли, що й сесія, "
-             "і кожен запис іде в журнал змін.",
+             "і кожен її запис дописується в журнал змін.",
      "source": "docs/features/ADMIN-PANEL.md",
      "anchor": "The panel has no store of its own"},
-    {"rule": "У самій панелі автентифікації немає — тому ця фаза лише читає, а форми "
-             "чекають на фазу 10.",
-     "source": "panel/server.py",
-     "anchor": "no authentication and there must not be"},
+    # These two used to say «автентифікації немає, а форми чекають на фазу 10». Both halves
+    # stopped being true on 2026-11-01, and the anchor test did not catch it because the
+    # phrase survived in `panel/server.py` as a quotation of the withdrawn reasoning — a
+    # substring test cannot tell a rule from a quotation of a dead one (t1113).
+    {"rule": "У панель заходять за паролем (один спільний, scrypt, ставиться з термінала); "
+             "сесія живе 12 годин і вмирає з перезапуском панелі.",
+     "source": "CLAUDE.md",
+     "anchor": "The panel asks for a password"},
+    {"rule": "Панель пише налаштування й два файли підказки; дозволи, секрети й розклад "
+             "таймерів — з термінала або з перевіркою systemd.",
+     "source": "CLAUDE.md",
+     "anchor": "What the panel may write"},
 ]
 
 

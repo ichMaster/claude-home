@@ -21,6 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from noosconf import atomic_write_text, conf, locked, version_failed   # noqa: E402
+import changelog_write                                                  # noqa: E402
 
 HOME = Path(__file__).resolve().parents[1]
 # The only two files this screen may write, by name. A path from a form never becomes a
@@ -206,6 +207,8 @@ def save_file(name: str, text: str, confirm: bool = False) -> tuple[bool, str]:
             atomic_write_text(target, text)
     except OSError as exc:
         return False, f"Не записалось: {exc}"
+    changelog_write.record("panel-edit", str(target),
+                           f"{len(before)} → {len(text)} знаків")
     warn = ("" if not version_failed(target) else
             " УВАГА: копію попереднього вмісту зберегти не вдалось.")
     return True, (f"{name} збережено ({len(text)} знаків). Діє після перезапуску сесії — "
