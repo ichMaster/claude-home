@@ -108,3 +108,45 @@ def test_repin_keeps_a_version_and_the_text(monkeypatch, tmp_path):
     copies = list(store.rglob("*.bin"))
     assert len(copies) == 1, "the pre-change content must be kept as a version"
     assert "pin: 1" in copies[0].read_text(encoding="utf-8")
+
+
+# --- t1087: an invalid pin level must be refused before it reaches the file ------------
+
+import pytest                                                            # noqa: E402
+
+FACT = "---\npin: 1\ntags: \nadded: 2026-11-01\n---\nважливий текст\n"
+
+
+def test_set_pin_refuses_a_non_numeric_level(tmp_path):
+    """t1087 TC1 — `pin: high` in the file makes load() crash for every command, and
+    start.sh silences the prompt's stderr, so the next restart loses all pinned facts."""
+    f = tmp_path / "one.md"
+    f.write_text(FACT, encoding="utf-8")
+    with pytest.raises(ValueError):
+        memory_screen._facts_module().set_pin(f, "high")
+    assert f.read_text(encoding="utf-8") == FACT
+
+
+def test_set_pin_refuses_an_out_of_range_level(tmp_path):
+    """t1087 TC2 — numeric but outside 0..2 is refused the same way."""
+    f = tmp_path / "one.md"
+    f.write_text(FACT, encoding="utf-8")
+    with pytest.raises(ValueError):
+        memory_screen._facts_module().set_pin(f, "7")
+    assert f.read_text(encoding="utf-8") == FACT
+
+
+def test_cli_pin_with_bad_level_is_a_clean_refusal():
+    """t1087 TC3 — the level is judged before the id, so no fact is touched or needed."""
+    out = run_cli("pin", "no-such-fact-t1087", "high")
+    assert out.returncode != 0
+    assert "Traceback" not in (out.stderr or "")
+    assert "0, 1 або 2" in (out.stderr or "")
+
+
+def test_set_pin_still_accepts_the_valid_levels(tmp_path):
+    """t1087 TC4 — strings and ints 0..2 keep working (the CLI passes strings)."""
+    f = tmp_path / "one.md"
+    f.write_text(FACT, encoding="utf-8")
+    memory_screen._facts_module().set_pin(f, 0)
+    assert "pin: 0" in f.read_text(encoding="utf-8")

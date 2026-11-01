@@ -78,7 +78,12 @@ def fact_file(fid, base=None):
 def set_pin(p, level):
     """Rewrite one fact's pin level through the versioned atomic write: a fact file is
     precious (t1080), so the copy comes for free — the raw rewrite this replaces kept
-    nothing and a crash mid-write could tear the file (t1083)."""
+    nothing and a crash mid-write could tear the file (t1083). The level is judged here,
+    not at the callers: a non-numeric value written into the file makes load() raise for
+    every command after, which silently empties the prompt's facts block (t1087)."""
+    level = int(level)
+    if level not in (0, 1, 2):
+        raise ValueError(f"pin має бути 0, 1 або 2, не {level}")
     s = p.read_text(encoding="utf-8")
     atomic_write_text(p, re.sub(r"^pin: \d+", f"pin: {level}", s, count=1, flags=re.M))
 
@@ -121,10 +126,17 @@ def main():
         keep_version(p)
         p.unlink(); print(f"видалено {sys.argv[2]}")
     elif cmd == "pin":
+        try:
+            int(sys.argv[3])
+        except (IndexError, ValueError):
+            print("pin має бути 0, 1 або 2", file=sys.stderr); sys.exit(1)
         p = fact_file(sys.argv[2])
         if p is None or not p.is_file():
             print(f"немає такого факту: {sys.argv[2]}", file=sys.stderr); sys.exit(1)
-        set_pin(p, sys.argv[3])
+        try:
+            set_pin(p, sys.argv[3])
+        except ValueError:
+            print("pin має бути 0, 1 або 2", file=sys.stderr); sys.exit(1)
         print(f"{sys.argv[2]} → pin {sys.argv[3]}")
     else:
         facts = load()
