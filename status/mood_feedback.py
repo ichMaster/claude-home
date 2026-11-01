@@ -179,10 +179,10 @@ def questions(items: list[dict]) -> str:
         claim = mood._unlabel(str(item.get("claim") or "")).rstrip(".")
         sign = mood._unlabel(str(item.get("sign") or "")).rstrip(".")
         order = ("Перше" if i == 1 else "Друге" if i == 2 else "Третє")
-        variants = [mood._unlabel(v) for v in (item.get("variants") or [])
-                    if str(v).strip()]
+        variants = [mood._unlabel(v).strip(",;. ") for v in (item.get("variants") or [])
+                    if str(v).strip(",;. ")]
         if len(variants) > 1:
-            shown = ", або ".join(v.rstrip(".") for v in variants)
+            shown = ", або ".join(variants)
             lines.append(f"{order}: {window} — {claim}. Як це вийшло: {shown}? "
                          "Чи нічого з цього?")
         else:

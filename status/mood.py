@@ -320,8 +320,8 @@ def claims(text: str) -> tuple[list[dict], int]:
         if len(parts) < 3 or not all(parts[:3]):
             dropped += 1
             continue
-        variants = [v.strip() for v in re.split(r"\s+або\s+|\s*;\s*", parts[2])
-                    if v.strip()]
+        variants = [v.strip().strip(",;. ") for v in
+                    re.split(r"\s*,?\s+або\s+|\s*;\s*", parts[2]) if v.strip(",;. ")]
         out.append({"window": parts[0], "claim": parts[1], "sign": parts[2],
                     "variants": variants})
     return out[:MAX_CLAIMS], dropped

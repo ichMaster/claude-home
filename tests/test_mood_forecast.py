@@ -357,3 +357,22 @@ def test_a_landed_variant_counts_as_a_hit():
             {"verified": True}]
     got = mood_feedback.score_rows(rows)
     assert got["hits"] == 2 and got["misses"] == 1 and got["unanswered"] == 1
+
+
+@pytest.mark.parametrize("raw,want", [
+    ("а, або б, або в", ["а", "б", "в"]),
+    ("а; б;", ["а", "б"]),
+    ("а або б.", ["а", "б"]),
+])
+def test_a_variant_keeps_no_trailing_punctuation(raw, want):
+    """The model writes «, або», so splitting on «або» left «складне,» — and the evening
+    question read it as «складне,, або» (t1126)."""
+    got, _ = mood.claims(f"ПРОГНОЗ\nдо обіду | тема | {raw}\n")
+    assert got[0]["variants"] == want
+
+
+def test_the_question_cleans_stored_punctuation():
+    stored = [{"window": "до обіду", "claim": "тема",
+               "variants": ["перше,", "друге,"], "sign": ""}]
+    text = mood_feedback.questions(stored)
+    assert ",," not in text and "перше, або друге" in text

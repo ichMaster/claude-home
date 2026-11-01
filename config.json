@@ -342,7 +342,7 @@
       "review": ""
     },
     "parallel": 5,
-    "budget_chars": 1200,
+    "budget_chars": 1400,
     "feedback": "status/state/mood-feedback.jsonl",
     "calibration": "status/state/mood-calibration.md",
     "reference": "status/state/astro-reference.jsonl",
