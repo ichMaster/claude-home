@@ -617,11 +617,23 @@ def log_run(day: date, parts: dict[str, str]) -> None:
 
 
 def save_state(day: date, bio: dict, forecast: dict, computed: str) -> None:
+    """What `/mood` and the `mood` probe show without paying for the reading again.
+
+    `summary` is the probe's one-line answer, so it carries the day's sentence and the
+    claims — the two things worth seeing out of context. It used to read
+    `forecast["summary"]`, a key of the five-block shape, and the first live run of the new
+    pipeline spent four minutes and sent nothing because of it (t1126).
+    """
+    claims_text = "\n".join(
+        f"{c['window']} — {c['claim']}" for c in forecast.get("claim_list", []))
     f = state_path("state")
     f.parent.mkdir(parents=True, exist_ok=True)
     f.write_text(json.dumps(
         {"day": day.isoformat(), "biorhythms": computed,
-         "bio_conclusion": bio["conclusion"], "summary": forecast["summary"],
+         "bio_conclusion": bio.get("conclusion", ""),
+         "summary": "\n\n".join(p for p in (forecast.get("day", ""), claims_text) if p),
+         "action": forecast.get("action", ""), "arc": forecast.get("arc", ""),
+         "claims": forecast.get("claim_list", []),
          "sent_at": datetime.now().astimezone().isoformat(timespec="seconds")},
         ensure_ascii=False, indent=2), encoding="utf-8")
 

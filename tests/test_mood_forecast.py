@@ -240,3 +240,40 @@ def test_an_answer_without_the_marker_yields_nothing():
 
 def test_a_correction_that_lost_the_structure_is_refused():
     assert mood.corrected("ВИПРАВЛЕНО\nсаме лише речення\n\nОЦІНКА\nх\n") == ""
+
+
+# --- the state the `mood` probe reads ----------------------------------------------------
+
+def test_the_state_is_written_with_the_new_keys(tmp_path, monkeypatch):
+    """The live run crashed here: `save_state` still asked for `forecast["summary"]`, a key
+    of the old five-block shape — four minutes of model time spent and nothing sent (t1126).
+    """
+    f = tmp_path / "mood.json"
+    monkeypatch.setattr(mood, "state_path", lambda key: f)
+    parts = mood.forecast_parts(ANSWER)
+    parts["claim_list"] = mood.claims(ANSWER)[0]
+    mood.save_state(date(2026, 11, 2),
+                    {"figures": "ф", "conclusion": "висновок"}, parts, "ф")
+    got = json.loads(f.read_text(encoding="utf-8"))
+    assert got["day"] == "2026-11-02" and got["bio_conclusion"] == "висновок"
+    # what the probe shows: the day's sentence plus the claims, not an old block name
+    assert "Понеділок" in got["summary"]
+    assert "до обіду" in got["summary"]
+    assert len(got["claims"]) == 2
+
+
+def test_the_state_carries_every_key_the_probe_reads(tmp_path, monkeypatch):
+    """The probe is a separate script: it reads `day`, `summary`, `biorhythms` and
+    `bio_conclusion` out of this file, so those names are a contract (`status/probes/mood.py`
+    and `status/probes/bio.py`)."""
+    probe = (ROOT / "status" / "probes" / "mood.py").read_text(encoding="utf-8")
+    bio_probe = (ROOT / "status" / "probes" / "bio.py").read_text(encoding="utf-8")
+    f = tmp_path / "mood.json"
+    monkeypatch.setattr(mood, "state_path", lambda key: f)
+    parts = mood.forecast_parts(ANSWER)
+    parts["claim_list"] = mood.claims(ANSWER)[0]
+    mood.save_state(date(2026, 11, 2), {"figures": "ф", "conclusion": "в"}, parts, "ф")
+    written = json.loads(f.read_text(encoding="utf-8"))
+    for name in ("day", "summary", "biorhythms", "bio_conclusion"):
+        if f'"{name}"' in probe or f'"{name}"' in bio_probe or f"'{name}'" in probe:
+            assert name in written, f"the probe reads {name} and the state must carry it"
