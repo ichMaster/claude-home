@@ -2,7 +2,8 @@
 # The admin panel. Kept in the repo so the unit is version-controlled, installed with
 #   ln -sf ~/claude-home/panel/noos-panel.service ~/.config/systemd/user/
 #   systemctl --user daemon-reload && systemctl --user enable --now noos-panel
-# Loopback only, no authentication — reached over `ssh -L 8091:localhost:8091`.
+# Binds whatever `panel.host` says (0.0.0.0 since 2026-10-31, the owner's choice), behind a
+# password since 2026-11-01: ./panel/auth.py set, from a terminal. No TLS.
 Description=Noos admin panel
 After=default.target
 

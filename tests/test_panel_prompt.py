@@ -255,3 +255,22 @@ def test_the_screens_do_not_grow_sys_path(monkeypatch):
         server.prompt_html()
         server.rules_html()
     assert sys.path == before, "a request must not add an entry"
+
+
+def test_the_order_is_read_out_of_start_sh_not_restated(monkeypatch):
+    """t1115 (truth M13): the order test asserted a list someone typed, so when `start.sh`
+    gained the permission block nothing failed. This one reads the file."""
+    start = (ROOT / "start.sh").read_text(encoding="utf-8")
+    body = start[start.index('PROMPT="'):start.index("BASE_ARGS=")]
+    order = [name for name, needle in (("persona.md", "persona.md"),
+                                       ("факти", "facts.py"),
+                                       ("дозволи", "permissions.py"))
+             if needle in body]
+    assert order == ["persona.md", "факти", "дозволи"], \
+        "start.sh builds the prompt in this order; the screen must use the same one"
+    got = prompt_screen.assembled("a", "b", None, permissions="c")
+    assert [p["name"] for p in got["parts"]] == order
+    # and the handoff note is appended after them, under the heading the shell writes
+    assert prompt_screen.HANDOFF_HEAD in body
+    with_note = prompt_screen.assembled("a", "b", "нотатка", permissions="c")
+    assert with_note["text"].endswith(f"{prompt_screen.HANDOFF_HEAD}\nнотатка")

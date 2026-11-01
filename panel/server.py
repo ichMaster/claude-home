@@ -53,7 +53,7 @@ STATIC = Path(__file__).resolve().parent / "static"
 UNIT_DIR = Path.home() / ".config" / "systemd" / "user"
 # screen → the phase that builds it, for the placeholder pages
 SOON = {
-    "/chat": "фаза 9",
+    "/sent": "фаза 9",
 }
 TITLES = dict(render.SCREENS)
 

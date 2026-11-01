@@ -99,8 +99,8 @@ panel itself.
 terminal; nothing in it can change state yet.
 
 **Tests:** a probe cache that is older than its TTL is rendered as stale; a unit in
-`failed` state is rendered as failed; the prompt rendering matches `start.sh` byte for
-byte.
+`failed` state is rendered as failed; the assembled prompt equals what `start.sh` builds,
+checked by reading `start.sh` itself rather than by restating its order (t1115).
 
 ### v5.2 Scenarios
 
@@ -139,21 +139,22 @@ box that runs the same hybrid query the session runs.
 
 **Description.** Configuration as a table rather than JSON: every key with its default,
 the effective value, and whether `config.local.json` overrode it — with the personal
-values masked, because the panel listens on the local network with no login. Permissions
+values masked, because the panel listens on the local network. Permissions
 as they actually are, which turned out to be no allow/deny list anywhere plus prose in
 `CLAUDE.md`, each rule shown beside the file it stands on. All 14 systemd timers with
 their schedules or intervals, what they run, and a journal tail. Which `.env` files exist,
 and the names of the variables inside them — never a value.
 
-**Narrowed by the owner (2026-11-01):** this version **reads and writes nothing.** Turning
-the prose into switches moved to v5.7, because a switch that cannot tell who flipped it is
-decoration.
+**Narrowed by the owner (2026-11-01):** the reading shipped first and wrote nothing. Turning
+the prose into switches moved to **v5.8**, because a switch that cannot tell who flipped it is
+decoration — and the machine-readable permissions it needed were built there too. The
+settings form arrived with v5.8; this version is the reading half.
 
 **DoD (met):** the merged configuration, the real permissions, the schedule and the key
 list are all answerable in the browser without a terminal; no masked value and no key
 value reaches the HTML.
 
-**Tests:** 30 in `tests/test_panel_rules.py` — masking by key prefix, a list rendered as a
+**Tests:** 52 in `tests/test_panel_rules.py` — masking by key prefix, a list rendered as a
 count, the schedule against real `systemctl show` output, a key file's names without its
 values, every standing rule's source re-read, and `?unit=` refused for anything systemd did
 not name.
@@ -187,7 +188,7 @@ without a phone.
 **Tests:** a message with no voice and a failed delivery both appear correctly; the body is
 hidden unless `panel.sent_bodies` is on.
 
-### v5.7 Authentication
+### v5.7 Authentication (done 2026-11-01)
 
 **Goal:** the panel knows who is asking.
 
@@ -206,13 +207,18 @@ one: it fails closed, never open.
 its review found the journal pane publishing the owner's calendar to the network, and until
 v5.8 turned out to be blocked by a decision that belonged to no version at all (2026-11-01).
 
-**DoD:** a wrong password is refused and logged, a right one lasts twelve hours, an expired
-token is refused, and `panel/auth.py clear` is a terminal escape hatch out of a lockout.
+**DoD (met):** a wrong password is refused and logged, a right one lasts twelve hours, an
+expired token is refused, and `panel/auth.py clear` is a terminal escape hatch out of a
+lockout. `panel.host` deliberately stayed `0.0.0.0`: the tailnet holds this machine and the
+owner's phone, and the machine he works from is not on it — narrowing would have locked him
+out, which was this version's real risk.
 
-**Tests:** the three password cases, the lock after five attempts, a request with no cookie
-redirected to the login page, and `/static` plus `/login` reachable without one.
+**Tests:** 54 in `tests/test_panel_auth.py` — the password cases and a malformed record, the
+lock (including the concurrent burst that used to slip past it), the log that cannot be grown
+without bound, a negative `Content-Length`, clearing the password closing live sessions, and
+the gate end to end over a real socket.
 
-### v5.8 Editing (waits on v5.7)
+### v5.8 Editing (done 2026-11-01)
 
 **Goal:** change the rules from the panel, not only read them.
 
@@ -220,14 +226,16 @@ redirected to the login page, and `/static` plus `/login` reachable without one.
 timer times that rewrite the unit and reload systemd, and the editors for `persona.md` and
 `CLAUDE.md` from v5.1.
 
-**Waits on v5.7, not on effort.** The panel runs as `ich`, the same user as the session and
-the timers. Until it can tell who is asking, a write from it carries the owner's rights and
-nobody's signature, so every write stays in the terminal. With v5.7 in place this is an
-ordinary version.
+**Shipped after v5.7**, because a write needs a signature. The panel runs as `ich`, the same
+user as the session and the timers, so until it could tell who was asking, every write stayed
+in the terminal. Permissions and secrets still do: they are set with `tools/permissions.py
+set` and `panel/auth.py set`, from a terminal, by the owner's standing rule.
 
-**Tests (when it happens):** a schedule change rewrites the unit and reloads systemd; an
-invalid calendar expression is rejected before writing; `config.local.json` keeps its mode
-600 and its version copy.
+**Tests (met):** a schedule change rewrites the unit and reloads systemd, and the unit is
+restored automatically if it stops loading; an invalid calendar expression is rejected before
+writing; the editors refuse an empty file and a halving; every write goes through the
+versioned, locked path; and the form cannot touch a masked value, a permission, a list, or
+the settings that protect the panel itself.
 
 ---
 

@@ -23,7 +23,9 @@ SCREENS = [
     ("/sources", "Джерела"),
     ("/rules", "Правила"),
     ("/tasks", "Задачі"),
-    ("/chat", "Чат"),
+    # «Надіслане» — phase 9, the log of what the system actually said. It replaced the chat
+    # screen the rail used to advertise, which t1098 refused (truth M11).
+    ("/sent", "Надіслане"),
 ]
 
 

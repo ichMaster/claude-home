@@ -37,6 +37,15 @@ session that reads the probes, picks at most two news items per topic, ranks the
 down to four, and sends the result to Telegram as text plus a synthesized voice
 message.
 
+**An admin panel** — a local web board (`panel/`, port 8091, a systemd user unit) for the
+three things a chat is bad at: lists, tables and state. Ten screens: what is alive, what the
+timers did, the horoscope pipeline, the news dedup, 600 subscriptions, the tasks board, the
+commits with their security readings — and the one a chat cannot show at all, the exact
+system prompt the session wakes up with, including when a saved edit is not yet in force. It
+reads and writes only the files the session itself reads, every write is logged to
+`changelog/`, and it is behind one shared password set from a terminal
+(`./panel/auth.py set`). There is no TLS: it is meant for a trusted network.
+
 **Memory** — every transcript under `~/.claude/projects/**/*.jsonl` is indexed
 into SQLite (FTS5 + multilingual MiniLM embeddings) and searched with reciprocal
 rank fusion, so "what did we decide about X" has an answer instead of an apology.
@@ -68,6 +77,8 @@ memory/            transcript index (FTS5 + embeddings), pinned facts, search
 tasks/             event-sourced task store, calendar config
 voice/             synthesis, recognition, ogg conversion
 changelog/         append-only log of the assistant's own changes
+panel/             the admin panel: ten screens, one password, no store of its own
+tools/             permissions, file versions, and other small CLIs
 telegram/          bot command menu registration
 ```
 
