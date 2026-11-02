@@ -241,6 +241,26 @@ def logged_sections(day: date) -> dict[str, str]:
     return sections
 
 
+# The section that holds the reading as it was sent, newest name first. `перевірка` is
+# deliberately absent: it stores the raw check output (ОЦІНКА, ПРАВКИ), not the sent text.
+# The legacy names stay so days written before t1126 remain readable.
+_FINAL_SECTIONS = ("письмо (перероблено)", "письмо",
+                   "підсумок (перероблено)", "підсумок", "прогноз")
+
+
+def final_reading(day: date) -> str:
+    """That day's reading as it was sent — the one chain every consumer of the log shares.
+
+    The t1126 rename of the sections silently killed calibration, reference learning and
+    yesterday's context, because each parsed the log with its own hardcoded names (t1127).
+    """
+    parts = logged_sections(day)
+    for name in _FINAL_SECTIONS:
+        if parts.get(name):
+            return parts[name]
+    return ""
+
+
 def yesterday_block(day: date) -> str:
     """The last reading logged before `day`, as a short note for the next one.
 
@@ -260,10 +280,13 @@ def yesterday_block(day: date) -> str:
     for last in reversed(marks):
         end = next((m.start() for m in all_marks if m.start() > last.end()), len(text))
         block = text[last.end():end]
-        final = re.search(r"--- (?:підсумок(?: \(перероблено\))?|прогноз) ---(.*?)(?=\n--- |\Z)",
-                          block, re.DOTALL)
+        final = re.search(
+            r"--- (?:письмо(?: \(перероблено\))?|підсумок(?: \(перероблено\))?|прогноз) ---"
+            r"(.*?)(?=\n--- |\Z)", block, re.DOTALL)
         body = split_blocks(final.group(1)) if final else {}
-        summary = body.get("ПІДСУМОК") or ""
+        # old format carried the note in ПІДСУМОК; the new one (t1126) in ДЕНЬ/ПРОГНОЗ/ДУГА
+        summary = body.get("ПІДСУМОК") or "\n".join(
+            p for p in (body.get("ДЕНЬ"), body.get("ПРОГНОЗ"), body.get("ДУГА")) if p)
         if summary:
             return (f"Учорашній прогноз ({last.group(1)}) — щоб не суперечити собі й сказати, "
                     f"якщо лінія триває:\n{summary.strip()[:1200]}")

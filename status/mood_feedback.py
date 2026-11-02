@@ -93,8 +93,8 @@ def forecast_of(day: date) -> str:
     sys.path.insert(0, str(HOME / "status"))
     import mood  # noqa: E402  — the log parser lives there
 
-    parts = mood.logged_sections(day)
-    return parts.get("підсумок (перероблено)") or parts.get("підсумок") or parts.get("прогноз") or ""
+    # one shared chain (t1127): the t1126 section rename silently killed calibration here
+    return mood.final_reading(day)
 
 
 def calibrate(day: date, note=print) -> str:

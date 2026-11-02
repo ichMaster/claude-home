@@ -24,17 +24,29 @@ PARKED = HOME / "status" / "state" / "astro-reference-inbox"
 
 DAY_HEAD = re.compile(r"(?m)^===== (\d{4}-\d{2}-\d{2}) =====[ \t]*$")
 STAGE_HEAD = re.compile(r"(?m)^--- (.+?) ---$")
-# the five blocks the summary is written in, with the budget each is held to
+# the legacy five-block shape, with the budget each block was held to (pre-t1126 days)
 BUDGETS = {"КОРОТКО": 300, "ПІДСУМОК": 400, "ІСТОРІЯ": 1800,
            "ГОЛОВНЕ": 450, "НАСАМКІНЕЦЬ": 300}
-BLOCK_HEAD = re.compile(r"(?m)^[\s*#_>•·—-]*(" + "|".join(BUDGETS) + r")[\s*_#]*:?[ \t]*")
+# the current shape (t1126): no per-block budget — astro.budget_chars binds the spoken
+# total, and ОСНОВА is text-only, outside it
+NEW_BLOCKS = ("ДЕНЬ", "ПРОГНОЗ", "ДІЯ", "ДУГА", "ОСНОВА")
+SPOKEN_BLOCKS = ("ДЕНЬ", "ПРОГНОЗ", "ДІЯ", "ДУГА")
+# the stage that holds the reading as it was sent, newest name first (mirrors
+# mood._FINAL_SECTIONS; перевірка holds the raw check output, never the reading)
+SUMMARY_STAGES = ("письмо (перероблено)", "письмо",
+                  "підсумок (перероблено)", "підсумок", "прогноз")
+BLOCK_HEAD = re.compile(r"(?m)^[\s*#_>•·—-]*("
+                        + "|".join(list(BUDGETS) + list(NEW_BLOCKS))
+                        + r")[\s*_#]*:?[ \t]*")
 
 
 def reading_blocks(summary: str) -> list[dict]:
-    """The summary split into its five blocks, each measured against its budget.
+    """The reading split into its blocks, each measured.
 
-    A block the summary does not contain is returned as missing rather than omitted: the
-    reading is supposed to have all five, and a quietly short page would hide that.
+    A new-format reading (t1126) is measured as ДЕНЬ/ПРОГНОЗ/ДІЯ/ДУГА/ОСНОВА with the
+    spoken total held to `astro.budget_chars`; a legacy one keeps its per-block budgets.
+    A block the reading does not contain is returned as missing rather than omitted: a
+    quietly short page would hide that.
     """
     marks = list(BLOCK_HEAD.finditer(summary or ""))
     found: dict[str, str] = {}
@@ -42,6 +54,16 @@ def reading_blocks(summary: str) -> list[dict]:
         end = marks[i + 1].start() if i + 1 < len(marks) else len(summary)
         found[m.group(1).upper()] = summary[m.end():end].strip()
     out = []
+    if any(name in found for name in NEW_BLOCKS):
+        for name in NEW_BLOCKS:
+            text = found.get(name, "")
+            out.append({"name": name, "text": text, "chars": len(text), "budget": None,
+                        "over": False, "missing": not text})
+        budget = int(conf("astro.budget_chars", 1200))
+        spoken = sum(len(found.get(name, "")) for name in SPOKEN_BLOCKS)
+        out.append({"name": "РАЗОМ (голос)", "text": "", "chars": spoken, "budget": budget,
+                    "over": spoken > budget, "missing": False, "total": True})
+        return out
     for name, budget in BUDGETS.items():
         text = found.get(name, "")
         out.append({"name": name, "text": text, "chars": len(text), "budget": budget,
@@ -71,7 +93,7 @@ def day_runs(log: str, day: date | str) -> list[dict]:
             stages.append({"name": h.group(1), "text": block[h.end():stop].strip()})
         runs.append({"day": want, "stages": stages,
                      "summary": next((s["text"] for s in reversed(stages)
-                                      if s["name"].startswith("підсумок")), "")})
+                                      if s["name"] in SUMMARY_STAGES), "")})
     return list(reversed(runs))
 
 

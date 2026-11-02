@@ -239,7 +239,9 @@ def _blocks_table(blocks: list[dict]) -> str:
             text = '<span class="dim">блок відсутній</span>'
         else:
             mark = "warn" if b["over"] else "dim"
-            size = f'<span class="{mark}">{b["chars"]} / {b["budget"]}</span>'
+            # new-format blocks (t1127) carry no per-block budget — the spoken total does
+            limit = f' / {b["budget"]}' if b.get("budget") is not None else ""
+            size = f'<span class="{mark}">{b["chars"]}{limit}</span>'
             text = e(b["text"])
         out.append(f'<tr><td class="id">{e(b["name"])}<td class="age">{size}'
                    f'<td class="text">{text}</tr>')

@@ -172,18 +172,13 @@ def references(day: date | None = None) -> list[dict]:
 
 
 def ours(day: date) -> str:
-    """Our own reading for that day, from the forecast log — the summary block only, which is
-    the part that claims anything."""
-    log = Path(str(path("astro.log", "status/state/mood.log")))
-    if not log.is_file():
-        return ""
-    blocks = log.read_text(encoding="utf-8").split(f"===== {day.isoformat()} =====")
-    if len(blocks) < 2:
-        return ""
-    block = blocks[1].split("=====")[0]
-    if "--- підсумок ---" not in block:
-        return ""
-    return block.split("--- підсумок ---")[1].split("--- біоритми ---")[0].strip()
+    """Our own reading for that day, as it was sent — through the one shared log parser.
+
+    Hand-parsing the log with a hardcoded «--- підсумок ---» is what silently dropped the
+    РОЗХОДЖЕННЯ comparison when t1126 renamed the sections (t1127)."""
+    import mood                                                          # noqa: E402
+
+    return mood.final_reading(day).strip()
 
 
 def learn(day: date | None = None) -> str:
