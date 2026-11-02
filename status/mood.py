@@ -351,7 +351,15 @@ def claims(text: str) -> tuple[list[dict], int]:
 
 
 def claims_file() -> "Path":
-    return CLAIMS or path("astro.claims", "status/state/forecast-claims.jsonl")
+    if CLAIMS:
+        return CLAIMS
+    # per subject, like every other state file (state_path): the claims used to be shared,
+    # so a --subject run deleted the owner's rows for the day and the evening question
+    # asked him about someone else's states (t1131)
+    p = path("astro.claims", "status/state/forecast-claims.jsonl")
+    if astro.SUBJECT:
+        p = p.with_name(f"{p.stem}-{astro.SUBJECT}{p.suffix}")
+    return p
 
 
 def save_claims(day: date, items: list[dict]) -> None:

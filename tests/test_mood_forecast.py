@@ -133,6 +133,30 @@ def test_claims_are_stored_per_day_and_replaced_not_duplicated(tmp_path, monkeyp
     assert mood.load_claims(day, f) == rows
 
 
+def test_claims_are_per_subject(tmp_path, monkeypatch):
+    """t1131: every other state file is per subject, but the claims were shared — so a
+    --subject run deleted the owner's claims for the day, and the 21:00 question asked the
+    owner whether someone else's predicted states happened."""
+    monkeypatch.setattr(mood, "path", lambda key, default=None:
+                        tmp_path / "forecast-claims.jsonl")
+    monkeypatch.setattr(mood, "CLAIMS", None)
+    got, _ = mood.claims(ANSWER)
+    day = date(2026, 11, 2)
+
+    monkeypatch.setattr(mood.astro, "SUBJECT", None)
+    owner_file = mood.claims_file()
+    mood.save_claims(day, got)
+
+    monkeypatch.setattr(mood.astro, "SUBJECT", "kira")
+    assert mood.claims_file() != owner_file, "a subject must get its own claims file"
+    mood.save_claims(day, got[:1])
+
+    monkeypatch.setattr(mood.astro, "SUBJECT", None)
+    assert len(mood.load_claims(day)) == 2, "the owner's claims survive a subject run"
+    monkeypatch.setattr(mood.astro, "SUBJECT", "kira")
+    assert len(mood.load_claims(day)) == 1
+
+
 def test_another_day_is_not_touched(tmp_path, monkeypatch):
     f = tmp_path / "forecast-claims.jsonl"
     monkeypatch.setattr(mood, "CLAIMS", f)
