@@ -311,6 +311,10 @@ def save_reference(text: str, day: str, author: str, learn: bool) -> str:
     if learn:
         cmd.append("--learn")
     ok, said = run_script(*cmd, timeout=900)
+    # the inbox file is already written, so the change is logged either way: the early
+    # return used to skip the record entirely and the reference vanished from the change
+    # log (t1132)
+    changelog_write.record("panel-zirka", "reference", f"{f.name} ({when.isoformat()})")
     if not ok:
         return f"Текст збережено у {f.name}, але внести не вдалося: {said}"
     return f"Еталон записано ({len(text)} символів, на {when.isoformat()}). {said}"
@@ -389,12 +393,16 @@ def tasks_action(form: dict) -> str:
         if not tid or not when:
             return "Задачу або дату не названо."
         ok, said = run_script(py, store, "defer", tid, when, timeout=60)
+        if ok:
+            changelog_write.record("panel-task", "tasks/tasks.jsonl", f"defer: {tid} → {when}")
         return said if ok else f"Не вдалося перенести: {said}"
     if what == "block":
         on = (form.get("on") or ["on"])[0]
         if not tid:
             return "Задачу не названо."
         ok, said = run_script(py, store, "block", tid, on, timeout=60)
+        if ok:
+            changelog_write.record("panel-task", "tasks/tasks.jsonl", f"block: {tid} {on}")
         return said if ok else f"Не вдалося: {said}"
     return "Невідома дія."
 
@@ -444,6 +452,8 @@ def memory_action(form: dict) -> str:
         pin = current["pin"] if current["pin"] in (0, 1, 2) else 1
         level = ({0: 2, 2: 1, 1: 1} if what == "pin_up" else {1: 2, 2: 0, 0: 0})[pin]
         ok, said = run_script(py, facts_py, "pin", fid, str(level), timeout=60)
+        if ok:
+            changelog_write.record("panel-fact", "memory/facts", f"pin {fid} → {level}")
         return said if ok else f"Не вдалося змінити рівень: {said}"
     return "Невідома дія."
 
@@ -537,8 +547,12 @@ def zirka_action(form: dict) -> str:
         ok, said = run_script(py, str(HOME / "status" / "astro_learn.py"), "add",
                               "--file", str(f), "--day", f.stem.split("-", 2)[-1],
                               "--period", "день", "--learn", timeout=900)
+        if ok:
+            changelog_write.record("panel-zirka", "ingest", name)
         return (f"Внесено: {said}" if ok else f"Внести не вдалося: {said}")
-    if what in ("recalc", "ask", "calibrate", "ingest", "reference"):
+    # reference and ingest record in their own branches above — listing them here was dead
+    # code behind their early returns (t1132)
+    if what in ("recalc", "ask", "calibrate"):
         changelog_write.record("panel-zirka", what, day)
     if what == "recalc":
         unit = str(conf("astro.recalc_unit", "noos-mood-recalc"))

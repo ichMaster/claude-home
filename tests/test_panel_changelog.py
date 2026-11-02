@@ -13,9 +13,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "panel"))
 
+import types                                                            # noqa: E402
+
 import changelog_write                                                  # noqa: E402
 import prompt_screen                                                    # noqa: E402
 import rules_screen                                                     # noqa: E402
+import server                                                           # noqa: E402
 
 
 def read(folder):
@@ -81,6 +84,72 @@ def test_a_file_save_is_logged(tmp_path, monkeypatch):
     assert ok
     rec = read(tmp_path / "log")[0]
     assert rec["kind"] == "panel-edit" and "persona.md" in rec["target"]
+
+
+# --- t1132: the five writes that went past the log --------------------------------------
+
+def _scripts_ok(monkeypatch):
+    import subprocess
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: types.SimpleNamespace(
+        returncode=0, stdout="ok", stderr=""))
+
+
+def _scripts_fail(monkeypatch):
+    import subprocess
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: types.SimpleNamespace(
+        returncode=1, stdout="", stderr="зламалось"))
+
+
+def test_a_stored_reference_is_logged(tmp_path, monkeypatch):
+    """`reference` and `ingest` returned before the record whose own list names them."""
+    monkeypatch.setattr(server, "HOME", tmp_path)
+    monkeypatch.setattr(changelog_write, "LOG_DIR", tmp_path / "log")
+    _scripts_ok(monkeypatch)
+    server.zirka_action({"action": ["reference"], "text": ["☽ календар"],
+                         "day": ["2026-11-02"], "author": [""]})
+    rows = read(tmp_path / "log")
+    assert rows and rows[0]["kind"] == "panel-zirka"
+
+
+def test_an_ingested_file_is_logged(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "HOME", tmp_path)
+    monkeypatch.setattr(changelog_write, "LOG_DIR", tmp_path / "log")
+    inbox = tmp_path / "status" / "state" / "astro-reference-inbox"
+    inbox.mkdir(parents=True)
+    (inbox / "20261102-080000-2026-11-02.txt").write_text("еталон", encoding="utf-8")
+    _scripts_ok(monkeypatch)
+    server.zirka_action({"action": ["ingest"],
+                         "file": ["20261102-080000-2026-11-02.txt"], "day": []})
+    rows = read(tmp_path / "log")
+    assert rows and rows[0]["kind"] == "panel-zirka"
+
+
+def test_defer_and_block_are_logged(tmp_path, monkeypatch):
+    monkeypatch.setattr(changelog_write, "LOG_DIR", tmp_path / "log")
+    _scripts_ok(monkeypatch)
+    server.tasks_action({"action": ["defer"], "id": ["t1"], "when": ["завтра"]})
+    server.tasks_action({"action": ["block"], "id": ["t1"], "on": ["on"]})
+    rows = read(tmp_path / "log")
+    assert len(rows) == 2 and all(r["kind"] == "panel-task" for r in rows)
+    assert "defer" in rows[0]["detail"] and "block" in rows[1]["detail"]
+
+
+def test_pin_change_is_logged(tmp_path, monkeypatch):
+    import memory_screen
+    monkeypatch.setattr(changelog_write, "LOG_DIR", tmp_path / "log")
+    monkeypatch.setattr(memory_screen, "facts", lambda: {
+        "in_prompt": [{"id": "f1", "pin": 1}], "cut": [], "unpinned": []})
+    _scripts_ok(monkeypatch)
+    server.memory_action({"action": ["pin_up"], "id": ["f1"]})
+    rows = read(tmp_path / "log")
+    assert rows and rows[0]["kind"] == "panel-fact" and "f1" in rows[0]["detail"]
+
+
+def test_a_failed_script_records_nothing(tmp_path, monkeypatch):
+    monkeypatch.setattr(changelog_write, "LOG_DIR", tmp_path / "log")
+    _scripts_fail(monkeypatch)
+    server.tasks_action({"action": ["defer"], "id": ["t1"], "when": ["завтра"]})
+    assert read(tmp_path / "log") == [], "a refusal changed nothing, so it is not a change"
 
 
 def test_a_refused_write_is_not_logged(tmp_path, monkeypatch):
