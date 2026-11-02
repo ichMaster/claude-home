@@ -41,7 +41,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from noosconf import conf, path                                          # noqa: E402
+from noosconf import atomic_write_text, conf, path                       # noqa: E402
 
 HOME = Path(__file__).resolve().parents[2]
 PROMPTS = HOME / "status" / "bots"
@@ -124,7 +124,10 @@ def load_state(bot: str) -> dict:
 
 def save_state(bot: str, st: dict) -> None:
     st["history"] = st.get("history", [])[-int(conf("telegram.inbox.history", 12)):]
-    state_file(bot).write_text(json.dumps(st, ensure_ascii=False, indent=1), encoding="utf-8")
+    # atomic, like every other state writer here: a SIGKILL past TimeoutStartSec (or a
+    # power cut) mid-write truncated the file, load_state fell back to offset 0 and the
+    # next run re-answered the whole last batch (t1130)
+    atomic_write_text(state_file(bot), json.dumps(st, ensure_ascii=False, indent=1))
 
 
 def message_shape(msg: dict) -> dict:
