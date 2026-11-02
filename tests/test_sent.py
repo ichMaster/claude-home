@@ -182,6 +182,36 @@ def test_the_screen_has_no_form():
     assert 'method="post"' not in html
 
 
+# --- t1129: the trim must split on record boundaries, not on every Unicode newline --------
+
+@pytest.mark.parametrize("sep", [" ", " ", ""])
+def test_trim_keeps_a_record_with_a_unicode_line_separator_whole(tmp_path, monkeypatch, sep):
+    """json.dumps(ensure_ascii=False) leaves U+2028/U+2029/NEL raw, and a trim pass through
+    .splitlines() used to split such a record into two permanently unparseable lines."""
+    log = tmp_path / "chat-log.jsonl"
+    monkeypatch.setattr(sent_log, "LOG", log)
+    monkeypatch.setattr(sent_log, "max_lines", lambda: 3)
+    for i in range(3):
+        sent_log.append(bot="main", kind="x", text=f"рядок один{sep}рядок два {i}",
+                        codes={"text": 200}, voice=False)
+    sent_log.append(bot="main", kind="x", text="останній", codes={"text": 200}, voice=False)
+    kept = [ln for ln in log.read_text(encoding="utf-8").split("\n") if ln]
+    assert len(kept) == 3, "the cap counts records, not visual lines"
+    for ln in kept:
+        json.loads(ln)                                   # every kept line must stay valid
+
+
+def test_trim_still_caps_at_max_lines(tmp_path, monkeypatch):
+    log = tmp_path / "chat-log.jsonl"
+    monkeypatch.setattr(sent_log, "LOG", log)
+    monkeypatch.setattr(sent_log, "max_lines", lambda: 2)
+    for i in range(5):
+        sent_log.append(bot="main", kind="x", text=f"повідомлення {i}",
+                        codes={"text": 200}, voice=False)
+    kept = [json.loads(ln) for ln in log.read_text(encoding="utf-8").split("\n") if ln]
+    assert [r["text"] for r in kept] == ["повідомлення 3", "повідомлення 4"]
+
+
 # --- the wiring: notify.sh must actually write the log -----------------------------------
 
 def test_notify_sh_appends_to_the_log():

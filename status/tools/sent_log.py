@@ -108,7 +108,13 @@ def append(bot: str, kind: str, text: str, codes: dict, voice: bool,
             with LOG.open("a", encoding="utf-8") as f:
                 f.write(line + "\n")
             cap = max_lines()
-            lines = LOG.read_text(encoding="utf-8", errors="replace").splitlines()
+            # split on "\n" alone — the one separator the appender writes. .splitlines()
+            # also splits on U+2028/U+2029/NEL, which json.dumps(ensure_ascii=False)
+            # leaves raw inside a record, and a trim through it tore that record into two
+            # permanently unparseable lines (t1129).
+            lines = LOG.read_text(encoding="utf-8", errors="replace").split("\n")
+            if lines and lines[-1] == "":
+                lines.pop()
             if len(lines) > cap:
                 atomic_write_text(LOG, "\n".join(lines[-cap:]) + "\n")
     except Exception:                                                   # noqa: BLE001
