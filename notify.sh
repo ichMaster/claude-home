@@ -123,9 +123,24 @@ sent_log() {
 }
 trap 'sent_log' EXIT
 
-if [ "$voice" != 1 ]; then
+# The exit code is the delivery verdict: watch.py persists its "already reported" state
+# only on 0 (t1046), and before t1121 an unreachable Telegram aborted this script non-zero
+# under `set -e`. The t1121 rewrite kept the Sent log but exited 0 on every outcome, so an
+# undelivered warn was recorded as sent and silenced forever (t1128). Delivered means: the
+# text part reached the chat — or, for --voice-only, the voice part did. An empty text
+# (no part attempted) keeps 0, as it always has.
+finish() {
   sent_log
+  if [ "$text_only" = 1 ]; then
+    [ -n "$text_code" ] && [ "$text_code" != "200" ] && exit 1
+  else
+    [ "$voice_code" != "200" ] && exit 1
+  fi
   exit 0
+}
+
+if [ "$voice" != 1 ]; then
+  finish
 fi
 
 # for synthesis: strip emoji, bullets and links — they sound like garbage
@@ -169,8 +184,7 @@ if [ "$synth" != 0 ]; then
   send_error="${send_error:+$send_error; }синтез $synth"
   voice_code="0"
   echo "голос не зробився ($synth)" >&2
-  sent_log
-  exit 0
+  finish
 fi
 vsilent=()
 if [ "$quiet" = 1 ]; then vsilent=(-F disable_notification=true); fi
@@ -185,4 +199,4 @@ if [ "$rc" != 0 ]; then
 else
   echo "голос $voice_code"
 fi
-sent_log
+finish

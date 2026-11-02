@@ -288,6 +288,41 @@ def test_one_message_makes_exactly_one_record(offline):
     assert rows[0]["codes"] == {"text": 200, "voice": 200}
 
 
+# --- t1128: the exit code is the delivery verdict (t1046 regression via t1121) -----------
+
+def test_a_transport_failure_exits_nonzero(offline):
+    """watch.py persists its "already reported" state only on exit 0 (t1046); t1121's
+    `set +e` rewrite made every failure exit 0, so an undelivered warn was silenced
+    forever."""
+    out, rows = run_notify(offline, ["--no-voice", "z"], STUB_TEXT_FAIL=28)
+    assert out.returncode != 0, "an undelivered message must not report success"
+    assert rows and rows[0]["ok"] is False, "and it must still be recorded (t1121)"
+
+
+def test_a_refused_message_exits_nonzero(offline):
+    out, rows = run_notify(offline, ["--no-voice", "x"], STUB_TEXT_CODE=400)
+    assert out.returncode != 0
+    assert rows and rows[0]["ok"] is False
+
+
+def test_a_delivered_text_with_a_failed_voice_exits_zero(offline):
+    """The alert reached the chat: watch.py must not re-send it over a missing voice."""
+    out, rows = run_notify(offline, ["w"], STUB_VOICE_FAIL=7)
+    assert out.returncode == 0
+    assert rows and rows[0]["codes"].get("text") == 200
+
+
+def test_voice_only_with_a_failed_synthesis_exits_nonzero(offline):
+    out, rows = run_notify(offline, ["--voice-only", "v"], STUB_EL_FAIL=1)
+    assert out.returncode != 0, "nothing was delivered"
+    assert rows and len(rows) == 1
+
+
+def test_the_ok_path_still_exits_zero(offline):
+    out, rows = run_notify(offline, ["ok-path"])
+    assert out.returncode == 0 and len(rows) == 1 and rows[0]["ok"] is True
+
+
 def test_the_kind_comes_from_the_environment_when_a_model_sends(offline):
     """M1: four units send through `claude -p`, where the parent is a harness shell and the
     script name is nowhere in the tree. The wrappers export NOOS_SENT_KIND instead."""
