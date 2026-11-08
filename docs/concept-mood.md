@@ -1,5 +1,8 @@
 # The morning forecast — how it works
 
+> **Stale, kept as history.** This describes the six-stage, ~17-call pipeline removed by
+> t1126 on 2026-11-01. The current record is [astro-v1-asis.md](astro-v1-asis.md).
+
 Two messages every morning at 08:15: **biorhythms** and **astrology**. They are separate on
 purpose — one is arithmetic from a birth date, the other is a sky, and merged into one
 verdict it stops being visible which claim came from where.

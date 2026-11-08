@@ -135,6 +135,7 @@ claude-memory.timer   every 15 min   incremental transcript indexing
 - [docs/features/ADMIN-PANEL.md](docs/features/ADMIN-PANEL.md) — the v5 panel: screens, design, limits
 - [docs/concept-tasks.md](docs/concept-tasks.md) — the task and planning concept
 - [docs/design-status.md](docs/design-status.md) — why probes look the way they do
+- [docs/astro-v1-asis.md](docs/astro-v1-asis.md) — the morning forecast as it stands, and the dead ends behind it
 - [CLAUDE.md](CLAUDE.md) — the operating instructions the session itself reads
 
 ## License
