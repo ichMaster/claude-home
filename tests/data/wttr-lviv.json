@@ -1,0 +1,238 @@
+{
+ "weather": [
+  {
+   "astronomy": [
+    {
+     "moon_illumination": "0",
+     "moon_phase": "New Moon",
+     "moonrise": "07:51 AM",
+     "moonset": "04:16 PM",
+     "sunrise": "07:26 AM",
+     "sunset": "04:49 PM"
+    }
+   ],
+   "avgtempC": "1",
+   "date": "2026-11-09",
+   "hourly": [
+    {
+     "FeelsLikeC": "-4",
+     "WindGustKmph": "8",
+     "chanceoffog": "0",
+     "chanceoffrost": "66",
+     "chanceofrain": "5",
+     "chanceofsnow": "15",
+     "chanceofthunder": "0",
+     "humidity": "64",
+     "lang_uk": [
+      {
+       "value": "Ясно"
+      }
+     ],
+     "pressure": "1030",
+     "tempC": "-1",
+     "time": "0",
+     "weatherDesc": [
+      {
+       "value": "Clear "
+      }
+     ],
+     "winddir16Point": "SE",
+     "windspeedKmph": "8"
+    },
+    {
+     "FeelsLikeC": "-5",
+     "WindGustKmph": "9",
+     "chanceoffog": "0",
+     "chanceoffrost": "77",
+     "chanceofrain": "6",
+     "chanceofsnow": "16",
+     "chanceofthunder": "0",
+     "humidity": "67",
+     "lang_uk": [
+      {
+       "value": "Ясно"
+      }
+     ],
+     "pressure": "1029",
+     "tempC": "-1",
+     "time": "300",
+     "weatherDesc": [
+      {
+       "value": "Clear "
+      }
+     ],
+     "winddir16Point": "SE",
+     "windspeedKmph": "9"
+    },
+    {
+     "FeelsLikeC": "-5",
+     "WindGustKmph": "9",
+     "chanceoffog": "0",
+     "chanceoffrost": "84",
+     "chanceofrain": "6",
+     "chanceofsnow": "18",
+     "chanceofthunder": "0",
+     "humidity": "69",
+     "lang_uk": [
+      {
+       "value": "Ясно"
+      }
+     ],
+     "pressure": "1029",
+     "tempC": "-2",
+     "time": "600",
+     "weatherDesc": [
+      {
+       "value": "Clear "
+      }
+     ],
+     "winddir16Point": "SE",
+     "windspeedKmph": "9"
+    },
+    {
+     "FeelsLikeC": "-3",
+     "WindGustKmph": "25",
+     "chanceoffog": "0",
+     "chanceoffrost": "40",
+     "chanceofrain": "4",
+     "chanceofsnow": "8",
+     "chanceofthunder": "0",
+     "humidity": "61",
+     "lang_uk": [
+      {
+       "value": "Сонячно"
+      }
+     ],
+     "pressure": "1028",
+     "tempC": "0",
+     "time": "900",
+     "weatherDesc": [
+      {
+       "value": "Sunny"
+      }
+     ],
+     "winddir16Point": "SE",
+     "windspeedKmph": "9"
+    },
+    {
+     "FeelsLikeC": "3",
+     "WindGustKmph": "19",
+     "chanceoffog": "0",
+     "chanceoffrost": "1",
+     "chanceofrain": "1",
+     "chanceofsnow": "0",
+     "chanceofthunder": "0",
+     "humidity": "44",
+     "lang_uk": [
+      {
+       "value": "Сонячно"
+      }
+     ],
+     "pressure": "1027",
+     "tempC": "6",
+     "time": "1200",
+     "weatherDesc": [
+      {
+       "value": "Sunny"
+      }
+     ],
+     "winddir16Point": "SE",
+     "windspeedKmph": "14"
+    },
+    {
+     "FeelsLikeC": "4",
+     "WindGustKmph": "17",
+     "chanceoffog": "0",
+     "chanceoffrost": "0",
+     "chanceofrain": "2",
+     "chanceofsnow": "0",
+     "chanceofthunder": "0",
+     "humidity": "44",
+     "lang_uk": [
+      {
+       "value": "Сонячно"
+      }
+     ],
+     "pressure": "1026",
+     "tempC": "7",
+     "time": "1500",
+     "weatherDesc": [
+      {
+       "value": "Sunny"
+      }
+     ],
+     "winddir16Point": "SE",
+     "windspeedKmph": "13"
+    },
+    {
+     "FeelsLikeC": "-2",
+     "WindGustKmph": "26",
+     "chanceoffog": "0",
+     "chanceoffrost": "21",
+     "chanceofrain": "5",
+     "chanceofsnow": "12",
+     "chanceofthunder": "0",
+     "humidity": "66",
+     "lang_uk": [
+      {
+       "value": "Ясно"
+      }
+     ],
+     "pressure": "1025",
+     "tempC": "1",
+     "time": "1800",
+     "weatherDesc": [
+      {
+       "value": "Clear "
+      }
+     ],
+     "winddir16Point": "SE",
+     "windspeedKmph": "12"
+    },
+    {
+     "FeelsLikeC": "-4",
+     "WindGustKmph": "31",
+     "chanceoffog": "0",
+     "chanceoffrost": "50",
+     "chanceofrain": "7",
+     "chanceofsnow": "9",
+     "chanceofthunder": "0",
+     "humidity": "73",
+     "lang_uk": [
+      {
+       "value": "Ясно"
+      }
+     ],
+     "pressure": "1025",
+     "tempC": "0",
+     "time": "2100",
+     "weatherDesc": [
+      {
+       "value": "Clear "
+      }
+     ],
+     "winddir16Point": "SE",
+     "windspeedKmph": "12"
+    }
+   ],
+   "maxtempC": "7",
+   "mintempC": "-2"
+  }
+ ],
+ "current_condition": [
+  {
+   "FeelsLikeC": "-1",
+   "lang_uk": [
+    {
+     "value": "Сонячно"
+    }
+   ],
+   "temp_C": "3",
+   "weatherDesc": [
+    {
+     "value": "Sunny"
+    }
+   ]
+  }
+ ]
+}

@@ -18,6 +18,7 @@ read -r -d '' COMMANDS <<'JSON' || true
  {"command":"power",   "description":"Світло: графік і стан черги 4.1"},
  {"command":"alarm",   "description":"Тривоги по Львівщині"},
  {"command":"weather", "description":"Погода у Львові"},
+ {"command":"forecast","description":"Прогноз погоди на сьогодні"},
  {"command":"host",    "description":"Сервер: диск, пам'ять, сервіси"},
  {"command":"status",  "description":"Усе разом одним повідомленням"},
  {"command":"mail",    "description":"Що нового в пошті"},

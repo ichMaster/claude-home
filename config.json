@@ -119,6 +119,14 @@
         "jobs-listings@linkedin.com"
       ],
       "ttl": 900
+    },
+    "forecast": {
+      "_": "The day's forecast (status/probes/forecast.py, sent by noos-weather-day.timer in the morning). Thresholds: a part of the day is called wet at precip_chance, and the probe goes warn at warn_rain, warn_gust or warn_cold. The city is shared with probes.weather.",
+      "ttl": 3600,
+      "precip_chance": 50,
+      "warn_rain": 70,
+      "warn_gust": 60,
+      "warn_cold": -10
     }
   },
   "digest": {

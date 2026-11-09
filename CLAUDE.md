@@ -173,6 +173,7 @@ the session is alive.
 | `/power` | `./status/send.sh loe` |
 | `/alarm` | `./status/send.sh alarm` |
 | `/weather` | `./status/send.sh weather` |
+| `/forecast` | `./status/send.sh forecast` — прогноз на сьогодні |
 | `/host` | `./status/send.sh host services` |
 | `/status` | `./status/send.sh --title "Стан" loe alarm weather host services` |
 | `/mail` | `./status/send.sh mail` |
@@ -353,6 +354,11 @@ indexed into `memory/sessions.db` (project `факти`), so search finds them.
 - `noos-youtube.timer` — 18:05, `status/youtube-headless.sh`: drains the accumulated
   videos (`youtube.py --drain`), picks 4-6 worth watching and sends them as a separate
   message with links.
+- `noos-weather-day.timer` — 08:00, `status/weather-send.sh --day`: the day's forecast
+  (probe `forecast`).
+- `noos-weather.timer` — 11:00, 14:00, 17:00, 20:00 and 23:00,
+  `status/weather-send.sh`: the current weather. Together with the forecast at 08:00 that
+  is one message every three hours, and nothing inside the sleep window.
 
 **IMPORTANT:** in headless runs disable **the Telegram plugin specifically**, not MCP as
 a whole: `--settings status/digest-settings.json` (it holds `enabledPlugins` with
@@ -682,6 +688,36 @@ status/mood_feedback.py calibrate --day 2026-10-27
 status/mood_feedback.py rules    the rules the prompts are currently obeying
 status/mood_feedback.py score    the hit rate of the claims over the last 14 days
 ```
+
+## Weather (probes `weather` and `forecast`)
+
+Two probes over wttr.in's `format=j1` (plain HTTPS, no API key, works headless), because
+"what is it like now" and "how will the day go" are different questions:
+
+- `weather` — the current state plus today's min and max. This is what the digest, the
+  watcher and `/weather` have always used.
+- `forecast` (`status/probes/forecast.py`, t1141) — the day itself: temperature by part of
+  the day (morning, afternoon, evening), the precipitation window with its hours and peak
+  chance, the wind with gusts, frost, thunder or fog when likely, and sunrise and sunset in
+  24-hour form.
+
+The owner asked for this on 2026-11-09, by voice: weather every three hours, and a forecast
+at the start of the day. `status/weather-send.sh` sends either one — no argument for the
+current state, `--day` for the forecast — and the two timers above do it on schedule.
+
+**It is written to be heard, not read.** No Latin script, no abbreviations: units are
+Ukrainian words («кілометрів на годину», «градусів»), a window that runs to the end of the
+day says «до півночі» rather than `24:00`, and a test asserts the text contains no Latin
+letter at all. `summarize(data)` is pure, so the shape of a day is tested from a stored
+response (`tests/data/wttr-lviv.json`) with no network.
+
+Thresholds live in `config.json` (`probes.forecast`): `precip_chance` (50) is when a wet
+window is worth naming, and the probe goes `warn` at `warn_rain` (70%), `warn_gust`
+(60 km/h) or `warn_cold` (-10°C). The city is shared with `probes.weather`.
+
+wttr.in returns three days, so anything beyond tomorrow needs another source — Open-Meteo
+answers a week without a key and is the right tool for a question like "will it freeze at
+night this week".
 
 ## Facebook
 

@@ -53,3 +53,7 @@ memory/handoff-last.md
 
 # версії незамінних файлів (копії config.local.json, фактів, токенів) — ніколи в репо
 .versions/
+
+# Scratch space for the headless senders (digest sections, spoken copy) — holds mail,
+# calendar and task content, so it never goes to a public repository.
+tmp/
