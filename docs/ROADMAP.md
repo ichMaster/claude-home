@@ -263,6 +263,40 @@ it stays in `.secrets/`, mode 600, and authorization happens in the terminal.
 Sunday evening: what was done, what stalled, what to drop — generated from the task log
 and the change log, answered by one voice reply.
 
+## v7 — The forecast, rebuilt (astro v2)
+
+Replacing the morning astrology reading with one built on a working astrologer's method
+rather than argued from first principles. The owner set the shape on 2026-11-11: learn to
+read his finished calendar, then to explain the same facts, then to pick the facts. Full
+plan in [astro-v2-reference.md](astro-v2-reference.md).
+
+### v7.0 The scaffold (t1140)
+`status/mood2.py`, `status/mood2/`, an `astro2` config block, its own log, state and claims,
+nothing on a timer, and a refusal to run without that config block. v1 keeps the 08:15 slot
+throughout, so the two readings can be heard side by side. Recorded as-is first:
+[astro-v1-asis.md](astro-v1-asis.md).
+
+### v7.1 Read his calendar (t1143)
+His weekly hourly Moon calendar becomes the day's reading — translated, sliced by date, the
+loud windows kept, said for the ear. No astrology of our own; a missing day stays silent
+rather than being filled in. Measured mechanically: every claim traceable to a line of his,
+every window he weighted loud surviving into the output.
+
+### v7.2 Explain the same facts (t1144)
+His facts with the meanings stripped off, our interpretation, his text as the answer sheet.
+Graded per factor — same, close, opposite, missing — and the product is a vocabulary of
+factor → meaning, each entry sourced by day. Gated by how much of his text is on file, not by
+code: two weeks before a number means anything.
+
+### v7.3 Pick the facts (t1145)
+Our own ephemeris, his ranking. Needs three things it does not compute yet: the Moon's ingress
+moment, the void-of-course window, and a published intensity tier. Scored by selection overlap
+on held-back days, in both directions.
+
+### v7.4 The switch
+v2 takes 08:15 and v1 is retired — only after the owner has heard both for a while and said
+so.
+
 ---
 
 ## Deliberately not doing
