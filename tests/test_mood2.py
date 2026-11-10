@@ -35,6 +35,25 @@ def _digests():
     return out
 
 
+# A reference day small enough to reason about: one loud window, no void, no natal hit — so
+# the fidelity counts in check_items have exactly one thing to agree about.
+FAKE_REFERENCE = ("Ср 11ноя с 10:00 до 12:00\n"
+                  "✤✤✤ Влияет Сатурн в 1 доме. Якесь трактування. (☽9°♐△♄9°♈)\n")
+FAKE_ITEMS = [{"id": "p1", "kind": "window", "from": "10:00", "to": "12:00", "weight": 3,
+               "bodies": "Сатурн", "house": "1", "formula": "(☽9°♐△♄9°♈)",
+               "meaning": "Якесь трактування.", "natal": None, "span": None}]
+
+
+def canned(stage, prompt):
+    """What each stage would answer, in the shape the next stage requires."""
+    if stage == "read":
+        return json.dumps(FAKE_ITEMS, ensure_ascii=False)
+    if stage == "pick":
+        return json.dumps({"ids": ["p1"], "frame": "p1", "order": "одне вікно",
+                           "drop": "нічого"}, ensure_ascii=False)
+    return f"відповідь стадії {stage}"
+
+
 @pytest.fixture
 def staged(tmp_path, monkeypatch):
     """A v2 whose own paths live in tmp_path and whose model calls are canned."""
@@ -42,13 +61,12 @@ def staged(tmp_path, monkeypatch):
 
     def fake_call(stage, prompt):
         calls.append((stage, prompt))
-        return f"відповідь стадії {stage}"
+        return canned(stage, prompt)
 
     monkeypatch.setattr(mood2, "call", fake_call)
     monkeypatch.setattr(mood2, "state_path",
                         lambda key: tmp_path / f"astro2-{key}")
-    monkeypatch.setattr(mood2, "fact_text", lambda day: "факти")
-    monkeypatch.setattr(mood2, "reference_text", lambda day: "еталон")
+    monkeypatch.setattr(mood2, "reference_text", lambda day: FAKE_REFERENCE)
     return calls, tmp_path
 
 
@@ -107,7 +125,7 @@ def test_placeholders_block_sending(monkeypatch):
     """The prompts are stubs in phase 0, and a stub must not be able to speak."""
     sent = []
     monkeypatch.setattr(mood, "send", lambda text, role="mood": sent.append(text))
-    assert mood2.placeholders() == mood2.stages(), "phase 0 prompts are all placeholders"
+    assert "day" in mood2.placeholders(), "the writing stage is still a stub (phase 1 fills it)"
     with pytest.raises(mood2.NotReady):
         mood2.send("читання")
     assert sent == []
@@ -176,10 +194,9 @@ def test_cli_facts_needs_no_model():
 def test_cli_send_refuses_and_says_why(monkeypatch, tmp_path, capsys):
     """`--send` on a scaffold exits 2 and delivers nothing, instead of speaking a stub."""
     sent = []
-    monkeypatch.setattr(mood2, "call", lambda stage, prompt: f"текст {stage}")
+    monkeypatch.setattr(mood2, "call", canned)
     monkeypatch.setattr(mood2, "state_path", lambda key: tmp_path / f"astro2-{key}")
-    monkeypatch.setattr(mood2, "fact_text", lambda day: "факти")
-    monkeypatch.setattr(mood2, "reference_text", lambda day: "еталон")
+    monkeypatch.setattr(mood2, "reference_text", lambda day: FAKE_REFERENCE)
     monkeypatch.setattr(mood, "send", lambda text, role="mood": sent.append(text))
     monkeypatch.setattr(sys, "argv", ["mood2.py", "--day", DAY.isoformat(), "--send"])
     assert mood2.main() == 2
@@ -202,8 +219,7 @@ def test_timed_out_stage_names_itself(monkeypatch):
 
 
 def test_failed_stage_exits_three_and_writes_nothing(monkeypatch, tmp_path, capsys):
-    monkeypatch.setattr(mood2, "fact_text", lambda day: "факти")
-    monkeypatch.setattr(mood2, "reference_text", lambda day: "еталон")
+    monkeypatch.setattr(mood2, "reference_text", lambda day: FAKE_REFERENCE)
     monkeypatch.setattr(mood2, "state_path", lambda key: tmp_path / f"astro2-{key}")
     monkeypatch.setattr(mood2, "call",
                         lambda stage, prompt: (_ for _ in ()).throw(
