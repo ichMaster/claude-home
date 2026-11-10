@@ -362,5 +362,22 @@
     "claims": "status/state/forecast-claims.jsonl",
     "score_days": 14,
     "ask_after_hour": 18
+  },
+  "astro2": {
+    "_": "The v2 forecast — a reference astrologer's method, learned in phases (docs/astro-v2-reference.md). Its own paths so a v2 run never touches v1's history; nothing on a timer until the owner says v2 replaces v1. Remove this block and mood2.py refuses to run rather than falling back to v1's files.",
+    "prompts": "status/mood2",
+    "log": "status/state/astro2/mood-v2.log",
+    "state": "status/state/astro2/mood-v2.json",
+    "claims": "status/state/astro2/forecast-claims-v2.jsonl",
+    "stages": ["read", "pick", "day"],
+    "models": {
+      "read": "sonnet",
+      "pick": "",
+      "day": ""
+    },
+    "timeout": 420,
+    "budget_chars": 1200,
+    "items_max": 5,
+    "loud_min": 3
   }
 }

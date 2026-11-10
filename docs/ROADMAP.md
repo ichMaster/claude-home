@@ -270,7 +270,7 @@ rather than argued from first principles. The owner set the shape on 2026-11-11:
 read his finished calendar, then to explain the same facts, then to pick the facts. Full
 plan in [astro-v2-reference.md](astro-v2-reference.md).
 
-### v7.0 The scaffold (t1140)
+### v7.0 The scaffold (t1140, done 2026-11-11)
 `status/mood2.py`, `status/mood2/`, an `astro2` config block, its own log, state and claims,
 nothing on a timer, and a refusal to run without that config block. v1 keeps the 08:15 slot
 throughout, so the two readings can be heard side by side. Recorded as-is first:

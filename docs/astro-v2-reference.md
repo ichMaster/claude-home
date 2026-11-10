@@ -199,10 +199,14 @@ schedule follows from that.
 
 ## Where it all lives
 
-Phase 0 is the scaffold already specified in `tasks/specs/t1140.md` and not yet built: its
-own entry point (`status/mood2.py`), its own prompt directory (`status/mood2/`), its own log,
-state and claims under an `astro2` config block, nothing on a timer, and a refusal to run at
-all if that config block is missing — a silent fallback would let v2 write into v1's history.
+Phase 0, the scaffold, is built (t1140, 2026-11-11): its own entry point
+(`status/mood2.py`), its own prompt directory (`status/mood2/`), its own log, state and claims
+under an `astro2` config block, nothing on a timer, and a refusal to run at all if that config
+block is missing — a silent fallback would let v2 write into v1's history. The stage prompts
+are stubs marked `ЗАГОТОВКА`, and `--send` is refused while any of them is, so the scaffold
+cannot deliver a reading made of instructions to itself. Sixteen tests hold the plumbing in
+place; the ones that matter are that a run leaves every v1 state file byte-identical and that
+the facts are byte-for-byte v1's own.
 
 ```
 status/mood2.py                     the v2 entry point, no timer until the owner says so
@@ -217,7 +221,7 @@ status/state/astro-reference-rules.md   rules distilled from it (exists, 96 line
 
 | step | task | what it delivers | blocked by |
 |---|---|---|---|
-| 0 | t1140 | the v2 scaffold: own entry point, prompts, state, no timer | — |
+| 0 | t1140 | the v2 scaffold: own entry point, prompts, state, no timer — **done 2026-11-11** | — |
 | 1 | t1143 | a daily reading built from his calendar, with fidelity tests | 0 |
 | 2 | t1144 | our interpretation of his facts, scored per factor; the vocabulary | 1, and his text in volume |
 | 3 | t1145 | the ingress, the void-of-course window, an intensity tier, and his ranking over our own facts | 2 |
