@@ -21,27 +21,27 @@ DAY = date(2026, 11, 11)
 # windows, the natal hit under the loud one, and the multi-day span.
 ITEMS = [
     {"id": "p1", "kind": "moon_sign", "from": None, "to": None, "weight": 0,
-     "bodies": "Місяць", "house": None, "formula": "", "meaning": "Оптимізм і запал.",
+     "bodies": "Місяць", "house": None, "formula": "", "meaning": "Настрій на широкі плани.",
      "natal": None, "span": None},
     {"id": "p2", "kind": "moon_house", "from": None, "to": None, "weight": 0,
-     "bodies": "Місяць", "house": "10", "formula": "",
-     "meaning": "Час визнання для твоєї справи.", "natal": None, "span": None},
+     "bodies": "Місяць", "house": "6", "formula": "",
+     "meaning": "Час дрібних справ і порядку.", "natal": None, "span": None},
     {"id": "p3", "kind": "void", "from": "09:00", "to": "11:00", "weight": 0,
      "bodies": "Місяць", "house": None, "formula": "",
      "meaning": "Останні хвилини впертості.", "natal": None, "span": None},
     {"id": "p4", "kind": "ingress", "from": "11:00", "to": None, "weight": 0,
-     "bodies": "Місяць", "house": None, "formula": "", "meaning": "Оптимізм і запал.",
+     "bodies": "Місяць", "house": None, "formula": "", "meaning": "Настрій на широкі плани.",
      "natal": None, "span": None},
     {"id": "p5", "kind": "window", "from": "12:00", "to": "15:00", "weight": 1,
-     "bodies": "Нептун", "house": "1", "formula": "(☽2°♐△♆2°♈)",
+     "bodies": "Нептун", "house": "2", "formula": "(☽2°♐△♆2°♈)",
      "meaning": "Час мрії.", "natal": None, "span": None},
     {"id": "p6", "kind": "window", "from": "16:00", "to": "20:00", "weight": 5,
-     "bodies": "Уран", "house": "3", "formula": "(☽5°♐☍♅5°♊)",
+     "bodies": "Уран", "house": "4", "formula": "(☽5°♐☍♅5°♊)",
      "meaning": "Провокації на непередбачувану розмову.", "natal": None, "span": None},
     {"id": "p7", "kind": "natal", "from": "16:00", "to": "20:00", "weight": 5,
-     "bodies": "Уран", "house": "3", "formula": "(♅☍☿)",
-     "meaning": "Конфлікт між новою ідеєю і звичним мисленням.",
-     "natal": "Меркурій(-)", "span": "понад місяць"},
+     "bodies": "Уран", "house": "4", "formula": "(♅□♀)",
+     "meaning": "Напруга між тягою до новизни і тим, що вже дороге.",
+     "natal": "Венера(-)", "span": "понад місяць"},
     {"id": "p8", "kind": "span", "from": None, "to": None, "weight": 2,
      "bodies": "Марс і Кету", "house": None, "formula": "(♂26°♌☌☋26°♌)",
      "meaning": "Енергійне минуле стукає у двері.", "natal": None, "span": "по 21.11"},
@@ -243,3 +243,23 @@ def test_unfaithful_read_stops_before_writing(monkeypatch, tmp_path):
     with pytest.raises(mood2.Unfaithful):
         mood2.run(DAY)
     assert not list(tmp_path.iterdir()), "a failed run must leave no state behind"
+
+
+# --- t1150: the fixture must be nobody's real day -------------------------------------------
+
+def test_the_fixture_repeats_no_line_of_his_real_calendar():
+    """His pages are a paid personal product; a fixture is allowed to copy their shape only."""
+    store = ROOT / "status" / "state" / "astro-reference.jsonl"
+    if not store.exists():
+        pytest.skip("no reference store on this machine — nothing to compare against")
+    real = store.read_text(encoding="utf-8")
+    for line in SOURCE.splitlines():
+        line = line.strip()
+        if len(line) > 25:
+            assert line not in real, f"the fixture copies a real line: {line!r}"
+
+
+def test_the_fixture_carries_no_natal_position_of_his():
+    """The leak that held the push (t1150): the pair `(♅☍☿)` implied his real Mercury."""
+    assert "☿" not in SOURCE, "a Mercury pairing in a fixture is one degree from his chart"
+    assert "Меркурій" not in SOURCE
