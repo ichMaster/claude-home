@@ -64,18 +64,22 @@ def _clock(value):
 
 
 def _window(slots, key, threshold):
-    """The first run of slots at or above the threshold, as (from_hour, to_hour, peak)."""
-    best = None
+    """The run of slots at or above the threshold with the highest peak, as
+    (from_hour, to_hour, peak); ties keep the earlier run. The warn severity comes from the
+    day's peak, so the spoken window must be the one that holds it."""
+    runs = []
     run = []
     for slot in slots:
         if _int(slot.get(key)) >= threshold:
             run.append(slot)
         elif run:
-            best = best or run
+            runs.append(run)
             run = []
-    best = best or run
-    if not best:
+    if run:
+        runs.append(run)
+    if not runs:
         return None
+    best = max(runs, key=lambda r: max(_int(s.get(key)) for s in r))
     peak = max(_int(s.get(key)) for s in best)
     return _hour(best[0]), _hour(best[-1]) + 3, peak
 

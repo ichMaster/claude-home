@@ -57,6 +57,22 @@ def test_rain_window_and_severity():
     assert r["severity"] == "warn"
 
 
+def test_spoken_window_is_the_one_that_drives_the_warn():
+    """t1147 — light morning rain plus a heavy evening downpour: the text must name the
+    window whose peak set the severity and rain_chance, not merely the first one."""
+    slots = [slot(h, chanceofrain={6: 55, 18: 90, 21: 90}.get(h, 0)) for h in range(0, 24, 3)]
+    r = forecast.summarize(day(slots))
+    assert "Дощ з 18:00 до півночі, ймовірність до 90 відсотків." in r["text"], r["text"]
+    assert r["severity"] == "warn"
+    assert r["value"]["rain_chance"] == 90
+
+
+def test_equal_peaks_keep_the_earlier_window():
+    slots = [slot(h, chanceofrain={6: 60, 18: 60}.get(h, 0)) for h in range(0, 24, 3)]
+    r = forecast.summarize(day(slots))
+    assert "Дощ з 6:00 до 9:00, ймовірність до 60 відсотків." in r["text"], r["text"]
+
+
 def test_dry_day_is_quiet():
     r = forecast.summarize(day([slot(h) for h in range(0, 24, 3)]))
     assert "Опадів не видно." in r["text"]
