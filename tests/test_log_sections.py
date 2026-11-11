@@ -61,6 +61,27 @@ RESUMED = NEW_LOG + """\
 Лінія та сама.
 """
 
+RECALCED = RESUMED + """\
+
+===== 2026-11-02 =====
+
+--- факти ---
+t1 транзитний Плутон квадратура натальна Венера
+
+--- письмо ---
+ДЕНЬ
+Перерахований день.
+
+ПРОГНОЗ
+увечері | ясність | стане видно, що головне
+
+ДУГА
+Лінія та сама.
+
+--- біоритми ---
+ПОКАЗНИКИ: фізичний 11%
+"""
+
 OLD_LOG = """\
 ===== 2026-10-30 =====
 
@@ -89,6 +110,16 @@ def test_final_reading_prefers_the_resumed_text(monkeypatch, tmp_path):
     _with_log(monkeypatch, tmp_path, RESUMED)
     got = mood.final_reading(date(2026, 11, 2))
     assert "Перероблений день" in got
+
+
+def test_final_reading_takes_the_newest_run_not_the_loudest_name(monkeypatch, tmp_path):
+    """t1148 — full run, --resume, then a full recalc (the panel's «Перерахунок»): the
+    recalc's «письмо» was sent last, so a stale «письмо (перероблено)» must not outrank it —
+    calibration and reference learning would compare against a reading he never received."""
+    _with_log(monkeypatch, tmp_path, RECALCED)
+    got = mood.final_reading(date(2026, 11, 2))
+    assert "Перерахований день" in got, got
+    assert "Перероблений день" not in got
 
 
 def test_final_reading_still_reads_the_legacy_format(monkeypatch, tmp_path):

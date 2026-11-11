@@ -253,11 +253,27 @@ def final_reading(day: date) -> str:
 
     The t1126 rename of the sections silently killed calibration, reference learning and
     yesterday's context, because each parsed the log with its own hardcoded names (t1127).
+
+    Recency is per block, not per name (t1148): a full re-run after a --resume logs a newer
+    «письмо», and the stale «письмо (перероблено)» must not outrank what was actually sent
+    last — calibration would compare against a reading he never received. Within one block
+    the name order still decides, which keeps legacy days readable.
     """
-    parts = logged_sections(day)
-    for name in _FINAL_SECTIONS:
-        if parts.get(name):
-            return parts[name]
+    f = state_path("log")
+    if not f.is_file():
+        return ""
+    text = f.read_text(encoding="utf-8")
+    all_marks = list(_LOG_DAY_RE.finditer(text))
+    for i in range(len(all_marks) - 1, -1, -1):
+        if all_marks[i].group(1) != day.isoformat():
+            continue
+        end = all_marks[i + 1].start() if i + 1 < len(all_marks) else len(text)
+        block = {m.group(1): m.group(2).strip()
+                 for m in re.finditer(r"--- (.+?) ---\n(.*?)(?=\n--- |\Z)",
+                                      text[all_marks[i].end():end], re.DOTALL)}
+        for name in _FINAL_SECTIONS:
+            if block.get(name):
+                return block[name]
     return ""
 
 
