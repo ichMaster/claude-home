@@ -326,16 +326,57 @@ def selection(answer, items) -> dict:
             "drop": answer.get("drop", "") if isinstance(answer, dict) else ""}
 
 
-def items_text(items, ids=None) -> str:
-    """The positions as the next stage sees them — compact JSON, one position per line."""
+def items_text(items, ids=None, label: bool = False) -> str:
+    """The positions as the next stage sees them — compact JSON, one position per line.
+
+    With `label`, each position that has a time carries `коли`: the part of the day it falls
+    in, computed here so the writing stage never has to work it out (t1153).
+    """
     rows = [i for i in items if ids is None or i["id"] in ids]
+    if label:
+        rows = [dict(i, **({"коли": part_of_day(i.get("from"), i.get("to"))}
+                           if part_of_day(i.get("from"), i.get("to")) else {}))
+                for i in rows]
     return "\n".join(json.dumps(i, ensure_ascii=False) for i in rows)
+
+
+# The day in words, because he listens: «мені не важливо з такої-то години — вночі, зранку,
+# в обід, після обіду, ввечері» (t1153). The exact hours survive in ОСНОВА, which is read by
+# nobody. The label is arithmetic — the part of the day the window spends most of itself in —
+# so the writing stage is handed a word instead of being asked to invent one.
+PARTS = ((0, 5, "вночі"), (5, 12, "зранку"), (12, 14, "в обід"),
+         (14, 18, "після обіду"), (18, 24, "ввечері"))
+
+
+def _minutes(clock: str):
+    try:
+        hh, mm = str(clock).split(":")
+        return int(hh) * 60 + int(mm)
+    except (ValueError, AttributeError):
+        return None
+
+
+def part_of_day(frm, to=None) -> str:
+    """Which part of the day a window belongs to. Empty when it has no time at all."""
+    start = _minutes(frm)
+    if start is None:
+        return ""
+    end = _minutes(to)
+    if end is None or end <= start:
+        end = start + 1
+    best, best_overlap = "", 0
+    for h1, h2, name in PARTS:
+        overlap = min(end, h2 * 60) - max(start, h1 * 60)
+        if overlap > best_overlap:
+            best, best_overlap = name, overlap
+    return best
 
 
 # --- the reading, and whether it is his day or a made-up one --------------------------------
 
 MARK = re.compile(r"[ \t]*\[(p\d+(?:[ \t]*,[ \t]*p\d+)*)\]")
 SECTIONS = ("ДЕНЬ", "ПРОГНОЗ", "ДІЯ", "ОСНОВА")
+CLOCK = re.compile(r"\d{1,2}:\d{2}")
 LINE_MAX = 140
 
 
@@ -398,6 +439,8 @@ def check_reading(text: str, items, chosen_ids) -> list[str]:
     for bad in ("°", "✤"):
         if bad in head:
             problems.append(f"у тому, що читає голос, є «{bad}» — цифри лише в ОСНОВА")
+    if CLOCK.search(head):
+        problems.append("у тому, що читає голос, є година — доба називається словами")
     body = text.split("ПРОГНОЗ", 1)[-1].split("ДІЯ", 1)[0]
     for line in strip_marks(body).splitlines():
         if len(line.strip()) > LINE_MAX:
@@ -446,7 +489,7 @@ def run(day: date, dry_run: bool = False, note=lambda *a: None) -> dict:
             previous = out[stage] = json.dumps(chosen, ensure_ascii=False)
         else:
             base = fill(stage, ДАТА=day.isoformat(),
-                        ВИБРАНЕ=items_text(items, chosen.get("ids")),
+                        ВИБРАНЕ=items_text(items, chosen.get("ids"), label=True),
                         ПОПЕРЕДНЄ=previous,
                         БЮДЖЕТ=str(conf2("budget_chars", 1200)),
                         МАКСИМУМ=str(conf2("items_max", 5)),

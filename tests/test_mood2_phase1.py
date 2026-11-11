@@ -278,8 +278,8 @@ READING = """ДЕНЬ
 Доба, яка хоче планувати більше, ніж устигне. [p1]
 
 ПРОГНОЗ
-з 09:00 до 11:00 | впертість на порожньому місці, починати нове не тягне [p3]
-з 16:00 до 20:00 | тягне сказати різко й перевернути розмову [p6,p7]
+зранку | впертість на порожньому місці, починати нове не тягне [p3]
+ввечері | тягне сказати різко й перевернути розмову [p6,p7]
 
 ДІЯ
 Різке лиши до ранку — воно нікуди не дінеться. [p6]
@@ -301,8 +301,7 @@ def test_an_invented_position_is_caught():
 
 def test_a_dropped_loud_window_is_caught():
     """The failure that makes a heavy day sound calm."""
-    bad = READING.replace("з 16:00 до 20:00 | тягне сказати різко й перевернути розмову "
-                          "[p6,p7]\n", "")
+    bad = READING.replace("ввечері | тягне сказати різко й перевернути розмову [p6,p7]\n", "")
     problems = mood2.check_reading(bad, ITEMS, CHOSEN)
     assert any("не прозвучала" in p for p in problems), problems
 
@@ -371,3 +370,51 @@ def test_a_reading_that_never_passes_still_stops(monkeypatch, tmp_path):
     with pytest.raises(mood2.Unfaithful):
         mood2.run(DAY)
     assert not list(tmp_path.iterdir()), "a failed run leaves no state behind"
+
+
+# --- t1153: the day is named in words, not in clock times -----------------------------------
+
+@pytest.mark.parametrize("frm,to,expected", [
+    ("09:00", "11:00", "зранку"),
+    ("21:27", "23:27", "ввечері"),
+    ("01:00", "03:00", "вночі"),
+    ("12:10", "13:40", "в обід"),
+    ("14:30", "17:00", "після обіду"),
+    ("05:49", "11:34", "зранку"),       # five minutes of night do not make it a night window
+    ("09:55", "14:28", "зранку"),       # the part it spends most of itself in wins
+    ("00:10", "02:00", "вночі"),
+    ("12:00", None, "в обід"),          # a moment takes the part of its start
+    ("18:00", "18:00", "ввечері"),      # a boundary does not borrow the next part
+    (None, None, ""),
+])
+def test_part_of_day(frm, to, expected):
+    assert mood2.part_of_day(frm, to) == expected
+
+
+def test_the_writing_stage_is_handed_the_label(monkeypatch, tmp_path):
+    seen = {}
+
+    def fake_call(stage, prompt):
+        seen[stage] = prompt
+        if stage == "read":
+            return json.dumps(ITEMS, ensure_ascii=False)
+        if stage == "pick":
+            return json.dumps({"ids": ["p1", "p3", "p6"], "frame": "p1"}, ensure_ascii=False)
+        return READING
+
+    monkeypatch.setattr(mood2, "reference_text", lambda day: SOURCE)
+    monkeypatch.setattr(mood2, "call", fake_call)
+    monkeypatch.setattr(mood2, "state_path", lambda key: tmp_path / f"astro2-{key}")
+    mood2.run(DAY)
+    assert '"коли": "зранку"' in seen["day"], "the morning window must arrive labelled"
+    assert '"коли"' not in seen["pick"], "the label is for the writing stage only"
+
+
+def test_a_clock_time_in_the_spoken_part_is_caught():
+    bad = READING.replace("зранку |", "з 09:00 до 11:00 |")
+    assert any("година" in p for p in mood2.check_reading(bad, ITEMS, CHOSEN))
+
+
+def test_the_hours_still_live_in_osnova():
+    """ОСНОВА is where the figures go, and the check must not chase them there."""
+    assert "09:00-11:00" in READING and mood2.check_reading(READING, ITEMS, CHOSEN) == []
