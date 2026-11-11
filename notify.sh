@@ -19,6 +19,9 @@
 #                                — label this message in the Sent log (status/state/
 #                                  chat-log.jsonl); without it the log records the calling
 #                                  script's own name
+#   notify.sh --no-stamp "text"   — send exactly what was given: every message is otherwise
+#                                  prefixed with the moment it was sent, written for the eye
+#                                  and spoken for the ear (status/tools/timestamp.py)
 #   notify.sh --bot <kind> "text"
 #                                — send through a named bot from `telegram.bots`
 #                                  (config.json): mood, youtube. One-way channels: the
@@ -32,7 +35,7 @@ cfg="$HOME/claude-home/.env.telegram"
 [ -f "$cfg" ] || { echo "немає $cfg" >&2; exit 1; }
 set -a; . "$cfg"; set +a
 
-voice=1; text_only=1; silent=""; quiet=0; vtext=""; vname=""; vprof=""; bot=""
+voice=1; text_only=1; silent=""; quiet=0; vtext=""; vname=""; vprof=""; bot=""; stamp=1
 kind="${NOOS_SENT_KIND:-}"; text_code=""; voice_code=""; send_error=""
 bot_used="main"; bot_asked=""
 while true; do
@@ -46,10 +49,25 @@ while true; do
     --voice-profile) vprof="${2:-}"; shift 2 ;;    # a role or profile: voice + model + settings
     --bot)        bot="${2:-}"; shift 2 ;;         # a named bot from telegram.bots
     --kind)       kind="${2:-}"; shift 2 ;;        # what kind of message, for the Sent log
+    --no-stamp)   stamp=0; shift ;;                # send exactly what was given, no moment
     *) break ;;
   esac
 done
 text="$*"
+vsrc="${vtext:-$text}"
+
+# Every message says when it was sent — written for the eye, spoken for the ear (t1149).
+# He listens to Telegram hours after the fact, and Telegram's own timestamp is on the screen,
+# not in the audio. Computed once here, so timers, digests, probes and conversation all carry
+# it without a single sender knowing about it.
+if [ "$stamp" = 1 ] && { [ -n "$text" ] || [ -n "$vtext" ]; }; then
+  mapfile -t stamp_parts < <("$HOME/claude-home/.venv-voice/bin/python" \
+    "$HOME/claude-home/status/tools/timestamp.py" 2>/dev/null)
+  if [ -n "${stamp_parts[0]:-}" ] && [ -n "${stamp_parts[1]:-}" ]; then
+    [ -n "$text" ] && text="${stamp_parts[0]}"$'\n\n'"$text"
+    vsrc="${stamp_parts[1]}"$'\n'"$vsrc"
+  fi
+fi
 
 # A named bot swaps the token for this message only. Resolved before the first send,
 # because the text part goes out before the voice part. A missing token is not fatal:
@@ -144,7 +162,7 @@ if [ "$voice" != 1 ]; then
 fi
 
 # for synthesis: strip emoji, bullets and links — they sound like garbage
-spoken=$(printf '%s' "${vtext:-$text}" | "$HOME/claude-home/.venv-voice/bin/python" -c '
+spoken=$(printf '%s' "$vsrc" | "$HOME/claude-home/.venv-voice/bin/python" -c '
 import sys, re
 t = sys.stdin.read()
 t = re.sub(r"https?://\S+", "", t)

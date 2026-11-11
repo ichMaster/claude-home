@@ -147,6 +147,12 @@ nothing on this model (6.16 s against 6.08 s plain), so it is never used.
   reads Telegram while driving or working with their hands; a text-only reply is a reply
   they cannot take. Exceptions are rare: a bare list of links, or a message that is
   mostly code.
+- **Every message carries the moment it was sent** (the owner, 2026-11-11). `notify.sh`
+  prefixes the text with `12 листопада, 11:05` and the spoken copy with «Дванадцяте
+  листопада, одинадцята година п'ять хвилин» — day and month, never the year, and the time
+  in words because a digit comes back from the synthesizer in the wrong case
+  (`status/tools/timestamp.py`, t1149). He listens hours after the fact, and Telegram's own
+  timestamp is on the screen, not in the audio. `--no-stamp` opts a message out.
 - In text meant for synthesis, avoid Latin script and abbreviations — spell things out
   in Ukrainian words.
 - **Backticks and `$` in a `notify.sh` argument get eaten by bash.** A reply written with
