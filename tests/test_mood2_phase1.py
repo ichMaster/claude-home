@@ -247,16 +247,23 @@ def test_unfaithful_read_stops_before_writing(monkeypatch, tmp_path):
 
 # --- t1150: the fixture must be nobody's real day -------------------------------------------
 
-def test_the_fixture_repeats_no_line_of_his_real_calendar():
-    """His pages are a paid personal product; a fixture is allowed to copy their shape only."""
+def test_no_test_file_repeats_a_line_of_his_real_calendar():
+    """His pages are a paid personal product; a test may copy their shape, never their text.
+
+    The whole of `tests/` is scanned, not just the fixture: the line this guard was written
+    for was an inline string in another test file (t1150).
+    """
     store = ROOT / "status" / "state" / "astro-reference.jsonl"
     if not store.exists():
         pytest.skip("no reference store on this machine — nothing to compare against")
     real = store.read_text(encoding="utf-8")
-    for line in SOURCE.splitlines():
-        line = line.strip()
-        if len(line) > 25:
-            assert line not in real, f"the fixture copies a real line: {line!r}"
+    for path in sorted((ROOT / "tests").rglob("*")):
+        if not path.is_file() or path.suffix not in (".py", ".txt", ".md"):
+            continue
+        for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+            line = line.strip()
+            if len(line) > 25 and line in real:
+                raise AssertionError(f"{path.name} copies a real line: {line!r}")
 
 
 def test_the_fixture_carries_no_natal_position_of_his():

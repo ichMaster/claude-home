@@ -37,10 +37,10 @@ def _digests():
 
 # A reference day small enough to reason about: one loud window, no void, no natal hit — so
 # the fidelity counts in check_items have exactly one thing to agree about.
-FAKE_REFERENCE = ("Ср 11ноя с 10:00 до 12:00\n"
-                  "✤✤✤ Влияет Сатурн в 1 доме. Якесь трактування. (☽9°♐△♄9°♈)\n")
+FAKE_REFERENCE = ("Пн 3мар с 10:00 до 12:00\n"
+                  "✤✤✤ Влияет Сатурн в 7 доме. Якесь трактування. (☽9°♍△♄9°♉)\n")
 FAKE_ITEMS = [{"id": "p1", "kind": "window", "from": "10:00", "to": "12:00", "weight": 3,
-               "bodies": "Сатурн", "house": "1", "formula": "(☽9°♐△♄9°♈)",
+               "bodies": "Сатурн", "house": "7", "formula": "(☽9°♍△♄9°♉)",
                "meaning": "Якесь трактування.", "natal": None, "span": None}]
 
 
