@@ -418,3 +418,13 @@ def test_a_clock_time_in_the_spoken_part_is_caught():
 def test_the_hours_still_live_in_osnova():
     """ОСНОВА is where the figures go, and the check must not chase them there."""
     assert "09:00-11:00" in READING and mood2.check_reading(READING, ITEMS, CHOSEN) == []
+
+
+def test_osnova_never_leaves_the_log(monkeypatch):
+    """The figures are an audit trail; the chat gets the reading (t1154)."""
+    sent = []
+    monkeypatch.setattr(mood2.mood, "send", lambda text, role="mood": sent.append(text))
+    mood2.send(READING)
+    assert len(sent) == 1
+    assert "ОСНОВА" not in sent[0] and "°" not in sent[0] and "[p" not in sent[0]
+    assert sent[0].startswith("ДЕНЬ") and "ДІЯ" in sent[0]

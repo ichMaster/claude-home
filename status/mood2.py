@@ -551,7 +551,10 @@ def send(text: str) -> None:
     if stubs:
         raise NotReady("ще заготовки, не промпти: " + ", ".join(stubs)
                        + " — заповнюються у фазі 1 (t1143)")
-    mood.send(strip_marks(text), role="mood")
+    # ОСНОВА is the audit trail, not the message: v1 kept it in the text part because it was
+    # the only way to trace a claim back to its figure, and he asked for it gone (t1154).
+    # It stays in the log and the state, where tracing actually happens.
+    mood.send(spoken_part(text).strip(), role="mood")
 
 
 def main() -> int:
