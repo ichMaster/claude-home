@@ -332,6 +332,80 @@ def items_text(items, ids=None) -> str:
     return "\n".join(json.dumps(i, ensure_ascii=False) for i in rows)
 
 
+# --- the reading, and whether it is his day or a made-up one --------------------------------
+
+MARK = re.compile(r"[ \t]*\[(p\d+(?:[ \t]*,[ \t]*p\d+)*)\]")
+SECTIONS = ("ДЕНЬ", "ПРОГНОЗ", "ДІЯ", "ОСНОВА")
+LINE_MAX = 140
+
+
+def marked_ids(text: str) -> list[str]:
+    """Every position id the reading claims to be built from, in the order it claims them."""
+    out: list[str] = []
+    for group in MARK.findall(text or ""):
+        out.extend(part.strip() for part in group.split(","))
+    return out
+
+
+def strip_marks(text: str) -> str:
+    """The reading as a person hears it — the audit markers belong to the log, not the ear."""
+    return MARK.sub("", text or "")
+
+
+def spoken_part(text: str) -> str:
+    """Everything before ОСНОВА: the figures are written down, never read out."""
+    head = (text or "").split("ОСНОВА")[0]
+    return strip_marks(head)
+
+
+def check_reading(text: str, items, chosen_ids) -> list[str]:
+    """Arithmetic, not judgement: does the reading stand on the positions it was given?
+
+    Three ways it can go wrong, and all three are countable. It can name a position that was
+    never in the day (invention). It can quietly drop a loud window or a natal hit, which is
+    what turns a heavy day into a calm-sounding one. And it can let a degree into the part the
+    voice reads, which is what made v1 unlistenable.
+    """
+    problems: list[str] = []
+    text = text or ""
+    for name in SECTIONS:
+        if name not in text:
+            problems.append(f"нема частини {name}")
+    if problems:
+        return problems
+
+    order = [text.index(name) for name in SECTIONS]
+    if order != sorted(order):
+        problems.append("частини йдуть не в тому порядку")
+
+    chosen = set(chosen_ids or [])
+    used = set(marked_ids(text.split("ОСНОВА")[0]))
+    invented = sorted(used - chosen)
+    if invented:
+        problems.append("позиції, яких у виборі немає: " + ", ".join(invented))
+
+    by_id = {i["id"]: i for i in items}
+    loud = conf2("loud_min", 3)
+    for item_id in sorted(chosen):
+        item = by_id.get(item_id)
+        if not item:
+            continue
+        must = weight_of(item) >= loud or item.get("kind") == "natal"
+        if must and item_id not in used:
+            problems.append(f"{item_id}: голосна позиція не прозвучала")
+
+    head = spoken_part(text)
+    for bad in ("°", "✤"):
+        if bad in head:
+            problems.append(f"у тому, що читає голос, є «{bad}» — цифри лише в ОСНОВА")
+    body = text.split("ПРОГНОЗ", 1)[-1].split("ДІЯ", 1)[0]
+    for line in strip_marks(body).splitlines():
+        if len(line.strip()) > LINE_MAX:
+            problems.append(f"рядок прогнозу довший за {LINE_MAX} знаків")
+            break
+    return problems
+
+
 def run(day: date, dry_run: bool = False, note=lambda *a: None) -> dict:
     """The day, stage by stage. Returns stage → what it answered.
 
@@ -378,6 +452,10 @@ def run(day: date, dry_run: bool = False, note=lambda *a: None) -> dict:
                 БЮДЖЕТ=str(conf2("budget_chars", 1200)),
                 МАКСИМУМ=str(conf2("items_max", 5)),
                 ГОЛОСНЕ=str(conf2("loud_min", 3))))
+            if stage == stages()[-1]:
+                wrong = check_reading(previous, items, chosen.get("ids"))
+                if wrong:
+                    raise Unfaithful("читання не спирається на добу: " + "; ".join(wrong))
     if not dry_run:
         log_run(day, out)
         save_state(day, out)
@@ -417,7 +495,7 @@ def send(text: str) -> None:
     if stubs:
         raise NotReady("ще заготовки, не промпти: " + ", ".join(stubs)
                        + " — заповнюються у фазі 1 (t1143)")
-    mood.send(text, role="mood")
+    mood.send(strip_marks(text), role="mood")
 
 
 def main() -> int:

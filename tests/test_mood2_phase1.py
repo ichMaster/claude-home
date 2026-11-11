@@ -217,8 +217,8 @@ def test_pipeline_feeds_each_stage_what_it_needs(monkeypatch, tmp_path):
         if stage == "read":
             return json.dumps(ITEMS, ensure_ascii=False)
         if stage == "pick":
-            return json.dumps({"ids": ["p1", "p6"], "frame": "p1"}, ensure_ascii=False)
-        return "читання"
+            return json.dumps({"ids": ["p1", "p3", "p6"], "frame": "p1"}, ensure_ascii=False)
+        return READING
 
     monkeypatch.setattr(mood2, "reference_text", lambda day: SOURCE)
     monkeypatch.setattr(mood2, "call", fake_call)
@@ -229,7 +229,7 @@ def test_pipeline_feeds_each_stage_what_it_needs(monkeypatch, tmp_path):
     assert "p6" in seen["pick"] and "Уран" in seen["pick"]
     assert "p7" in seen["day"], "the natal hit must reach the writing stage"
     assert "p5" not in seen["day"], "the unselected window must not"
-    assert json.loads(out["pick"])["ids"] == ["p1", "p6", "p7"]
+    assert json.loads(out["pick"])["ids"] == ["p1", "p3", "p6", "p7"]
 
 
 def test_unfaithful_read_stops_before_writing(monkeypatch, tmp_path):
@@ -270,3 +270,65 @@ def test_the_fixture_carries_no_natal_position_of_his():
     """The leak that held the push (t1150): the pair `(♅☍☿)` implied his real Mercury."""
     assert "☿" not in SOURCE, "a Mercury pairing in a fixture is one degree from his chart"
     assert "Меркурій" not in SOURCE
+
+
+# --- the reading: does it stand on the day it was given? ------------------------------------
+
+READING = """ДЕНЬ
+Доба, яка хоче планувати більше, ніж устигне. [p1]
+
+ПРОГНОЗ
+з 09:00 до 11:00 | впертість на порожньому місці, починати нове не тягне [p3]
+з 16:00 до 20:00 | тягне сказати різко й перевернути розмову [p6,p7]
+
+ДІЯ
+Різке лиши до ранку — воно нікуди не дінеться. [p6]
+
+ОСНОВА
+p3 09:00-11:00 холоста · p6 16:00-20:00 ✤✤✤✤✤ (☽5°♐☍♅5°♊) · p7 натал Венера
+"""
+CHOSEN = ["p1", "p3", "p6", "p7"]
+
+
+def test_a_reading_built_on_the_day_passes():
+    assert mood2.check_reading(READING, ITEMS, CHOSEN) == []
+
+
+def test_an_invented_position_is_caught():
+    bad = READING.replace("[p3]", "[p9]")
+    assert any("яких у виборі немає" in p for p in mood2.check_reading(bad, ITEMS, CHOSEN))
+
+
+def test_a_dropped_loud_window_is_caught():
+    """The failure that makes a heavy day sound calm."""
+    bad = READING.replace("з 16:00 до 20:00 | тягне сказати різко й перевернути розмову "
+                          "[p6,p7]\n", "")
+    problems = mood2.check_reading(bad, ITEMS, CHOSEN)
+    assert any("не прозвучала" in p for p in problems), problems
+
+
+def test_a_degree_in_the_spoken_part_is_caught():
+    bad = READING.replace("тягне сказати різко", "Уран у 5° тягне сказати різко")
+    assert any("читає голос" in p for p in mood2.check_reading(bad, ITEMS, CHOSEN))
+
+
+def test_a_missing_part_is_caught():
+    assert any("нема частини ДІЯ" in p
+               for p in mood2.check_reading(READING.replace("ДІЯ", "ХТОЗНА"), ITEMS, CHOSEN))
+
+
+def test_an_overlong_line_is_caught():
+    bad = READING.replace("впертість на порожньому місці, починати нове не тягне",
+                          "впертість " * 20)
+    assert any("довший за" in p for p in mood2.check_reading(bad, ITEMS, CHOSEN))
+
+
+def test_the_markers_never_reach_the_ear():
+    said = mood2.spoken_part(READING)
+    assert "[p" not in said and "ОСНОВА" not in said
+    assert "тягне сказати різко" in said
+
+
+def test_the_prompts_are_no_longer_stubs():
+    """Phase 1 is finished exactly when `--send` stops refusing (t1143)."""
+    assert mood2.placeholders() == []

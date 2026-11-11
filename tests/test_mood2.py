@@ -51,7 +51,10 @@ def canned(stage, prompt):
     if stage == "pick":
         return json.dumps({"ids": ["p1"], "frame": "p1", "order": "одне вікно",
                            "drop": "нічого"}, ensure_ascii=False)
-    return f"відповідь стадії {stage}"
+    return ("ДЕНЬ\nДоба одного вікна. [p1]\n\n"
+            "ПРОГНОЗ\nз 10:00 до 12:00 | тягне тиснути й доводити своє [p1]\n\n"
+            "ДІЯ\nНе плутай впертість із правотою. [p1]\n\n"
+            "ОСНОВА\np1 10:00-12:00 ✤✤✤ (☽9°♍△♄9°♉)\n")
 
 
 @pytest.fixture
@@ -93,7 +96,8 @@ def test_run_writes_only_its_own_paths(staged):
     assert written == ["astro2-log", "astro2-state"]
     state = json.loads((tmp / "astro2-state").read_text())
     assert state["day"] == DAY.isoformat()
-    assert state["stages"]["day"] == "відповідь стадії day"
+    assert state["stages"]["day"].startswith("ДЕНЬ")
+    assert state["reading"] == state["stages"]["day"], "the state keeps the markers"
 
 
 def test_configured_paths_are_separate_and_named():
@@ -121,11 +125,21 @@ def test_every_configured_stage_has_a_prompt():
         assert mood2.prompt_text(stage).strip(), f"{stage}: empty prompt"
 
 
-def test_placeholders_block_sending(monkeypatch):
-    """The prompts are stubs in phase 0, and a stub must not be able to speak."""
+def test_placeholders_block_sending(monkeypatch, tmp_path):
+    """A stub prompt must never be able to speak, whatever phase the work is in.
+
+    Phase 1 filled every prompt (t1143), so the guard is exercised against a stub made for
+    the test rather than against the real directory — the mechanism is what matters, and it
+    is what the next phase will lean on again.
+    """
     sent = []
     monkeypatch.setattr(mood, "send", lambda text, role="mood": sent.append(text))
-    assert "day" in mood2.placeholders(), "the writing stage is still a stub (phase 1 fills it)"
+    monkeypatch.setattr(mood2, "prompts_dir", lambda: tmp_path)
+    for stage in mood2.stages():
+        (tmp_path / f"{stage}.md").write_text("справжній промпт", encoding="utf-8")
+    (tmp_path / "day.md").write_text(f"{mood2.PLACEHOLDER_MARK}. Ще не написано.",
+                                     encoding="utf-8")
+    assert "day" in mood2.placeholders()
     with pytest.raises(mood2.NotReady):
         mood2.send("читання")
     assert sent == []
@@ -191,9 +205,16 @@ def test_cli_facts_needs_no_model():
     assert out.stdout.strip(), "no facts printed"
 
 
-def test_cli_send_refuses_and_says_why(monkeypatch, tmp_path, capsys):
-    """`--send` on a scaffold exits 2 and delivers nothing, instead of speaking a stub."""
+def test_cli_send_refuses_while_any_prompt_is_a_stub(monkeypatch, tmp_path, capsys):
+    """`--send` exits 2 and delivers nothing rather than speaking a stub out loud."""
     sent = []
+    prompts = tmp_path / "prompts"
+    prompts.mkdir()
+    for stage in mood2.stages():
+        (prompts / f"{stage}.md").write_text("справжній промпт", encoding="utf-8")
+    (prompts / "day.md").write_text(f"{mood2.PLACEHOLDER_MARK}. Ще не написано.",
+                                    encoding="utf-8")
+    monkeypatch.setattr(mood2, "prompts_dir", lambda: prompts)
     monkeypatch.setattr(mood2, "call", canned)
     monkeypatch.setattr(mood2, "state_path", lambda key: tmp_path / f"astro2-{key}")
     monkeypatch.setattr(mood2, "reference_text", lambda day: FAKE_REFERENCE)
@@ -202,6 +223,18 @@ def test_cli_send_refuses_and_says_why(monkeypatch, tmp_path, capsys):
     assert mood2.main() == 2
     assert sent == []
     assert "t1143" in capsys.readouterr().err
+
+
+def test_cli_send_delivers_once_the_prompts_are_real(monkeypatch, tmp_path):
+    """And the other half: with phase 1 finished, --send actually speaks (t1143)."""
+    sent = []
+    monkeypatch.setattr(mood2, "call", canned)
+    monkeypatch.setattr(mood2, "state_path", lambda key: tmp_path / f"astro2-{key}")
+    monkeypatch.setattr(mood2, "reference_text", lambda day: FAKE_REFERENCE)
+    monkeypatch.setattr(mood, "send", lambda text, role="mood": sent.append(text))
+    monkeypatch.setattr(sys, "argv", ["mood2.py", "--day", DAY.isoformat(), "--send"])
+    assert mood2.main() == 0
+    assert len(sent) == 1 and "[p1]" not in sent[0], "the audit markers are not for the ear"
 
 
 # --- a stage that dies says so ----------------------------------------------------------------
