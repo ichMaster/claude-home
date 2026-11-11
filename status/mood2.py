@@ -257,6 +257,11 @@ def check_items(items, source: str) -> list[str]:
     if natal_source and natal_items < natal_source:
         problems.append(f"натальних влучань у тексті щонайменше {natal_source}, "
                         f"у розборі {natal_items}")
+    elif natal_items and not natal_source:
+        # The other direction matters only from zero: one marker may cover several natal
+        # lines, but with no marker at all every natal item is an invented claim — and
+        # mandatory_ids() would force it into the reading.
+        problems.append(f"натальних влучань у тексті нема, у розборі {natal_items}")
     return problems
 
 

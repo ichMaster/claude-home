@@ -71,6 +71,14 @@ def test_dropped_natal_hit_is_caught():
     assert any("натальних" in p for p in problems_of(without)), problems_of(without)
 
 
+def test_invented_natal_hit_is_caught():
+    """t1146 — the day names no natal hit, yet the model returns one: a claim put in his
+    mouth, and mandatory_ids would force it into the reading."""
+    src = SOURCE.replace("Событие влияет", "").replace("Подія впливає", "")
+    problems = mood2.check_items(ITEMS, src)
+    assert any("натальних" in p for p in problems), problems
+
+
 def problems_of(items):
     return mood2.check_items(items, SOURCE)
 
