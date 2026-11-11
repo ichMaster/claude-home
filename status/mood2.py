@@ -445,17 +445,30 @@ def run(day: date, dry_run: bool = False, note=lambda *a: None) -> dict:
                      + ", ".join(chosen["restored"]))
             previous = out[stage] = json.dumps(chosen, ensure_ascii=False)
         else:
-            previous = out[stage] = call(stage, fill(
-                stage, ДАТА=day.isoformat(),
-                ВИБРАНЕ=items_text(items, chosen.get("ids")),
-                ПОПЕРЕДНЄ=previous,
-                БЮДЖЕТ=str(conf2("budget_chars", 1200)),
-                МАКСИМУМ=str(conf2("items_max", 5)),
-                ГОЛОСНЕ=str(conf2("loud_min", 3))))
-            if stage == stages()[-1]:
+            base = fill(stage, ДАТА=day.isoformat(),
+                        ВИБРАНЕ=items_text(items, chosen.get("ids")),
+                        ПОПЕРЕДНЄ=previous,
+                        БЮДЖЕТ=str(conf2("budget_chars", 1200)),
+                        МАКСИМУМ=str(conf2("items_max", 5)),
+                        ГОЛОСНЕ=str(conf2("loud_min", 3)))
+            final = stage == stages()[-1]
+            wrong: list[str] = []
+            # The check is arithmetic, so what it found can be handed straight back: a dropped
+            # loud window is a fixable mistake, not a reason to leave the morning silent.
+            for attempt in range(conf2("retries", 2) + 1):
+                previous = call(stage, base if not wrong else
+                                base + "\n\n## Що виправити в попередній спробі\n- "
+                                + "\n- ".join(wrong)
+                                + "\n\nПерепиши читання цілком, не коментуючи правку.")
+                if not final:
+                    break
                 wrong = check_reading(previous, items, chosen.get("ids"))
-                if wrong:
-                    raise Unfaithful("читання не спирається на добу: " + "; ".join(wrong))
+                if not wrong:
+                    break
+                note(f"читання не пройшло перевірку ({attempt + 1}): " + "; ".join(wrong))
+            if final and wrong:
+                raise Unfaithful("читання не спирається на добу: " + "; ".join(wrong))
+            out[stage] = previous
     if not dry_run:
         log_run(day, out)
         save_state(day, out)

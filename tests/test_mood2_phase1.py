@@ -332,3 +332,42 @@ def test_the_markers_never_reach_the_ear():
 def test_the_prompts_are_no_longer_stubs():
     """Phase 1 is finished exactly when `--send` stops refusing (t1143)."""
     assert mood2.placeholders() == []
+
+
+def test_a_failed_reading_is_retried_with_what_went_wrong(monkeypatch, tmp_path):
+    """A dropped loud window is a fixable mistake, not a reason to stay silent (t1143)."""
+    prompts = []
+
+    def fake_call(stage, prompt):
+        if stage == "read":
+            return json.dumps(ITEMS, ensure_ascii=False)
+        if stage == "pick":
+            return json.dumps({"ids": ["p1", "p3", "p6"], "frame": "p1"}, ensure_ascii=False)
+        prompts.append(prompt)
+        if len(prompts) == 1:
+            return READING.replace("[p6,p7]", "[p6]")          # the natal hit goes missing
+        return READING
+
+    monkeypatch.setattr(mood2, "reference_text", lambda day: SOURCE)
+    monkeypatch.setattr(mood2, "call", fake_call)
+    monkeypatch.setattr(mood2, "state_path", lambda key: tmp_path / f"astro2-{key}")
+    out = mood2.run(DAY)
+    assert len(prompts) == 2, "the second attempt must have happened"
+    assert "Що виправити" in prompts[1] and "p7" in prompts[1]
+    assert out["day"] == READING, "the state keeps what finally passed"
+
+
+def test_a_reading_that_never_passes_still_stops(monkeypatch, tmp_path):
+    def fake_call(stage, prompt):
+        if stage == "read":
+            return json.dumps(ITEMS, ensure_ascii=False)
+        if stage == "pick":
+            return json.dumps({"ids": ["p1", "p3", "p6"], "frame": "p1"}, ensure_ascii=False)
+        return READING.replace("[p6,p7]", "[p6]")
+
+    monkeypatch.setattr(mood2, "reference_text", lambda day: SOURCE)
+    monkeypatch.setattr(mood2, "call", fake_call)
+    monkeypatch.setattr(mood2, "state_path", lambda key: tmp_path / f"astro2-{key}")
+    with pytest.raises(mood2.Unfaithful):
+        mood2.run(DAY)
+    assert not list(tmp_path.iterdir()), "a failed run leaves no state behind"
