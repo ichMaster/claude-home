@@ -377,16 +377,19 @@ def part_of_day(frm, to=None) -> str:
 MARK = re.compile(r"[ \t]*\[(p\d+(?:[ \t]*,[ \t]*p\d+)*)\]")
 SECTIONS = ("ДЕНЬ", "ПРОГНОЗ", "ДІЯ", "ОСНОВА")
 CLOCK = re.compile(r"\d{1,2}:\d{2}")
-LINE_MAX = 200
+LINE_MAX = 420
 
 # The bodies, by the stem that survives Ukrainian inflection: Венери, Венерою, Венеру all
 # answer to «Венер». «Луна» is folded onto «Місяць» because his pages are Russian and the read
 # stage translates them (t1155).
 BODY_STEMS = {
-    "сонц": "Сонце", "місяц": "Місяць", "луна": "Місяць", "лун": "Місяць",
+    "місяц": "Місяць", "луна": "Місяць", "лун": "Місяць",
     "меркур": "Меркурій", "венер": "Венера", "марс": "Марс", "юпітер": "Юпітер",
-    "сатурн": "Сатурн", "уран": "Уран", "нептун": "Нептун", "плутон": "Плутон",
-    "кету": "Кету", "раху": "Раху", "ліліт": "Ліліт",
+    "юпитер": "Юпітер", "сатурн": "Сатурн", "уран": "Уран", "нептун": "Нептун",
+    "плутон": "Плутон", # The nodes are one axis: naming Rahu where his page names Ketu is astrology,
+    # not invention, so both stems answer to the same entity.
+    "кету": "вузли", "раху": "вузли", "узел": "вузли", "вузол": "вузли", "ліліт": "Ліліт",
+    "лилит": "Ліліт", "солнц": "Сонце", "сонц": "Сонце",
 }
 SAME_TURN = "це тому, що"
 
@@ -410,13 +413,22 @@ def spoken_part(text: str) -> str:
     return strip_marks(head)
 
 
+PART_ORDER = ("вночі", "зранку", "в обід", "після обіду", "ввечері", "фоном")
+
+
+def forecast_lines(text: str) -> list[str]:
+    """The ПРОГНОЗ lines alone, markers stripped."""
+    body = (text or "").split("ПРОГНОЗ", 1)[-1].split("ДІЯ", 1)[0]
+    return [ln for ln in strip_marks(body).splitlines() if ln.strip()]
+
+
 def bodies_named(text: str) -> set[str]:
     """Which bodies a piece of text talks about, whatever case the words are in."""
     low = (text or "").lower()
     return {name for stem, name in BODY_STEMS.items() if stem in low}
 
 
-def check_reading(text: str, items, chosen_ids) -> list[str]:
+def check_reading(text: str, items, chosen_ids=None) -> list[str]:
     """Arithmetic, not judgement: does the reading stand on the positions it was given?
 
     Three ways it can go wrong, and all three are countable. It can name a position that was
@@ -436,11 +448,13 @@ def check_reading(text: str, items, chosen_ids) -> list[str]:
     if order != sorted(order):
         problems.append("частини йдуть не в тому порядку")
 
-    chosen = set(chosen_ids or [])
+    # The writing stage sees the whole day (t1156), so by default every position is fair
+    # game for a marker; a narrower set is only ever passed by a test.
+    chosen = set(chosen_ids) if chosen_ids else {i["id"] for i in items}
     used = set(marked_ids(text.split("ОСНОВА")[0]))
     invented = sorted(used - chosen)
     if invented:
-        problems.append("позиції, яких у виборі немає: " + ", ".join(invented))
+        problems.append("позиції, яких у добі немає: " + ", ".join(invented))
 
     by_id = {i["id"]: i for i in items}
     loud = conf2("loud_min", 3)
@@ -464,14 +478,25 @@ def check_reading(text: str, items, chosen_ids) -> list[str]:
     available = bodies_named(" ".join(
         f"{i.get('bodies') or ''} {i.get('natal') or ''} {i.get('meaning') or ''}"
         for i in items))
-    invented_bodies = sorted(bodies_named(head) - available)
+    said = bodies_named(head)
+    invented_bodies = sorted(said - available)
     if invented_bodies:
         problems.append("світила, яких у добі немає: " + ", ".join(invented_bodies))
+    # And the other direction, which is the one that actually went wrong: he supplies the
+    # whole day, so a body that quietly fails to appear is a fact of his thrown away (t1156).
+    lost = sorted(available - said)
+    if lost:
+        problems.append("світила доби, яких у читанні немає: " + ", ".join(lost))
+    order_said = [name for name in PART_ORDER
+                  if any(line.strip().startswith(name) for line in forecast_lines(text))]
+    order_seen = [name for line in forecast_lines(text) for name in PART_ORDER
+                  if line.strip().startswith(name)]
+    if order_seen != order_said:
+        problems.append("частини доби йдуть не по порядку")
     # And it may not be named the same way twice — he asked for prose, not a template.
     if head.lower().count(SAME_TURN) > 1:
         problems.append(f"«{SAME_TURN}» більше одного разу — причина щоразу інакше")
-    body = text.split("ПРОГНОЗ", 1)[-1].split("ДІЯ", 1)[0]
-    for line in strip_marks(body).splitlines():
+    for line in forecast_lines(text):
         if len(line.strip()) > LINE_MAX:
             problems.append(f"рядок прогнозу довший за {LINE_MAX} знаків")
             break
@@ -518,7 +543,9 @@ def run(day: date, dry_run: bool = False, note=lambda *a: None) -> dict:
             previous = out[stage] = json.dumps(chosen, ensure_ascii=False)
         else:
             base = fill(stage, ДАТА=day.isoformat(),
-                        ВИБРАНЕ=items_text(items, chosen.get("ids"), label=True),
+                        ВИБРАНЕ=items_text(items, label=True),
+                        НАГОЛОС=", ".join(chosen.get("ids") or []),
+                        РЯДОК=str(LINE_MAX),
                         ПОПЕРЕДНЄ=previous,
                         БЮДЖЕТ=str(conf2("budget_chars", 1200)),
                         МАКСИМУМ=str(conf2("items_max", 5)),
@@ -534,7 +561,7 @@ def run(day: date, dry_run: bool = False, note=lambda *a: None) -> dict:
                                 + "\n\nПерепиши читання цілком, не коментуючи правку.")
                 if not final:
                     break
-                wrong = check_reading(previous, items, chosen.get("ids"))
+                wrong = check_reading(previous, items)
                 if not wrong:
                     break
                 note(f"читання не пройшло перевірку ({attempt + 1}): " + "; ".join(wrong))

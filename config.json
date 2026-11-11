@@ -527,7 +527,7 @@
       "day": ""
     },
     "timeout": 420,
-    "budget_chars": 1200,
+    "budget_chars": 2200,
     "items_max": 5,
     "loud_min": 3,
     "retries": 3

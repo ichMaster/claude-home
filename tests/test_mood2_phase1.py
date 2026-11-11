@@ -228,7 +228,8 @@ def test_pipeline_feeds_each_stage_what_it_needs(monkeypatch, tmp_path):
     assert "Холоста Луна" in seen["read"], "the read stage must see his own text"
     assert "p6" in seen["pick"] and "Уран" in seen["pick"]
     assert "p7" in seen["day"], "the natal hit must reach the writing stage"
-    assert "p5" not in seen["day"], "the unselected window must not"
+    assert "p5" in seen["day"], "every position must — nothing of his day is dropped (t1156)"
+    assert "НАГОЛОС" not in seen["day"] and "p6" in seen["day"]
     assert json.loads(out["pick"])["ids"] == ["p1", "p3", "p6", "p7"]
 
 
@@ -278,8 +279,9 @@ READING = """ДЕНЬ
 Доба, яка хоче планувати більше, ніж устигне. [p1]
 
 ПРОГНОЗ
-зранку | впертість на порожньому місці, починати нове не тягне [p3]
-ввечері | тягне сказати різко й перевернути розмову [p6,p7]
+зранку | Місяць дотягує впертий знак, і починати нове не тягне; Нептун додає мрійливості [p3,p5]
+ввечері | Уран штовхає сказати різко, а натальна Венера робить це дорожчим, ніж здається [p6,p7]
+фоном | Марс із Кету тримають енергійне минуле під дверима [p8]
 
 ДІЯ
 Різке лиши до ранку — воно нікуди не дінеться. [p6]
@@ -287,7 +289,7 @@ READING = """ДЕНЬ
 ОСНОВА
 p3 09:00-11:00 холоста · p6 16:00-20:00 ✤✤✤✤✤ (☽5°♐☍♅5°♊) · p7 натал Венера
 """
-CHOSEN = ["p1", "p3", "p6", "p7"]
+CHOSEN = [i["id"] for i in ITEMS]          # the writing stage sees the whole day (t1156)
 
 
 def test_a_reading_built_on_the_day_passes():
@@ -295,19 +297,21 @@ def test_a_reading_built_on_the_day_passes():
 
 
 def test_an_invented_position_is_caught():
-    bad = READING.replace("[p3]", "[p9]")
-    assert any("яких у виборі немає" in p for p in mood2.check_reading(bad, ITEMS, CHOSEN))
+    bad = READING.replace("[p3,p5]", "[p99]")
+    assert any("яких у добі немає" in p for p in mood2.check_reading(bad, ITEMS, CHOSEN))
 
 
 def test_a_dropped_loud_window_is_caught():
     """The failure that makes a heavy day sound calm."""
-    bad = READING.replace("ввечері | тягне сказати різко й перевернути розмову [p6,p7]\n", "")
+    bad = READING.replace(
+        "ввечері | Уран штовхає сказати різко, а натальна Венера робить це дорожчим, "
+        "ніж здається [p6,p7]\n", "")
     problems = mood2.check_reading(bad, ITEMS, CHOSEN)
     assert any("не прозвучала" in p for p in problems), problems
 
 
 def test_a_degree_in_the_spoken_part_is_caught():
-    bad = READING.replace("тягне сказати різко", "Уран у 5° тягне сказати різко")
+    bad = READING.replace("Уран штовхає", "Уран у 5° штовхає")
     assert any("читає голос" in p for p in mood2.check_reading(bad, ITEMS, CHOSEN))
 
 
@@ -317,15 +321,15 @@ def test_a_missing_part_is_caught():
 
 
 def test_an_overlong_line_is_caught():
-    bad = READING.replace("впертість на порожньому місці, починати нове не тягне",
-                          "впертість " * 20)
+    bad = READING.replace("Місяць дотягує впертий знак",
+                          "Місяць " + "дотягує " * 80)
     assert any("довший за" in p for p in mood2.check_reading(bad, ITEMS, CHOSEN))
 
 
 def test_the_markers_never_reach_the_ear():
     said = mood2.spoken_part(READING)
     assert "[p" not in said and "ОСНОВА" not in said
-    assert "тягне сказати різко" in said
+    assert "Уран штовхає сказати різко" in said
 
 
 def test_the_prompts_are_no_longer_stubs():
@@ -344,7 +348,8 @@ def test_a_failed_reading_is_retried_with_what_went_wrong(monkeypatch, tmp_path)
             return json.dumps({"ids": ["p1", "p3", "p6"], "frame": "p1"}, ensure_ascii=False)
         prompts.append(prompt)
         if len(prompts) == 1:
-            return READING.replace("[p6,p7]", "[p6]")          # the natal hit goes missing
+            return READING.replace(", а натальна Венера робить це дорожчим, ніж здається",
+                                   "")                          # the natal hit goes missing
         return READING
 
     monkeypatch.setattr(mood2, "reference_text", lambda day: SOURCE)
@@ -362,7 +367,7 @@ def test_a_reading_that_never_passes_still_stops(monkeypatch, tmp_path):
             return json.dumps(ITEMS, ensure_ascii=False)
         if stage == "pick":
             return json.dumps({"ids": ["p1", "p3", "p6"], "frame": "p1"}, ensure_ascii=False)
-        return READING.replace("[p6,p7]", "[p6]")
+        return READING.replace(", а натальна Венера робить це дорожчим, ніж здається", "")
 
     monkeypatch.setattr(mood2, "reference_text", lambda day: SOURCE)
     monkeypatch.setattr(mood2, "call", fake_call)
@@ -433,13 +438,11 @@ def test_osnova_never_leaves_the_log(monkeypatch):
 # --- t1155: the cause is in the sentence, and never phrased the same way twice --------------
 
 def test_a_named_body_that_the_day_carries_passes():
-    woven = READING.replace("впертість на порожньому місці",
-                            "Місяць дотягує останнє в упертому знаку, і починати не тягне")
-    assert mood2.check_reading(woven, ITEMS, CHOSEN) == []
+    assert mood2.check_reading(READING, ITEMS, CHOSEN) == []
 
 
 def test_a_body_the_day_does_not_carry_is_caught():
-    bad = READING.replace("тягне сказати різко", "Юпітер розмахує рукою, тягне сказати різко")
+    bad = READING.replace("Уран штовхає", "Юпітер розмахує рукою, Уран штовхає")
     problems = mood2.check_reading(bad, ITEMS, CHOSEN)
     assert any("світила, яких у добі немає" in p and "Юпітер" in p for p in problems), problems
 
@@ -450,20 +453,63 @@ def test_inflected_and_russian_forms_resolve_to_the_body(word):
 
 
 def test_the_same_turn_of_phrase_twice_is_caught():
-    bad = READING.replace("впертість на порожньому місці",
+    bad = READING.replace("Місяць дотягує впертий знак",
                           "тихо, це тому, що Місяць дотягує знак")
-    bad = bad.replace("тягне сказати різко", "різко, це тому, що Уран тисне")
+    bad = bad.replace("Уран штовхає", "різко, це тому, що Уран тисне")
     assert any("більше одного разу" in p for p in mood2.check_reading(bad, ITEMS, CHOSEN))
 
 
 def test_one_such_turn_is_allowed():
-    once = READING.replace("впертість на порожньому місці",
+    once = READING.replace("Місяць дотягує впертий знак",
                            "тихо, це тому, що Місяць дотягує знак")
     assert mood2.check_reading(once, ITEMS, CHOSEN) == []
 
 
-def test_a_line_may_now_carry_a_cause_up_to_two_hundred():
-    line = "зранку | " + "я" * 180 + " [p3]"
-    long_one = READING.replace("зранку | впертість на порожньому місці, починати нове не тягне "
-                               "[p3]", line)
+def test_a_grouped_line_may_run_to_the_whole_paragraph():
+    line = ("зранку | Місяць дотягує впертий знак, Нептун додає мрійливості, "
+            + "і " * 80 + "далі [p3,p5]")
+    long_one = READING.replace(
+        "зранку | Місяць дотягує впертий знак, і починати нове не тягне; "
+        "Нептун додає мрійливості [p3,p5]", line)
+    assert len(line) < mood2.LINE_MAX
     assert mood2.check_reading(long_one, ITEMS, CHOSEN) == []
+
+
+# --- t1156: nothing of his day disappears ---------------------------------------------------
+
+def test_a_body_of_the_day_that_never_sounds_is_caught():
+    """The defect that prompted this: a planet he supplied, gone by the time of writing."""
+    bad = READING.replace("Нептун додає мрійливості", "і далі так само")
+    problems = mood2.check_reading(bad, ITEMS, CHOSEN)
+    assert any("яких у читанні немає" in p and "Нептун" in p for p in problems), problems
+
+
+def test_the_parts_of_the_day_keep_their_order():
+    lines = READING.splitlines()
+    morning = next(i for i, ln in enumerate(lines) if ln.startswith("зранку"))
+    evening = next(i for i, ln in enumerate(lines) if ln.startswith("ввечері"))
+    swapped = lines[:]
+    swapped[morning], swapped[evening] = swapped[evening], swapped[morning]
+    problems = mood2.check_reading("\n".join(swapped), ITEMS, CHOSEN)
+    assert any("не по порядку" in p for p in problems), problems
+
+
+def test_a_lost_body_is_handed_back_to_the_retry(monkeypatch, tmp_path):
+    prompts = []
+
+    def fake_call(stage, prompt):
+        if stage == "read":
+            return json.dumps(ITEMS, ensure_ascii=False)
+        if stage == "pick":
+            return json.dumps({"ids": ["p6"], "frame": "p1"}, ensure_ascii=False)
+        prompts.append(prompt)
+        if len(prompts) == 1:
+            return READING.replace("Нептун додає мрійливості", "і далі так само")
+        return READING
+
+    monkeypatch.setattr(mood2, "reference_text", lambda day: SOURCE)
+    monkeypatch.setattr(mood2, "call", fake_call)
+    monkeypatch.setattr(mood2, "state_path", lambda key: tmp_path / f"astro2-{key}")
+    out = mood2.run(DAY)
+    assert len(prompts) == 2 and "Нептун" in prompts[1]
+    assert out["day"] == READING
