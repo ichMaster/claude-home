@@ -428,3 +428,42 @@ def test_osnova_never_leaves_the_log(monkeypatch):
     assert len(sent) == 1
     assert "ОСНОВА" not in sent[0] and "°" not in sent[0] and "[p" not in sent[0]
     assert sent[0].startswith("ДЕНЬ") and "ДІЯ" in sent[0]
+
+
+# --- t1155: the cause is in the sentence, and never phrased the same way twice --------------
+
+def test_a_named_body_that_the_day_carries_passes():
+    woven = READING.replace("впертість на порожньому місці",
+                            "Місяць дотягує останнє в упертому знаку, і починати не тягне")
+    assert mood2.check_reading(woven, ITEMS, CHOSEN) == []
+
+
+def test_a_body_the_day_does_not_carry_is_caught():
+    bad = READING.replace("тягне сказати різко", "Юпітер розмахує рукою, тягне сказати різко")
+    problems = mood2.check_reading(bad, ITEMS, CHOSEN)
+    assert any("світила, яких у добі немає" in p and "Юпітер" in p for p in problems), problems
+
+
+@pytest.mark.parametrize("word", ["Місяця", "Місяцем", "Венери", "Венерою", "Луна", "Марсом"])
+def test_inflected_and_russian_forms_resolve_to_the_body(word):
+    assert mood2.bodies_named(f"сьогодні {word} робить своє")
+
+
+def test_the_same_turn_of_phrase_twice_is_caught():
+    bad = READING.replace("впертість на порожньому місці",
+                          "тихо, це тому, що Місяць дотягує знак")
+    bad = bad.replace("тягне сказати різко", "різко, це тому, що Уран тисне")
+    assert any("більше одного разу" in p for p in mood2.check_reading(bad, ITEMS, CHOSEN))
+
+
+def test_one_such_turn_is_allowed():
+    once = READING.replace("впертість на порожньому місці",
+                           "тихо, це тому, що Місяць дотягує знак")
+    assert mood2.check_reading(once, ITEMS, CHOSEN) == []
+
+
+def test_a_line_may_now_carry_a_cause_up_to_two_hundred():
+    line = "зранку | " + "я" * 180 + " [p3]"
+    long_one = READING.replace("зранку | впертість на порожньому місці, починати нове не тягне "
+                               "[p3]", line)
+    assert mood2.check_reading(long_one, ITEMS, CHOSEN) == []

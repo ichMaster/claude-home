@@ -178,7 +178,10 @@
   "codereview": {
     "_": "Nightly self code-review after the 05:00 restart (status/code-review-headless.sh, noos-codereview.timer). Fable 5, ultracode multi-agent; fixes High/Medium findings locally with a task + spec + test each, writes a scan report then a fix report under status/state/code-review/ (git-ignored), never pushes.",
     "model": "claude-fable-5",
-    "fix_severities": ["high", "medium"],
+    "fix_severities": [
+      "high",
+      "medium"
+    ],
     "report_dir": "status/state/code-review"
   },
   "telegram": {
@@ -196,7 +199,7 @@
       "feedback_min_chars": 25
     },
     "bots": {
-      "_": "message kind \u2192 env suffix. notify.sh --bot <kind> sends through TELEGRAM_BOT_TOKEN_<SUFFIX> (and TELEGRAM_CHAT_ID_<SUFFIX> if set) from .env.telegram, falling back to the main bot when the token is missing. Several kinds may share one suffix: news and youtube both live in Bruno's channel, spoken in his voice. The suffix is the bot's own name (Zirka, Bruno), not the kind, so a token is easy to match to the bot it came from. These are one-way broadcast channels: nothing polls getUpdates for them, so a reply sent to one of them never reaches the session.",
+      "_": "message kind → env suffix. notify.sh --bot <kind> sends through TELEGRAM_BOT_TOKEN_<SUFFIX> (and TELEGRAM_CHAT_ID_<SUFFIX> if set) from .env.telegram, falling back to the main bot when the token is missing. Several kinds may share one suffix: news and youtube both live in Bruno's channel, spoken in his voice. The suffix is the bot's own name (Zirka, Bruno), not the kind, so a token is easy to match to the bot it came from. These are one-way broadcast channels: nothing polls getUpdates for them, so a reply sent to one of them never reaches the session.",
       "mood": "zirka",
       "news": "bruno",
       "youtube": "bruno"
@@ -289,15 +292,124 @@
     "session_unit": "claude-home.service",
     "scenarios_": "Screen 3 (t1101): the prompts that belong to no channel. `cmd` and `dry` are resolved against the repository root, and a leading *.py gets the project interpreter, so nothing hardcodes a path. `detach: true` means the run is long enough to need systemd-run — the request must not wait for it.",
     "scenarios": [
-      {"name": "дайджест", "what": "вечірній або ранковий дайджест у головний чат", "unit": "noos-digest.timer", "cmd": ["status/digest-headless.sh", "вечірній"], "prompts": ["status/digest-prompt.md"], "detach": true},
-      {"name": "гороскоп", "what": "ранковий прогноз: девʼять стадій, вісім хвилин", "unit": "noos-mood.timer", "cmd": ["status/mood.py"], "dry": ["status/mood.py", "--dry-run"], "prompts": ["status/mood/fact.md", "status/mood/houses.md", "status/mood/moon.md", "status/mood/background.md", "status/mood/rank.md", "status/mood/draft.md", "status/mood/review.md", "status/mood/summary.md", "status/mood/bio.md"], "detach": true},
-      {"name": "ютюб", "what": "вибір відео з накопичених, у чат Бруно", "unit": "noos-youtube.timer", "cmd": ["status/youtube-headless.sh"], "prompts": ["status/youtube-prompt.md"], "detach": true},
-      {"name": "соцмережі", "what": "Facebook і LinkedIn через конектор пошти", "unit": "noos-social.timer", "cmd": ["status/social-headless.sh"], "detach": true},
-      {"name": "боти", "what": "відповіді в чатах Зірки й Бруно", "unit": "noos-bots.timer", "cmd": ["status/bots/inbox.py"], "dry": ["status/bots/inbox.py", "--dry-run"], "prompts": ["status/bots/common.md", "status/bots/zirka.md", "status/bots/bruno.md", "status/bots/intent.md", "status/bots/handoff.md", "status/bots/zirka_intent.md"], "detach": false},
-      {"name": "ревʼю коду", "what": "нічне ревʼю репозиторію, виправляє High і Medium", "unit": "noos-codereview.timer", "cmd": ["status/code-review-headless.sh"], "prompts": ["status/code-review-prompt.md"], "detach": true},
-      {"name": "вартовий", "what": "пробники кожні 15 хвилин, говорить лише про зміни", "unit": "noos-watch.timer", "cmd": ["status/watch.py"], "detach": false},
-      {"name": "зміни за день", "what": "самарі журналу змін у кінці дня", "unit": "noos-changes.timer", "cmd": ["status/changes-send.sh"], "detach": true},
-      {"name": "естафета", "what": "записка для наступної сесії (memory/handoff.md)", "unit": "noos-nightly-restart.timer", "cmd": ["memory/handoff.py"], "detach": true}
+      {
+        "name": "дайджест",
+        "what": "вечірній або ранковий дайджест у головний чат",
+        "unit": "noos-digest.timer",
+        "cmd": [
+          "status/digest-headless.sh",
+          "вечірній"
+        ],
+        "prompts": [
+          "status/digest-prompt.md"
+        ],
+        "detach": true
+      },
+      {
+        "name": "гороскоп",
+        "what": "ранковий прогноз: девʼять стадій, вісім хвилин",
+        "unit": "noos-mood.timer",
+        "cmd": [
+          "status/mood.py"
+        ],
+        "dry": [
+          "status/mood.py",
+          "--dry-run"
+        ],
+        "prompts": [
+          "status/mood/fact.md",
+          "status/mood/houses.md",
+          "status/mood/moon.md",
+          "status/mood/background.md",
+          "status/mood/rank.md",
+          "status/mood/draft.md",
+          "status/mood/review.md",
+          "status/mood/summary.md",
+          "status/mood/bio.md"
+        ],
+        "detach": true
+      },
+      {
+        "name": "ютюб",
+        "what": "вибір відео з накопичених, у чат Бруно",
+        "unit": "noos-youtube.timer",
+        "cmd": [
+          "status/youtube-headless.sh"
+        ],
+        "prompts": [
+          "status/youtube-prompt.md"
+        ],
+        "detach": true
+      },
+      {
+        "name": "соцмережі",
+        "what": "Facebook і LinkedIn через конектор пошти",
+        "unit": "noos-social.timer",
+        "cmd": [
+          "status/social-headless.sh"
+        ],
+        "detach": true
+      },
+      {
+        "name": "боти",
+        "what": "відповіді в чатах Зірки й Бруно",
+        "unit": "noos-bots.timer",
+        "cmd": [
+          "status/bots/inbox.py"
+        ],
+        "dry": [
+          "status/bots/inbox.py",
+          "--dry-run"
+        ],
+        "prompts": [
+          "status/bots/common.md",
+          "status/bots/zirka.md",
+          "status/bots/bruno.md",
+          "status/bots/intent.md",
+          "status/bots/handoff.md",
+          "status/bots/zirka_intent.md"
+        ],
+        "detach": false
+      },
+      {
+        "name": "ревʼю коду",
+        "what": "нічне ревʼю репозиторію, виправляє High і Medium",
+        "unit": "noos-codereview.timer",
+        "cmd": [
+          "status/code-review-headless.sh"
+        ],
+        "prompts": [
+          "status/code-review-prompt.md"
+        ],
+        "detach": true
+      },
+      {
+        "name": "вартовий",
+        "what": "пробники кожні 15 хвилин, говорить лише про зміни",
+        "unit": "noos-watch.timer",
+        "cmd": [
+          "status/watch.py"
+        ],
+        "detach": false
+      },
+      {
+        "name": "зміни за день",
+        "what": "самарі журналу змін у кінці дня",
+        "unit": "noos-changes.timer",
+        "cmd": [
+          "status/changes-send.sh"
+        ],
+        "detach": true
+      },
+      {
+        "name": "естафета",
+        "what": "записка для наступної сесії (memory/handoff.md)",
+        "unit": "noos-nightly-restart.timer",
+        "cmd": [
+          "memory/handoff.py"
+        ],
+        "detach": true
+      }
     ],
     "edit_min_ratio": 0.5,
     "sent_bodies_": "Screen 11 shows metadata by default. The text of a digest is the owner's calendar and his mail, so showing the bodies is an explicit decision even behind the login (t1119).",
@@ -308,17 +420,52 @@
     "journal_scope_": "What the Rules screen's journal pane may show. `systemd` (default) — systemd's own lines for the unit: Starting / Finished / Failed / exit code / CPU time. `full` — the unit's own stdout too, which for a headless unit is the content a model composed (the digest's calendar block, mail subjects, the nightly review's findings) and therefore waits for the panel to have authentication (t1094).",
     "journal_scope": "systemd",
     "rules_masked_": "Keys whose VALUE never reaches the Rules screen. The panel listens on the whole local network with no authentication (host above), so birth data, the calendar id, the owner's name and the ElevenLabs voice ids are shown as «перевизначено, значення приховано» — the fact of an override is useful, the value is nobody's business. Prefix match on whole dotted segments.",
-    "rules_masked": ["user", "tasks.calendar.id", "astro.birth", "astro.context", "astro.subjects", "voice.voices"],
+    "rules_masked": [
+      "user",
+      "tasks.calendar.id",
+      "astro.birth",
+      "astro.context",
+      "astro.subjects",
+      "voice.voices"
+    ],
     "key_files_": "The key files the Rules screen reports on: present or missing, permissions, and the NAMES of the variables inside. Never a value.",
     "key_files": [
-      {"file": ".env.voice", "what": "ElevenLabs і Deepgram — голос"},
-      {"file": ".env.telegram", "what": "токени названих ботів (Зірка, Бруно)"},
-      {"file": ".env.gmail", "what": "пошта через IMAP (пробник mail)"},
-      {"file": ".env.calendar", "what": "секретні iCal-адреси календарів (пробник cal)"},
-      {"file": ".env.news", "what": "новини"},
-      {"file": ".env.youtube", "what": "OAuth для списку підписок"}
+      {
+        "file": ".env.voice",
+        "what": "ElevenLabs і Deepgram — голос"
+      },
+      {
+        "file": ".env.telegram",
+        "what": "токени названих ботів (Зірка, Бруно)"
+      },
+      {
+        "file": ".env.gmail",
+        "what": "пошта через IMAP (пробник mail)"
+      },
+      {
+        "file": ".env.calendar",
+        "what": "секретні iCal-адреси календарів (пробник cal)"
+      },
+      {
+        "file": ".env.news",
+        "what": "новини"
+      },
+      {
+        "file": ".env.youtube",
+        "what": "OAuth для списку підписок"
+      }
     ],
-    "probes": ["loe", "alarm", "weather", "host", "services", "tasks", "usage", "mood", "bio"]
+    "probes": [
+      "loe",
+      "alarm",
+      "weather",
+      "host",
+      "services",
+      "tasks",
+      "usage",
+      "mood",
+      "bio"
+    ]
   },
   "astro": {
     "_": "The daily mood: the chart is computed locally (status/astro.py, Swiss Ephemeris / Moshier). Birth data is personal and lives in config.local.json under astro.birth.",
@@ -369,7 +516,11 @@
     "log": "status/state/astro2/mood-v2.log",
     "state": "status/state/astro2/mood-v2.json",
     "claims": "status/state/astro2/forecast-claims-v2.jsonl",
-    "stages": ["read", "pick", "day"],
+    "stages": [
+      "read",
+      "pick",
+      "day"
+    ],
     "models": {
       "read": "sonnet",
       "pick": "",
@@ -378,6 +529,7 @@
     "timeout": 420,
     "budget_chars": 1200,
     "items_max": 5,
-    "loud_min": 3
+    "loud_min": 3,
+    "retries": 3
   }
 }

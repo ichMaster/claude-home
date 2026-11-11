@@ -377,7 +377,18 @@ def part_of_day(frm, to=None) -> str:
 MARK = re.compile(r"[ \t]*\[(p\d+(?:[ \t]*,[ \t]*p\d+)*)\]")
 SECTIONS = ("ДЕНЬ", "ПРОГНОЗ", "ДІЯ", "ОСНОВА")
 CLOCK = re.compile(r"\d{1,2}:\d{2}")
-LINE_MAX = 140
+LINE_MAX = 200
+
+# The bodies, by the stem that survives Ukrainian inflection: Венери, Венерою, Венеру all
+# answer to «Венер». «Луна» is folded onto «Місяць» because his pages are Russian and the read
+# stage translates them (t1155).
+BODY_STEMS = {
+    "сонц": "Сонце", "місяц": "Місяць", "луна": "Місяць", "лун": "Місяць",
+    "меркур": "Меркурій", "венер": "Венера", "марс": "Марс", "юпітер": "Юпітер",
+    "сатурн": "Сатурн", "уран": "Уран", "нептун": "Нептун", "плутон": "Плутон",
+    "кету": "Кету", "раху": "Раху", "ліліт": "Ліліт",
+}
+SAME_TURN = "це тому, що"
 
 
 def marked_ids(text: str) -> list[str]:
@@ -397,6 +408,12 @@ def spoken_part(text: str) -> str:
     """Everything before ОСНОВА: the figures are written down, never read out."""
     head = (text or "").split("ОСНОВА")[0]
     return strip_marks(head)
+
+
+def bodies_named(text: str) -> set[str]:
+    """Which bodies a piece of text talks about, whatever case the words are in."""
+    low = (text or "").lower()
+    return {name for stem, name in BODY_STEMS.items() if stem in low}
 
 
 def check_reading(text: str, items, chosen_ids) -> list[str]:
@@ -441,6 +458,18 @@ def check_reading(text: str, items, chosen_ids) -> list[str]:
             problems.append(f"у тому, що читає голос, є «{bad}» — цифри лише в ОСНОВА")
     if CLOCK.search(head):
         problems.append("у тому, що читає голос, є година — доба називається словами")
+    # The cause may be named, but only a cause the day actually carries (t1155).
+    # Judged against the whole day, not only the selection: a body the day really carries is
+    # at worst a misplaced emphasis, while a silent morning is a failure of the thing itself.
+    available = bodies_named(" ".join(
+        f"{i.get('bodies') or ''} {i.get('natal') or ''} {i.get('meaning') or ''}"
+        for i in items))
+    invented_bodies = sorted(bodies_named(head) - available)
+    if invented_bodies:
+        problems.append("світила, яких у добі немає: " + ", ".join(invented_bodies))
+    # And it may not be named the same way twice — he asked for prose, not a template.
+    if head.lower().count(SAME_TURN) > 1:
+        problems.append(f"«{SAME_TURN}» більше одного разу — причина щоразу інакше")
     body = text.split("ПРОГНОЗ", 1)[-1].split("ДІЯ", 1)[0]
     for line in strip_marks(body).splitlines():
         if len(line.strip()) > LINE_MAX:
