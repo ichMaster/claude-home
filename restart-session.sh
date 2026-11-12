@@ -21,11 +21,22 @@ quiet=""
 if [ "$hour" -ge 3 ] && [ "$hour" -lt 8 ]; then quiet="--quiet"; fi
 "$HOME/claude-home/notify.sh" $quiet "$warn — Ноос" >/dev/null 2>&1 || true
 
+note_chars=""
 if [ "$mode" = "--summary" ]; then
-  # the note must be written before the session dies — it is built from the transcript
-  "$HOME/claude-home/.venv-voice/bin/python" "$HOME/claude-home/memory/handoff.py"     >/tmp/noos-handoff.log 2>&1
-  touch "$HOME/claude-home/.fresh"
-  what="з естафетою"
+  # the note must be written before the session dies — it is built from the transcript.
+  # Its size is measured here, before start.sh moves the file: the old report read
+  # handoff-last.md, which on a failure still held a PREVIOUS restart's note (t1165).
+  if "$HOME/claude-home/.venv-voice/bin/python" "$HOME/claude-home/memory/handoff.py" \
+       >/tmp/noos-handoff.log 2>&1 && [ -s "$HOME/claude-home/memory/handoff.md" ]; then
+    note_chars=$(wc -c < "$HOME/claude-home/memory/handoff.md" | tr -d ' ')
+    touch "$HOME/claude-home/.fresh"
+    what="з естафетою"
+  else
+    # no note means a clean start would lose the thread silently — keep the conversation
+    # instead, as --continue would (t1165)
+    rm -f "$HOME/claude-home/.fresh"
+    what="з контекстом: записка не склалась, розмову збережено"
+  fi
 elif [ "$mode" = "--fresh" ]; then
   touch "$HOME/claude-home/.fresh"
   what="з чистого аркуша"
@@ -41,8 +52,12 @@ sleep 30
 if pgrep -u "$USER" -f "claude --remote-control home" >/dev/null; then
   facts=$("$HOME/claude-home/.venv-voice/bin/python" "$HOME/claude-home/memory/facts.py" list 2>/dev/null | tail -1)
   note=""
-  if [ "$mode" = "--summary" ] && [ -f "$HOME/claude-home/memory/handoff-last.md" ]; then
-    note=" Записка: $(wc -c < "$HOME/claude-home/memory/handoff-last.md" | tr -d ' ') символів."
+  if [ "$mode" = "--summary" ]; then
+    if [ -n "$note_chars" ]; then
+      note=" Записка: $note_chars символів."
+    else
+      note=" Записка не склалась (/tmp/noos-handoff.log)."
+    fi
   fi
   "$HOME/claude-home/notify.sh" $quiet "Сесія перезапущена $what.$note $facts — у системній підказці. — Ноос"
 else
