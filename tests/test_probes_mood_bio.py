@@ -64,3 +64,45 @@ def test_both_say_so_when_the_morning_has_not_run(tmp_path, monkeypatch):
 def test_bio_without_a_conclusion_still_reports_the_figures(tmp_path, monkeypatch):
     got = run("bio", {**STATE, "bio_conclusion": ""}, tmp_path, monkeypatch)
     assert "фізичний" in got["text"] and got["value"]["fresh"] is True
+
+
+# --- t1161: the --only bio run must leave today's figures where the probe looks -------------
+
+def _bio_run(monkeypatch, tmp_path, existing_state):
+    import sys
+    sys.path.insert(0, str(ROOT / "status"))
+    import mood
+    f = tmp_path / "mood.json"
+    f.write_text(json.dumps(existing_state, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(mood, "state_path",
+                        lambda key: f if key == "state" else tmp_path / key)
+    monkeypatch.setattr(mood, "write_biorhythms",
+                        lambda day, computed: {"figures": "", "conclusion": "Тіло просить спокою.",
+                                               "raw": "сире"})
+    monkeypatch.setattr(mood, "log_run", lambda *a, **kw: None)
+    monkeypatch.setattr(mood, "send", lambda *a, **kw: None)
+    monkeypatch.setattr(mood.sys, "argv", ["mood.py", "--only", "bio", "--day", TODAY])
+    assert mood.main() == 0
+    return json.loads(f.read_text(encoding="utf-8"))
+
+
+def test_only_bio_updates_yesterdays_state(monkeypatch, tmp_path):
+    """TC1 (t1161): the probe compares day to today — without this write it answers
+    «ще не рахувались» every day v1 stays stopped."""
+    st = _bio_run(monkeypatch, tmp_path,
+                  {"day": "2026-11-01", "biorhythms": "старі цифри",
+                   "bio_conclusion": "старе", "summary": "вчорашнє читання"})
+    assert st["day"] == TODAY
+    assert st["biorhythms"] and st["biorhythms"] != "старі цифри"
+    assert st["bio_conclusion"] == "Тіло просить спокою."
+    assert st.get("summary", "") == "", "вчорашнє астрочитання не сміє носити сьогоднішню дату"
+
+
+def test_only_bio_keeps_todays_astrology(monkeypatch, tmp_path):
+    """TC2 (t1161): today's summary already written → the bio run touches only its own half."""
+    st = _bio_run(monkeypatch, tmp_path,
+                  {"day": TODAY, "biorhythms": "", "bio_conclusion": "",
+                   "summary": "сьогоднішнє читання"})
+    assert st["day"] == TODAY
+    assert st["summary"] == "сьогоднішнє читання"
+    assert st["bio_conclusion"] == "Тіло просить спокою."

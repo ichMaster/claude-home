@@ -714,6 +714,29 @@ def save_state(day: date, bio: dict, forecast: dict, computed: str) -> None:
         ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def save_bio_state(day: date, bio: dict, computed: str) -> None:
+    """The bio probe's half of the state, on its own (t1161).
+
+    Since v1's full run stopped, `--only bio` is the whole morning for biorhythms — and it
+    never wrote `astro.state`, so the probe compared yesterday's date to today and answered
+    «ще не рахувались» every day. Merged, not overwritten: on the same day the astrology
+    fields survive; on a new day they are emptied rather than re-dated, because a stale
+    summary under today's date would be a reading he never received (the probe already treats
+    an empty summary as not-fresh)."""
+    f = state_path("state")
+    f.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        st = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
+    except (OSError, json.JSONDecodeError):
+        st = {}
+    if st.get("day") != day.isoformat():
+        st = {"day": day.isoformat(), "summary": "", "action": "", "arc": "", "claims": []}
+    st["biorhythms"] = computed
+    st["bio_conclusion"] = bio.get("conclusion", "")
+    st["sent_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
+    f.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="ранковий прогноз: біоритми й астрологія окремо")
     ap.add_argument("--day", help="дата YYYY-MM-DD (типово — сьогодні)")
@@ -777,6 +800,7 @@ def main() -> int:
             print(text)
             return 0
         log_run(day, {"біоритми": bio["raw"]})
+        save_bio_state(day, bio, computed)
         send(text, note=note)
         return 0
 
