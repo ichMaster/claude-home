@@ -442,6 +442,52 @@ keeping; removals are only reported. Without creds the run is a clean no-op. One
 a Desktop OAuth client in Google Cloud (YouTube Data API v3), then run `youtube_oauth.py` once
 (header has the steps; `ssh -L 8765:localhost:8765` if the box has no browser).
 
+## The morning reading, v2 (`status/mood2.py`) — what actually runs now
+
+Since 2026-11-12 the morning is **v2**, and v1 is stopped: `noos-mood.timer` and
+`noos-mood-ask.timer` are disabled (the owner: «першу версію треба взагалі зупинити, так само
+як і перевірку, чи воно співпало»). `noos-mood2.timer` reads at **08:15** and
+`noos-bio.timer` sends the biorhythms at **08:20** (`mood.py --only bio`, which never mentions
+a planet). The section below on v1 is kept because v2 reuses its sender, its voice profiles
+and its log conventions — but nothing in it is on a timer any more.
+
+**The sky is not ours.** v2 reads the calendar of an astrologer the owner trusts, forwarded
+into Zirka's chat and stored by `astro_learn.py`. Three stages, each checked arithmetically
+rather than judged: `read` turns one of his days into positions, `pick` says what is loud, and
+`day` writes it for the ear. A date he has not covered stops the run — v2 has no ephemeris of
+its own until phase 3. The plan and its three phases are `docs/astro-v2-reference.md`; never
+name the astrologer in a committed file.
+
+**Nothing of his day is thrown away** (t1156). The writing stage receives every position, not
+a selection — `pick` survives as emphasis only — because dropping positions is exactly what
+made bodies he supplied vanish before a word was written. `check_reading()` catches, by
+counting: a body named that the day does not carry, a body of the day that never sounds,
+positions out of the day, a loud window or a natal hit that failed to appear, parts of the day
+out of order, a degree or a clock time in the spoken part, «це тому, що» more than once, and an
+over-long line. Whatever it finds is handed back and the reading is rewritten, up to
+`astro2.retries` (3) times.
+
+**How it reads** (his rules, 2026-11-11/12):
+
+- **Parts of the day, never clock times**: `вночі`, `зранку`, `в обід`, `після обіду`,
+  `ввечері`, and `фоном` for what holds for weeks. `part_of_day()` computes the label from the
+  window — the part it spends most of itself in — so the model is handed a word, not a
+  decision. The hours stay in `ОСНОВА`.
+- **The cause is in the sentence**, in plain speech: which body and where it stands, tied to
+  his translated meaning as one phrase. Not a list of coordinates, and not the same
+  construction twice.
+- **`ОСНОВА` is never sent** (t1154) — not to the voice and not to the chat. It stays in the
+  log and the state, which is where a claim is traced back to its figure.
+- **It breathes** (t1157): `voice_text()` places `[довга пауза]` before each part of the day
+  and a `[пауза]` after naming it, deterministically. The delivery is `zorya-reading` — the
+  forecast voice at tempo 0.95 — because at 1.1 two thousand characters arrive as one block.
+
+```
+status/mood2.py --day 2026-11-12 --dry-run   the whole pipeline, nothing sent or written
+status/mood2.py --send                       today's reading, to Zirka's chat
+status/mood2.py --facts                      the computed facts, no model at all
+```
+
 ## The morning forecast (`status/mood.py`, probe `mood`)
 
 Two separate readings, sent by `noos-mood.timer` at **08:15** — after the morning digest,
