@@ -57,7 +57,15 @@ def save_state(st):
 def main():
     raw = subprocess.run([str(HOME / "status" / "run.sh"), *PROBES],
                          capture_output=True, text=True).stdout
-    probes = json.loads(raw) if raw.strip() else []
+    try:
+        probes = json.loads(raw) if raw.strip() else []
+    except json.JSONDecodeError:
+        probes = []
+    # run.sh always emits one entry per probe, so an empty list means it died — saving the
+    # empty newstate would wipe every signature and re-send every active warn (t1168)
+    if not probes:
+        print("run.sh нічого не повернув — стан не чіпаю")
+        return
 
     state = load_state()
     now = time.time()

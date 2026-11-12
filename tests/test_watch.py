@@ -64,3 +64,28 @@ def test_successful_send_persists_and_silences(monkeypatch, tmp_path):
     watch.main()
     notifies = [c for c in calls if str(c[0]).endswith("notify.sh")]
     assert len(notifies) == 1, "unchanged warn was re-sent"
+
+
+# --- t1168: an empty or malformed run.sh output must not wipe the dedup state ----------
+
+def test_empty_run_output_keeps_state(monkeypatch, tmp_path):
+    """TC1 (t1168): run.sh returned nothing (it crashed) → watch.json stays as it was,
+    otherwise every active warn re-sends next tick and the alert clock resets."""
+    st = tmp_path / "watch.json"
+    old = {"loe": {"sig": "s1|u1", "sev": "warn", "sent": 123.0}}
+    st.write_text(json.dumps(old))
+    monkeypatch.setattr(watch, "STATE", st)
+    monkeypatch.setattr(watch.subprocess, "run", fake_run("", 0, []))
+    watch.main()
+    assert json.loads(st.read_text()) == old
+
+
+def test_malformed_run_output_keeps_state(monkeypatch, tmp_path):
+    """TC2 (t1168): torn cache line → run.sh prints garbage → no crash, state untouched."""
+    st = tmp_path / "watch.json"
+    old = {"loe": {"sig": "s1|u1", "sev": "warn", "sent": 123.0}}
+    st.write_text(json.dumps(old))
+    monkeypatch.setattr(watch, "STATE", st)
+    monkeypatch.setattr(watch.subprocess, "run", fake_run('{"half', 0, []))
+    watch.main()
+    assert json.loads(st.read_text()) == old
