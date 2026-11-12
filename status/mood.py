@@ -649,7 +649,8 @@ def with_tags(text: str, note=lambda *a: None) -> str:
     return out
 
 
-def send(text: str, role: str = "mood", note=lambda *a: None) -> None:
+def send(text: str, role: str = "mood", note=lambda *a: None,
+         voice: str | None = None, profile: str | None = None) -> None:
     """Voice first as its own message, then the text.
 
     A full reading is several Telegram messages and about a minute of synthesis, so one
@@ -661,12 +662,16 @@ def send(text: str, role: str = "mood", note=lambda *a: None) -> None:
     say what kind of message this is before a word of it is understood.
     """
     notify = str(HOME / "notify.sh")
-    profile = conf(f"voice.roles.{role}")
-    settings = conf(f"voice.profiles.{profile}") or {} if profile else {}
-    body = spoken(text)
-    if settings.get("tags"):
+    # `profile` names the delivery outright (v2 reads slower and with its own pauses, t1157);
+    # without it the role's own profile is used, as it always was.
+    chosen = profile or conf(f"voice.roles.{role}")
+    settings = conf(f"voice.profiles.{chosen}") or {} if chosen else {}
+    # A spoken copy prepared by the caller is used as given: it already carries its pauses,
+    # and a second pass of tag-writing would only fight it.
+    body = voice if voice is not None else spoken(text)
+    if voice is None and settings.get("tags"):
         body = with_tags(body, note)
-    voice = ["--voice-profile", role] if profile else []
+    voice = ["--voice-profile", chosen] if chosen else []
     # The reading goes to its own bot when one is configured (`telegram.bots.mood`): a
     # forecast is several messages and a minute of audio, and it buried the conversation
     # in the main chat. notify.sh falls back to the main bot if the token is missing.

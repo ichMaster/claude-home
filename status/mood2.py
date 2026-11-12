@@ -428,6 +428,29 @@ def bodies_named(text: str) -> set[str]:
     return {name for stem, name in BODY_STEMS.items() if stem in low}
 
 
+def voice_text(text: str) -> str:
+    """The spoken copy: no headings, and a breath between the parts of the day (t1157).
+
+    «Тараторить в один суцільний текст і я не встигаю усвідомити» — the reading is two
+    thousand characters of dense meaning, and without silence between the parts it arrives as
+    one block. The pauses are placed here rather than by a model: where one part of the day
+    ends and the next begins is known exactly, and a cheap call that guesses it is worse than
+    arithmetic that does not.
+    """
+    out = []
+    for raw in spoken_part(text).splitlines():
+        line = raw.strip()
+        if not line or line in SECTIONS:
+            continue
+        if " | " in line:
+            when, body = line.split(" | ", 1)
+            body = body.replace("; ", ". [пауза] ").replace(" — ", " — [пауза] ", 1)
+            out.append(f"[довга пауза] {when}. [пауза] {body}")
+        else:
+            out.append(f"[довга пауза] {line}")
+    return "\n\n".join(out)
+
+
 def check_reading(text: str, items, chosen_ids=None) -> list[str]:
     """Arithmetic, not judgement: does the reading stand on the positions it was given?
 
@@ -610,7 +633,8 @@ def send(text: str) -> None:
     # ОСНОВА is the audit trail, not the message: v1 kept it in the text part because it was
     # the only way to trace a claim back to its figure, and he asked for it gone (t1154).
     # It stays in the log and the state, where tracing actually happens.
-    mood.send(spoken_part(text).strip(), role="mood")
+    mood.send(spoken_part(text).strip(), role="mood",
+              voice=voice_text(text), profile=conf2("voice_profile", "zorya-reading"))
 
 
 def main() -> int:

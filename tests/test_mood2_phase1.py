@@ -428,7 +428,9 @@ def test_the_hours_still_live_in_osnova():
 def test_osnova_never_leaves_the_log(monkeypatch):
     """The figures are an audit trail; the chat gets the reading (t1154)."""
     sent = []
-    monkeypatch.setattr(mood2.mood, "send", lambda text, role="mood": sent.append(text))
+    monkeypatch.setattr(mood2.mood, "send",
+                        lambda text, role="mood", voice=None, profile=None:
+                        sent.append(text))
     mood2.send(READING)
     assert len(sent) == 1
     assert "ОСНОВА" not in sent[0] and "°" not in sent[0] and "[p" not in sent[0]
@@ -513,3 +515,24 @@ def test_a_lost_body_is_handed_back_to_the_retry(monkeypatch, tmp_path):
     out = mood2.run(DAY)
     assert len(prompts) == 2 and "Нептун" in prompts[1]
     assert out["day"] == READING
+
+
+# --- t1157: the spoken copy breathes --------------------------------------------------------
+
+def test_the_spoken_copy_carries_pauses_and_no_headings():
+    said = mood2.voice_text(READING)
+    assert said.count("[довга пауза]") >= 4, "a breath before each part of the day"
+    assert "ДЕНЬ" not in said and "ПРОГНОЗ" not in said and "ОСНОВА" not in said
+    assert "[p" not in said
+    assert "зранку. [пауза]" in said, "the part is announced, then a breath"
+
+
+def test_the_tags_never_reach_the_written_message(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(mood2.mood, "send",
+                        lambda text, role="mood", voice=None, profile=None:
+                        seen.update(text=text, voice=voice, profile=profile))
+    mood2.send(READING)
+    assert "[пауза]" not in seen["text"] and "ОСНОВА" not in seen["text"]
+    assert "[довга пауза]" in seen["voice"]
+    assert seen["profile"] == "zorya-reading", "the reading has its own, slower delivery"
