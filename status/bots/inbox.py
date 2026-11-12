@@ -510,10 +510,14 @@ def handle_update(bot: str, token: str, owner: str, st: dict, upd: dict,
         text = transcribe(token, msg["voice"]["file_id"])
         if text:
             print(f"{bot}: голосове розпізнано: {text[:80]}")
-    if not text and msg.get("document"):
-        text = read_document(token, msg["document"])
-        if text:
-            print(f"{bot}: документ прочитано: {len(text)} символів")
+    if msg.get("document"):
+        # read it even under a caption: «це на завтра» on a forwarded .txt used to win the
+        # `or` and the reference body was silently discarded (t1162) — the caption rides
+        # above the body instead, so the intent call still sees both
+        body = read_document(token, msg["document"])
+        if body:
+            text = f"{text}\n\n{body}".strip()
+            print(f"{bot}: документ прочитано: {len(body)} символів")
     if not text:
         log_dropped(bot, "без тексту", upd)
         return 0
@@ -550,6 +554,13 @@ def handle_update(bot: str, token: str, owner: str, st: dict, upd: dict,
         print(f"{bot}: відповідь не склалась: {e}")
         return 0
     reply, request = split_handoff(reply)
+    if request and bot == "bruno" and search:
+        # the prompt carried raw fetched web pages: a «ПЕРЕДАТИ» born there is a planted
+        # line in an article, not the owner's wish, and it must never speak in the main
+        # chat (t1163). A search answer has no legitimate handoff to make.
+        print(f"{bot}: ПЕРЕДАТИ з пошукової відповіді відкинуто: {request[:120]}")
+        log_dropped(bot, "ПЕРЕДАТИ з пошуку", upd)
+        request = ""
     if not reply:
         return 0
     st.setdefault("history", []).append({"role": "user", "text": text})
