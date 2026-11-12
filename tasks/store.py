@@ -177,7 +177,11 @@ def state():
                 if "period" in e:      # old defer events carry no period key (t1075)
                     tasks[tid]["period"] = e["period"]
             elif op == "start":
-                tasks[tid].setdefault("runs", []).append({"from": e["ts"], "to": None})
+                runs = tasks[tid].setdefault("runs", [])
+                # a second start on a running task is a no-op: stop/done close only the
+                # last run, so a second open run would count time forever (t1166)
+                if not (runs and runs[-1]["to"] is None):
+                    runs.append({"from": e["ts"], "to": None})
                 tasks[tid]["running"] = True
             elif op == "stop":
                 runs = tasks[tid].setdefault("runs", [])

@@ -154,3 +154,38 @@ def test_numeric_date_still_ahead_stays_this_year(monkeypatch):
     monkeypatch.setattr(store, "date", _Nov1)
     due, _ = store.parse_due("звіт до 15.12")
     assert (due.year, due.month, due.day) == (2026, 12, 15)
+
+
+# --- t1166: a second start on a running task must not open a second run -----------------
+
+def _log_events(path, *events):
+    path.write_text("\n".join(json.dumps(e, ensure_ascii=False) for e in events) + "\n",
+                    encoding="utf-8")
+
+
+def test_double_start_then_done_leaves_no_open_run(task_log):
+    """TC1 (t1166): start, start, stop, done — exactly what a double-tapped /doing followed
+    by /done writes. No run may stay open, or spent time grows forever."""
+    _log_events(task_log,
+                {"op": "add", "id": "t001", "title": "тест", "ts": "2026-11-10T10:00:00"},
+                {"op": "start", "id": "t001", "ts": "2026-11-10T10:00:00"},
+                {"op": "start", "id": "t001", "ts": "2026-11-10T10:05:00"},
+                {"op": "stop", "id": "t001", "ts": "2026-11-10T11:00:00"},
+                {"op": "done", "id": "t001", "ts": "2026-11-10T11:00:00"})
+    t = store.state()["t001"]
+    assert all(r["to"] is not None for r in t.get("runs", [])), \
+        "відкритий run після done — факт часу росте вічно"
+    assert store.minutes(t) == 60
+
+
+def test_two_separate_runs_still_counted(task_log):
+    """TC2 (t1166): genuinely separate runs are not merged by the guard."""
+    _log_events(task_log,
+                {"op": "add", "id": "t001", "title": "тест", "ts": "2026-11-10T10:00:00"},
+                {"op": "start", "id": "t001", "ts": "2026-11-10T10:00:00"},
+                {"op": "stop", "id": "t001", "ts": "2026-11-10T10:30:00"},
+                {"op": "start", "id": "t001", "ts": "2026-11-10T12:00:00"},
+                {"op": "stop", "id": "t001", "ts": "2026-11-10T12:30:00"})
+    t = store.state()["t001"]
+    assert len(t["runs"]) == 2
+    assert store.minutes(t) == 60
