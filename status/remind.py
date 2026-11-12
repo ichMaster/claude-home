@@ -36,7 +36,10 @@ def asleep(now):
 
 
 def notify(text):
-    subprocess.run([str(HOME / "notify.sh"), text], capture_output=True, text=True)
+    """True only when notify.sh delivered the text part — a nudge recorded without delivery
+    is lost forever, because its window has passed by the next tick (t1167, same as t1046)."""
+    return subprocess.run([str(HOME / "notify.sh"), text],
+                          capture_output=True, text=True).returncode == 0
 
 
 def load_sent():
@@ -78,14 +81,14 @@ def main():
             key_lead = f"{e['event']}:lead"
             if key_lead not in fresh and lead_at <= now < lead_at + timedelta(minutes=WINDOW):
                 tail = f" до {end[11:16]}" if len(end) > 10 else ""
-                notify(f"⏰ За {LEAD} хв: {t['title']}\n{start:%H:%M}{tail}")
-                fresh[key_lead] = now.isoformat(timespec="seconds")
+                if notify(f"⏰ За {LEAD} хв: {t['title']}\n{start:%H:%M}{tail}"):
+                    fresh[key_lead] = now.isoformat(timespec="seconds")
 
             key_check = f"{e['event']}:checkin"
             if key_check not in fresh and check_at <= now < check_at + timedelta(minutes=WINDOW):
-                notify(f"Минуло {CHECKIN} хв від «{t['title']}». Усе за планом?\n"
-                       f"Якщо ні — скажи, що заважає, і я перепланую решту дня.")
-                fresh[key_check] = now.isoformat(timespec="seconds")
+                if notify(f"Минуло {CHECKIN} хв від «{t['title']}». Усе за планом?\n"
+                          f"Якщо ні — скажи, що заважає, і я перепланую решту дня."):
+                    fresh[key_check] = now.isoformat(timespec="seconds")
 
     STATE.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_text(STATE, json.dumps(fresh, ensure_ascii=False, indent=1))
