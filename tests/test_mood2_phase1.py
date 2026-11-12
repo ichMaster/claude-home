@@ -6,6 +6,7 @@ claim in his mouth. The fixture is synthetic — a day in his layout with invent
 because his real calendar is a paid personal product and never enters the repository.
 """
 import json
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -536,3 +537,75 @@ def test_the_tags_never_reach_the_written_message(monkeypatch):
     assert "[пауза]" not in seen["text"] and "ОСНОВА" not in seen["text"]
     assert "[довга пауза]" in seen["voice"]
     assert seen["profile"] == "zorya-reading", "the reading has its own, slower delivery"
+
+
+# --- t1158: a malformed read answer is a failed check, never a crash ------------------------
+
+def test_item_without_id_is_caught_not_crashed():
+    """TC1 (t1158): one item missing its id must fail the parse cleanly — before the fix it
+    passed check_items and crashed the pick stage with KeyError."""
+    headless = {k: v for k, v in ITEMS[5].items() if k != "id"}
+    problems = mood2.check_items([dict(ITEMS[0]), headless], "")
+    assert any("без id" in p for p in problems), problems
+
+
+def test_non_dict_item_is_caught_not_crashed():
+    """TC2 (t1158): a stray string in the model's list must not raise AttributeError."""
+    problems = mood2.check_items(["не позиція"], "")
+    assert problems and any("без id" in p for p in problems), problems
+
+
+# --- t1159: the nodes answer to their own canonical plural ----------------------------------
+
+@pytest.mark.parametrize("word", ["вузли", "вузлів", "вузлами", "узлы"])
+def test_node_plural_resolves_to_the_nodes(word):
+    """TC1 (t1159): a correct reading that says «вузли» must count as naming the nodes."""
+    assert mood2.bodies_named(f"фоном {word} тягнуть своє") == {"вузли"}
+
+
+@pytest.mark.parametrize("word", ["Кету", "Раху", "вузол", "узел"])
+def test_node_singular_forms_still_resolve(word):
+    """TC2 (t1159): the forms that worked keep working."""
+    assert mood2.bodies_named(f"фоном {word} тягне своє") == {"вузли"}
+
+
+# --- t1160: a --send run that could not deliver says so in the chat -------------------------
+
+def _fail_run_argv(monkeypatch, tmp_path, argv):
+    import types
+    calls = []
+    monkeypatch.setattr(mood2, "reference_text", lambda day: "")
+    monkeypatch.setattr(mood2, "state_path", lambda key: tmp_path / f"astro2-{key}")
+    monkeypatch.setattr(mood2.subprocess, "run",
+                        lambda cmd, **kw: calls.append(cmd) or
+                        types.SimpleNamespace(returncode=0, stdout="", stderr=""))
+    monkeypatch.setattr(sys, "argv", argv)
+    return calls
+
+
+def test_failed_send_run_reports_to_the_chat(monkeypatch, tmp_path):
+    """TC1 (t1160): --send with no calendar still exits 4, and notify.sh carries the why."""
+    calls = _fail_run_argv(monkeypatch, tmp_path,
+                           ["mood2.py", "--day", DAY.isoformat(), "--send"])
+    assert mood2.main() == 4
+    notifies = [c for c in calls if str(c[0]).endswith("notify.sh")]
+    assert len(notifies) == 1
+    assert "немає" in " ".join(str(x) for x in notifies[0])
+
+
+def test_failed_run_without_send_stays_quiet(monkeypatch, tmp_path):
+    """TC2 (t1160): the same failure without --send must not message anyone."""
+    calls = _fail_run_argv(monkeypatch, tmp_path, ["mood2.py", "--day", DAY.isoformat()])
+    assert mood2.main() == 4
+    assert [c for c in calls if str(c[0]).endswith("notify.sh")] == []
+
+
+def test_broken_notify_does_not_change_the_exit_code(monkeypatch, tmp_path):
+    """TC3 (t1160): notify.sh blowing up must not mask the real exit code."""
+    def boom(cmd, **kw):
+        raise OSError("немає notify.sh")
+    monkeypatch.setattr(mood2, "reference_text", lambda day: "")
+    monkeypatch.setattr(mood2, "state_path", lambda key: tmp_path / f"astro2-{key}")
+    monkeypatch.setattr(mood2.subprocess, "run", boom)
+    monkeypatch.setattr(sys, "argv", ["mood2.py", "--day", DAY.isoformat(), "--send"])
+    assert mood2.main() == 4

@@ -219,6 +219,13 @@ def check_items(items, source: str) -> list[str]:
     problems: list[str] = []
     if not isinstance(items, list) or not items:
         return ["порожній або не-масив розбір"]
+    # The shape gate first: everything below — and the pick stage after it — assumes dicts
+    # keyed by id, so a stray string or an id-less item must fail the parse here, not crash
+    # the timer with a raw KeyError three calls later (t1158).
+    shapeless = [repr(i)[:80] for i in items
+                 if not isinstance(i, dict) or not str(i.get("id") or "").strip()]
+    if shapeless:
+        return ["позиція без id або не обʼєкт: " + "; ".join(shapeless)]
 
     ids = [i.get("id") for i in items]
     if len(set(ids)) != len(ids):
@@ -388,7 +395,11 @@ BODY_STEMS = {
     "юпитер": "Юпітер", "сатурн": "Сатурн", "уран": "Уран", "нептун": "Нептун",
     "плутон": "Плутон", # The nodes are one axis: naming Rahu where his page names Ketu is astrology,
     # not invention, so both stems answer to the same entity.
-    "кету": "вузли", "раху": "вузли", "узел": "вузли", "вузол": "вузли", "ліліт": "Ліліт",
+    # «вузол» and «узел» are not substrings of their own plurals («вузли», «узлы»), so the
+    # plural stems stand beside them — without «вузл» a correct reading that says «вузли»
+    # failed the lost-bodies count and could never satisfy the retry (t1159).
+    "кету": "вузли", "раху": "вузли", "узел": "вузли", "узл": "вузли",
+    "вузол": "вузли", "вузл": "вузли", "ліліт": "Ліліт",
     "лилит": "Ліліт", "солнц": "Сонце", "сонц": "Сонце",
 }
 SAME_TURN = "це тому, що"
@@ -637,6 +648,17 @@ def send(text: str) -> None:
               voice=voice_text(text), profile=conf2("voice_profile", "zorya-reading"))
 
 
+def report_failure(text: str) -> None:
+    """A --send run that stopped must say so in the chat: the 08:15 timer has no other mouth,
+    and nothing watches its exit code — without this the reading just never arrives, with no
+    sign why (t1160). Never raises: the real exit code must survive a broken notify."""
+    try:
+        subprocess.run([str(HOME / "notify.sh"), text],
+                       check=False, cwd=str(HOME), timeout=120)
+    except Exception:                                                    # noqa: BLE001
+        pass
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="ранкове читання v2 (каркас, фаза 0)")
     ap.add_argument("--day", help="дата YYYY-MM-DD (типово — сьогодні)")
@@ -664,9 +686,13 @@ def main() -> int:
         return 2
     except NoCalendar as e:
         print(f"v2: {e}", file=sys.stderr)
+        if args.send:
+            report_failure(f"Ранкового читання сьогодні немає: {e}")
         return 4
     except (StageFailed, Unfaithful) as e:
         print(f"v2: {e}", file=sys.stderr)
+        if args.send:
+            report_failure(f"Ранкове читання не склалось і не надіслане: {e}")
         return 3
     return 0
 
