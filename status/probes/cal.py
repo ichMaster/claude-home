@@ -74,7 +74,7 @@ def parse_dt(value, params):
 
 def events(ics, lo, hi):
     """Events overlapping [lo, hi): plain ones plus expanded recurrences."""
-    res = []
+    res, blocks, moved = [], [], set()
     for block in re.findall(r"BEGIN:VEVENT(.*?)END:VEVENT", unfold(ics), re.S):
         fields = {}
         for line in block.strip().splitlines():
@@ -83,6 +83,17 @@ def events(ics, lo, hi):
             name, value = line.split(":", 1)
             key = name.split(";")[0].upper()
             fields.setdefault(key, (name[len(key):], value.strip()))
+        blocks.append(fields)
+        # a moved occurrence arrives as its own VEVENT carrying RECURRENCE-ID; the master's
+        # RRULE still yields the old time, so that occurrence has to be dropped from the
+        # expansion or the meeting is listed at both times (t1175)
+        if "RECURRENCE-ID" in fields and "UID" in fields:
+            try:
+                rp, rv = fields["RECURRENCE-ID"]
+                moved.add((fields["UID"][1], parse_dt(rv, rp)[0]))
+            except Exception:
+                pass
+    for fields in blocks:
         if "DTSTART" not in fields:
             continue
         if (fields.get("STATUS") or ("", ""))[1] == "CANCELLED":
@@ -100,6 +111,7 @@ def events(ics, lo, hi):
         starts = []
         if "RRULE" in fields:
             rule = fields["RRULE"][1]
+            uid = (fields.get("UID") or ("", ""))[1]
             try:
                 excl = set()
                 if "EXDATE" in fields:
@@ -107,7 +119,7 @@ def events(ics, lo, hi):
                         excl.add(parse_dt(part.strip(), fields["EXDATE"][0])[0])
                 for occ in rrulestr(rule, dtstart=start).between(
                         lo - dur, hi, inc=True):
-                    if occ not in excl:
+                    if occ not in excl and (uid, occ) not in moved:
                         starts.append(occ)
             except Exception:
                 starts = [start]
@@ -148,63 +160,69 @@ def noos_blocks(lo, hi):
     return items
 
 
-cals = env()
-if not cals:
-    # no iCal addresses configured: still show what Noos itself booked
-    now0 = datetime.now(TZ)
-    hi0 = (now0 + timedelta(days=HORIZON_DAYS)).replace(hour=23, minute=59, second=59)
-    mine = sorted(noos_blocks(now0, hi0), key=lambda e: e["start"])
-    if mine:
-        def lbl(e):
-            day = "сьогодні" if e["start"].date() == now0.date() else "завтра"
-            when = day if e["allday"] else f"{day} {e['start']:%H:%M}"
-            return f"  • {when} — {e['summary']} [Noos]"
-        out(ok=True, severity="info",
-            value={"count": len(mine), "source": "tasks",
-                   "items": [{"start": e["start"].isoformat(), "summary": e["summary"],
-                              "cal": "Noos"} for e in mine]},
-            text="\n".join([f"Календар Noos: {len(mine)} подій"] + [lbl(e) for e in mine[:10]]))
-    out(ok=False, severity="warn", ttl=3600,
-        text="Календар: немає адрес. Поклади секретні iCal-посилання у "
-             "~/claude-home/.env.calendar рядками CAL_назва=https://...")
+def main():
+    """The probe itself — guarded so tests can import the parser without running it (t1175)."""
+    cals = env()
+    if not cals:
+        # no iCal addresses configured: still show what Noos itself booked
+        now0 = datetime.now(TZ)
+        hi0 = (now0 + timedelta(days=HORIZON_DAYS)).replace(hour=23, minute=59, second=59)
+        mine = sorted(noos_blocks(now0, hi0), key=lambda e: e["start"])
+        if mine:
+            def lbl(e):
+                day = "сьогодні" if e["start"].date() == now0.date() else "завтра"
+                when = day if e["allday"] else f"{day} {e['start']:%H:%M}"
+                return f"  • {when} — {e['summary']} [Noos]"
+            out(ok=True, severity="info",
+                value={"count": len(mine), "source": "tasks",
+                       "items": [{"start": e["start"].isoformat(), "summary": e["summary"],
+                                  "cal": "Noos"} for e in mine]},
+                text="\n".join([f"Календар Noos: {len(mine)} подій"] + [lbl(e) for e in mine[:10]]))
+        out(ok=False, severity="warn", ttl=3600,
+            text="Календар: немає адрес. Поклади секретні iCal-посилання у "
+                 "~/claude-home/.env.calendar рядками CAL_назва=https://...")
 
-now = datetime.now(TZ)
-hi = (now + timedelta(days=HORIZON_DAYS)).replace(hour=23, minute=59, second=59)
-items, broken = [], []
+    now = datetime.now(TZ)
+    hi = (now + timedelta(days=HORIZON_DAYS)).replace(hour=23, minute=59, second=59)
+    items, broken = [], []
 
-for name, url in cals.items():
-    try:
-        with urlopen(url, timeout=25) as r:
-            ics = r.read().decode("utf-8", "replace")
-        for e in events(ics, now, hi):
-            e["cal"] = name
-            items.append(e)
-    except Exception as e:
-        broken.append(f"{name}: {e}")
+    for name, url in cals.items():
+        try:
+            with urlopen(url, timeout=25) as r:
+                ics = r.read().decode("utf-8", "replace")
+            for e in events(ics, now, hi):
+                e["cal"] = name
+                items.append(e)
+        except Exception as e:
+            broken.append(f"{name}: {e}")
 
-items += noos_blocks(now, hi)        # the Noos calendar comes from the task log
-items.sort(key=lambda e: e["start"])
+    items += noos_blocks(now, hi)        # the Noos calendar comes from the task log
+    items.sort(key=lambda e: e["start"])
 
-def label(e):
-    s = e["start"]
-    day = "сьогодні" if s.date() == now.date() else (
-        "завтра" if s.date() == now.date() + timedelta(days=1) else s.strftime("%d.%m"))
-    when = day if e["allday"] else f"{day} {s:%H:%M}"
-    tail = f" ({e['loc']})" if e["loc"] else ""
-    return f"  • {when} — {e['summary']}{tail}"
+    def label(e):
+        s = e["start"]
+        day = "сьогодні" if s.date() == now.date() else (
+            "завтра" if s.date() == now.date() + timedelta(days=1) else s.strftime("%d.%m"))
+        when = day if e["allday"] else f"{day} {s:%H:%M}"
+        tail = f" ({e['loc']})" if e["loc"] else ""
+        return f"  • {when} — {e['summary']}{tail}"
 
-if not items:
-    text = f"Календар: до кінця {'завтра' if HORIZON_DAYS else 'дня'} нічого"
-    sev = "quiet"
-else:
-    text = "\n".join([f"Календар: {len(items)} подій"] + [label(e) for e in items[:10]])
-    sev = "info"
-if broken:
-    text += "\n  ! не прочитано — " + "; ".join(broken)
+    if not items:
+        text = f"Календар: до кінця {'завтра' if HORIZON_DAYS else 'дня'} нічого"
+        sev = "quiet"
+    else:
+        text = "\n".join([f"Календар: {len(items)} подій"] + [label(e) for e in items[:10]])
+        sev = "info"
+    if broken:
+        text += "\n  ! не прочитано — " + "; ".join(broken)
 
-out(ok=not broken, severity=sev,
-    value={"count": len(items),
-           "items": [{"start": e["start"].isoformat(), "summary": e["summary"],
-                      "cal": e["cal"], "allday": e["allday"]} for e in items[:20]],
-           "errors": broken},
-    text=text)
+    out(ok=not broken, severity=sev,
+        value={"count": len(items),
+               "items": [{"start": e["start"].isoformat(), "summary": e["summary"],
+                          "cal": e["cal"], "allday": e["allday"]} for e in items[:20]],
+               "errors": broken},
+        text=text)
+
+
+if __name__ == "__main__":
+    main()
