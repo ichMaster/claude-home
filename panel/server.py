@@ -744,7 +744,9 @@ def schedule_action(form: dict) -> str:
     if not specs:
         return "Розкладу не названо."
     for spec in specs:
-        ok, said = run_script("systemd-analyze", "calendar", spec, timeout=20)
+        # `--` so a dash-leading spec is judged by systemd's parser instead of being
+        # consumed as a flag that exits 0 and counts as valid (t1174)
+        ok, said = run_script("systemd-analyze", "calendar", "--", spec, timeout=20)
         if not ok:
             return f"systemd не приймає «{spec[:40]}»: {said.splitlines()[0] if said else ''}"
     target = UNIT_DIR / unit
@@ -775,8 +777,14 @@ def schedule_action(form: dict) -> str:
         run_script("systemctl", "--user", "daemon-reload", timeout=30)
         return (f"{unit} перестав завантажуватись — повернув попередній юніт і "
                 f"перезавантажив systemd. Нічого не змінилось.")
-    run_script("systemctl", "--user", "restart", unit, timeout=30)
+    restarted, restart_said = run_script("systemctl", "--user", "restart", unit, timeout=30)
     changelog_write.record("panel-schedule", unit, "; ".join(specs))
+    if not restarted:
+        # the file is right, the running timer is not — saying «тепер» here would hide
+        # exactly the kind of silent disagreement the rollback above exists for (t1174)
+        return (f"{unit}: розклад записано, але перезапуск не вдався "
+                f"({restart_said.splitlines()[0] if restart_said else 'systemctl restart'}) — "
+                f"таймер працює за старим розкладом, поки його не перезапустити.")
     return f"{unit}: розклад тепер {', '.join(specs)}. Попередній юніт — у .versions."
 
 

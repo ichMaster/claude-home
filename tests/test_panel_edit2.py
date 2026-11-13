@@ -252,3 +252,45 @@ def test_a_crlf_body_is_stored_with_unix_newlines(files):
     assert ok
     on_disk = (files / "persona.md").read_text(encoding="utf-8")
     assert "\r" not in on_disk and on_disk.count("\n") == 299
+
+
+# --- t1174: flag injection into systemd-analyze, and the ignored restart ------------------
+
+def strict_runner(monkeypatch, *, restart_ok=True):
+    """A fake that behaves like the real systemd-analyze: without `--` a dash-leading
+    spec is consumed as a flag and exits 0; after `--` it is parsed and refused."""
+    calls = []
+
+    def fake(*cmd, **kwargs):
+        calls.append(cmd)
+        if cmd[0] == "systemd-analyze":
+            spec = cmd[-1]
+            if "--" in cmd[:-1]:
+                return (not spec.startswith("-"),
+                        "Failed to parse calendar specification" if spec.startswith("-") else "")
+            return True, ""                     # the hole: flag swallowed, exit 0
+        if cmd[0] == "systemctl" and "show" in cmd:
+            return True, "LoadState=loaded"
+        if cmd[0] == "systemctl" and "restart" in cmd:
+            return restart_ok, "" if restart_ok else "Job for noos-digest.timer failed."
+        return True, ""
+    monkeypatch.setattr(server, "run_script", fake)
+    return calls
+
+
+def test_a_dash_leading_spec_is_refused_before_the_write(unit_file, monkeypatch):
+    """TC1: «--help» must be judged by systemd's parser, not swallowed as a flag."""
+    strict_runner(monkeypatch)
+    said = server.schedule_action({"unit": ["noos-digest.timer"],
+                                   "calendar": ["--help; *-*-* 09:00:00"]})
+    assert "не приймає" in said
+    assert unit_file.read_text(encoding="utf-8") == UNIT, "nothing may be written"
+
+
+def test_a_failed_restart_is_reported(unit_file, monkeypatch):
+    """TC2: a written schedule whose restart failed is not «тепер» — the running timer
+    still carries the old one."""
+    strict_runner(monkeypatch, restart_ok=False)
+    said = server.schedule_action({"unit": ["noos-digest.timer"],
+                                   "calendar": ["*-*-* 09:00:00"]})
+    assert "перезапуск не вдався" in said
