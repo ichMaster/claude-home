@@ -18,7 +18,7 @@ MAX_DETAIL = conf("changelog.max_detail_chars", 400)
 
 # commands that leave a trace in the system
 MUTATING = re.compile(
-    r"(^|[;&|]\s*)(rm|rmdir|mv|cp|mkdir|touch|ln|chmod|chown|truncate|dd|tee|install|patch"
+    r"(^|[;&|\n]\s*)(rm|rmdir|mv|cp|mkdir|touch|ln|chmod|chown|truncate|dd|tee|install|patch"
     r"|systemctl|loginctl|crontab|timedatectl|apt|apt-get|dpkg|snap|pip|pip3|npm|pnpm|yarn|cargo|go"
     r"|git|sqlite3|psql|mysql|docker|podman|tmux|kill|pkill|killall|virtualenv|curl|wget)\b"
     r"|\bsed\s+(-[a-zA-Z]*i|--in-place)"
@@ -50,11 +50,18 @@ def classify(payload):
         cmd = (inp.get("command") or "").strip()
         if not cmd:
             return None
-        m = MUTATING.search(cmd)
-        if READONLY.search(cmd) or not m:
+        matches = list(MUTATING.finditer(cmd))
+        if not matches:
             return None
-        # label the event with the verb that made the command count as mutating,
-        # not with the first token (often `cd` before a heredoc)
+        # A readonly head may only veto what it actually covers: `cat > f <<EOF`,
+        # `tail x > y` and `cat a && rm b` start with a read but go on to write, and
+        # suppressing on the first verb alone lost those writes entirely (t1173).
+        ro = READONLY.search(cmd)
+        if ro and all(mm.start() < ro.end() for mm in matches):
+            return None
+        # label the event with the verb that made the command count as mutating —
+        # the first match beyond the readonly head, not the first token
+        m = next((mm for mm in matches if not ro or mm.start() >= ro.end()), matches[0])
         verb = next((g for g in m.groups()[1:] if g), None) or m.group(0).strip()
         verb = verb.strip(" ;&|")
         if verb.startswith(">"):
