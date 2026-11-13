@@ -12,7 +12,7 @@ import json, sys, re, html, hashlib, urllib.request, urllib.parse
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from noosconf import conf, path
+from noosconf import conf, path, atomic_write_text
 
 HOME = path("paths.home") / "status"
 # section headings Google returns instead of actual news
@@ -23,7 +23,12 @@ JUNK = re.compile(r"(Latest News|Breaking (International )?News|Live updates|"
 tid = sys.argv[1]
 topic = json.loads((HOME / "topics" / f"{tid}.json").read_text(encoding="utf-8"))
 seen_file = HOME / "state" / f"news-{tid}.json"
-seen = set(json.loads(seen_file.read_text()) if seen_file.exists() else [])
+try:
+    seen = set(json.loads(seen_file.read_text()) if seen_file.exists() else [])
+except (OSError, ValueError, TypeError):
+    # a torn state file (power cut mid-write) must not kill the topic: losing the seen
+    # set only risks a few repeats, losing the probe loses the topic (t1170)
+    seen = set()
 
 q = topic["запит"]
 sites = topic.get("джерела") or []
@@ -75,7 +80,7 @@ try:
     for f in fresh:
         seen.add(f["key"])
     seen_file.parent.mkdir(parents=True, exist_ok=True)
-    seen_file.write_text(json.dumps(sorted(seen)[-800:], ensure_ascii=False))
+    atomic_write_text(seen_file, json.dumps(sorted(seen)[-800:], ensure_ascii=False))
 
     if fresh:
         text = f"{topic['назва']}: {len(fresh)} нових\n" + "\n".join(
