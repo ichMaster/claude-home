@@ -60,7 +60,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from noosconf import conf, path  # noqa: E402
+from noosconf import conf, path, atomic_write_text  # noqa: E402
 
 import astro  # noqa: E402  — same directory
 import mood_feedback  # noqa: E402  — the calibration rules
@@ -394,8 +394,9 @@ def save_claims(day: date, items: list[dict]) -> None:
                      # None — not answered; False — nothing of the sort; a string — which of
                      # the variants it actually was, which is what teaches the chart (t1126)
                      "verified": None})
-    f.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in kept),
-                 encoding="utf-8")
+    # via a temp file + os.replace: an in-place rewrite truncates first, and a kill in
+    # that window used to take the whole verification history with it (t1171)
+    atomic_write_text(f, "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in kept))
 
 
 def _claim_rows(f: "Path") -> list[dict]:

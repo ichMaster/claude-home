@@ -400,3 +400,31 @@ def test_the_question_cleans_stored_punctuation():
                "variants": ["перше,", "друге,"], "sign": ""}]
     text = mood_feedback.questions(stored)
     assert ",," not in text and "перше, або друге" in text
+
+
+def test_save_claims_survives_an_interrupted_write(tmp_path, monkeypatch):
+    """t1171: a kill mid-write must not lose the verification history. The old in-place
+    write_text truncated the file first, so the simulated tear destroys every earlier day."""
+    import pathlib
+    f = tmp_path / "forecast-claims.jsonl"
+    monkeypatch.setattr(mood, "CLAIMS", f)
+    got, _ = mood.claims(ANSWER)
+    mood.save_claims(date(2026, 11, 1), got)
+
+    real = pathlib.Path.write_text
+
+    def torn(self, text, *a, **k):
+        if self == f:
+            with open(self, "w", encoding="utf-8") as fh:
+                fh.write(text[:20])
+            raise OSError("killed mid-write")
+        return real(self, text, *a, **k)
+
+    monkeypatch.setattr(pathlib.Path, "write_text", torn)
+    try:
+        mood.save_claims(date(2026, 11, 2), got)
+    except OSError:
+        pass
+    monkeypatch.setattr(pathlib.Path, "write_text", real)
+    assert len(mood.load_claims(date(2026, 11, 1), f)) == len(got), \
+        "an interrupted write must not lose the earlier days"
