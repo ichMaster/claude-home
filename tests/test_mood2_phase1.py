@@ -609,3 +609,85 @@ def test_broken_notify_does_not_change_the_exit_code(monkeypatch, tmp_path):
     monkeypatch.setattr(mood2.subprocess, "run", boom)
     monkeypatch.setattr(sys, "argv", ["mood2.py", "--day", DAY.isoformat(), "--send"])
     assert mood2.main() == 4
+
+
+# --- t1177: an everyday word is not the name of a body --------------------------------------
+
+# A day with no nodes in it: p8 is the only position that carries Кету.
+DAY_NO_NODES = [i for i in ITEMS if i["id"] != "p8"]
+READING_NO_NODES = READING.replace(
+    "фоном | Марс із Кету тримають енергійне минуле під дверима [p8]\n", "")
+CHOSEN_NO_NODES = [i["id"] for i in DAY_NO_NODES]
+
+
+def test_the_day_without_nodes_passes_as_written():
+    """The fixture itself is sound, so a failure below is the word and not the day."""
+    assert mood2.check_reading(READING_NO_NODES, DAY_NO_NODES, CHOSEN_NO_NODES) == []
+
+
+def test_a_knot_of_tension_is_not_the_lunar_nodes():
+    """TC1 (t1177): the word that silenced the morning of 2026-11-13.
+
+    «вузол» is an ordinary noun long before it is Rahu and Ketu, and the day carried no
+    nodes at all — so four rewrites were refused for a body nobody had named.
+    """
+    bad = READING_NO_NODES.replace("Різке лиши до ранку",
+                                   "Вузол напруги до ранку не розв'язати, тож різке лиши")
+    problems = mood2.check_reading(bad, DAY_NO_NODES, CHOSEN_NO_NODES)
+    assert not any("яких у добі немає" in p for p in problems), problems
+
+
+@pytest.mark.parametrize("phrase", ["вузол напруги", "розв'язати вузол", "вузол думок"])
+def test_an_unqualified_knot_claims_nothing(phrase):
+    """TC1 (t1177): ambiguous evidence may acquit, never convict."""
+    assert mood2.bodies_claimed(f"вночі {phrase}") == set()
+
+
+def test_in_the_morning_is_not_uranus():
+    """TC2 (t1177): «уранці» contains «уран» and is not a planet."""
+    assert mood2.bodies_named("уранці легше, ніж здавалось") == set()
+    assert mood2.bodies_claimed("уранці легше, ніж здавалось") == set()
+
+
+def test_a_bell_ringing_is_not_the_moon():
+    """TC3 (t1177): «лунає» contains «лун» and is not the Moon."""
+    assert mood2.bodies_named("лунає дзвін, і це не привід") == set()
+
+
+@pytest.mark.parametrize("word", ["вузли", "вузлів", "вузлами", "узлы", "Раху", "Кету"])
+def test_the_nodes_are_still_heard_when_the_day_carries_them(word):
+    """TC4 (t1177): t1159 keeps working — a correct reading is not accused of losing them."""
+    assert mood2.bodies_named(f"фоном {word} тягнуть своє") == {"вузли"}
+
+
+def test_an_invented_body_is_still_caught():
+    """TC5 (t1177): the check still does the job it exists for."""
+    bad = READING_NO_NODES.replace("Уран штовхає", "Юпітер розмахує рукою, Уран штовхає")
+    problems = mood2.check_reading(bad, DAY_NO_NODES, CHOSEN_NO_NODES)
+    assert any("яких у добі немає" in p and "Юпітер" in p for p in problems), problems
+
+
+@pytest.mark.parametrize("word,body", [
+    ("Місяця", "Місяць"), ("Місяцем", "Місяць"), ("Луна", "Місяць"), ("Луны", "Місяць"),
+    ("Венери", "Венера"), ("Венерою", "Венера"), ("Марсом", "Марс"),
+    ("Урана", "Уран"), ("Ураном", "Уран"), ("Юпитер", "Юпітер"), ("Юпітера", "Юпітер"),
+    ("Солнце", "Сонце"), ("Сонця", "Сонце"), ("Лилит", "Ліліт"), ("Ліліт", "Ліліт"),
+    ("Сатурна", "Сатурн"), ("Плутоном", "Плутон"), ("Нептуна", "Нептун"),
+    ("Меркурієм", "Меркурій"), ("Меркурий", "Меркурій"),
+])
+def test_inflected_and_russian_forms_still_resolve(word, body):
+    """TC6 (t1177): the endings his pages and our readings actually use."""
+    assert mood2.bodies_named(f"сьогодні {word} робить своє") == {body}
+    assert mood2.bodies_claimed(f"сьогодні {word} робить своє") == {body}
+
+
+def test_a_bare_knot_still_counts_as_naming_the_nodes():
+    """TC7 (t1177): the asymmetry, stated as a test.
+
+    Over a day that does carry the nodes, «вузол» counts as having named them — otherwise
+    the lost-bodies count would demand a qualifier the owner never asked for.
+    """
+    assert mood2.bodies_named("фоном вузол тягне своє") == {"вузли"}
+    bad = READING.replace("Марс із Кету тримають", "Марс і цей вузол тримають")
+    problems = mood2.check_reading(bad, ITEMS, CHOSEN)
+    assert not any("яких у читанні немає" in p for p in problems), problems

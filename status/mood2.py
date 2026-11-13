@@ -392,22 +392,47 @@ SECTIONS = ("ДЕНЬ", "ПРОГНОЗ", "ДІЯ", "ОСНОВА")
 CLOCK = re.compile(r"\d{1,2}:\d{2}")
 LINE_MAX = 420
 
-# The bodies, by the stem that survives Ukrainian inflection: Венери, Венерою, Венеру all
-# answer to «Венер». «Луна» is folded onto «Місяць» because his pages are Russian and the read
-# stage translates them (t1155).
-BODY_STEMS = {
-    "місяц": "Місяць", "луна": "Місяць", "лун": "Місяць",
-    "меркур": "Меркурій", "венер": "Венера", "марс": "Марс", "юпітер": "Юпітер",
-    "юпитер": "Юпітер", "сатурн": "Сатурн", "уран": "Уран", "нептун": "Нептун",
-    "плутон": "Плутон", # The nodes are one axis: naming Rahu where his page names Ketu is astrology,
-    # not invention, so both stems answer to the same entity.
-    # «вузол» and «узел» are not substrings of their own plurals («вузли», «узлы»), so the
-    # plural stems stand beside them — without «вузл» a correct reading that says «вузли»
-    # failed the lost-bodies count and could never satisfy the retry (t1159).
-    "кету": "вузли", "раху": "вузли", "узел": "вузли", "узл": "вузли",
-    "вузол": "вузли", "вузл": "вузли", "ліліт": "Ліліт",
-    "лилит": "Ліліт", "солнц": "Сонце", "сонц": "Сонце",
+# The bodies, as anchored patterns rather than bare substrings (t1177). A stem tested with
+# `stem in text` fires inside ordinary words — «уранці» is not Uranus, «лунає» is not the Moon,
+# and «вузол напруги» is not Rahu — and each false hit either demands a rewrite for a body
+# nobody named or hides a real omission. So each body carries the endings that actually occur
+# in his pages and in our readings, with a word boundary at both ends. «Луна» and the Russian
+# spellings stay because the read stage translates his pages (t1155).
+_ENDINGS = "(?:а|у|ом|і|е)?"
+BODY_PATTERNS = {
+    "Місяць": r"місяц(?:ь|я|ю|і|е|ем)|лун(?:а|и|ы|е|у|ой|ою)",
+    "Меркурій": r"меркурі(?:й|я|ю|ї|єм)|меркури(?:й|я|ю|ем|и)",
+    "Венера": r"венер(?:а|и|ы|і|е|у|ою|ой)",
+    "Марс": r"марс" + _ENDINGS,
+    "Юпітер": r"юп[іи]тер" + _ENDINGS,
+    "Сатурн": r"сатурн" + _ENDINGS,
+    "Уран": r"уран" + _ENDINGS,
+    "Нептун": r"нептун" + _ENDINGS,
+    "Плутон": r"плутон" + _ENDINGS,
+    "Сонце": r"сонц(?:е|я|ю|ем|і)|солнц(?:е|а|у|ем)",
+    "Ліліт": r"л[іи]л[іи]т(?:|и|у|ою|ом|і)",
 }
+
+# The nodes are one axis: naming Rahu where his page names Ketu is astrology, not invention.
+# But «вузол» is an everyday noun as well as a body, so it answers differently depending on
+# which way the check is looking (t1177). Unqualified, it counts as *mentioning* the nodes and
+# never as *claiming* them: ambiguous evidence may acquit, never convict.
+NODES = "вузли"
+NODES_PLAIN = r"раху|кету|узел|узл(?:ы|ов|ам|ами|ах|а|у|ом|е)"
+NODES_QUALIFIED = r"(?:місячн|висхідн|низхідн|кармічн)\w*\s+вузл\w*"
+NODES_LOOSE = r"вузол|вузл(?:и|ів|ам|ами|ах|а|у|ом|і)"
+
+_WIDE = {**BODY_PATTERNS, NODES: "|".join((NODES_PLAIN, NODES_QUALIFIED, NODES_LOOSE))}
+_STRICT = {**BODY_PATTERNS, NODES: "|".join((NODES_PLAIN, NODES_QUALIFIED))}
+
+
+def _compile(table: dict) -> dict:
+    return {name: re.compile(rf"\b(?:{pattern})\b") for name, pattern in table.items()}
+
+
+WIDE_BODIES = _compile(_WIDE)
+STRICT_BODIES = _compile(_STRICT)
+
 SAME_TURN = "це тому, що"
 
 
@@ -440,9 +465,23 @@ def forecast_lines(text: str) -> list[str]:
 
 
 def bodies_named(text: str) -> set[str]:
-    """Which bodies a piece of text talks about, whatever case the words are in."""
+    """Which bodies a piece of text mentions, whatever case the words are in.
+
+    Wide on purpose: used for «did the reading drop something he gave us», where an
+    ambiguous word counts in the reading's favour.
+    """
     low = (text or "").lower()
-    return {name for stem, name in BODY_STEMS.items() if stem in low}
+    return {name for name, rx in WIDE_BODIES.items() if rx.search(low)}
+
+
+def bodies_claimed(text: str) -> set[str]:
+    """Which bodies a piece of text actually claims — the strict reading (t1177).
+
+    Used for «did the reading invent a body», where an everyday word that merely looks like
+    a name must not convict: «вузол напруги» is a knot, not the lunar nodes.
+    """
+    low = (text or "").lower()
+    return {name for name, rx in STRICT_BODIES.items() if rx.search(low)}
 
 
 def voice_text(text: str) -> str:
@@ -519,7 +558,7 @@ def check_reading(text: str, items, chosen_ids=None) -> list[str]:
         f"{i.get('bodies') or ''} {i.get('natal') or ''} {i.get('meaning') or ''}"
         for i in items))
     said = bodies_named(head)
-    invented_bodies = sorted(said - available)
+    invented_bodies = sorted(bodies_claimed(head) - available)
     if invented_bodies:
         problems.append("світила, яких у добі немає: " + ", ".join(invented_bodies))
     # And the other direction, which is the one that actually went wrong: he supplies the
