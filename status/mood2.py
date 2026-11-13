@@ -82,6 +82,12 @@ class Unfaithful(RuntimeError):
     """
 
 
+class Undelivered(RuntimeError):
+    """The reading was built but Telegram did not take it — notify.sh's exit code is the
+    delivery verdict (t1121), and dropping it left the 08:15 timer green while nothing
+    arrived (t1172)."""
+
+
 class StageFailed(RuntimeError):
     """A stage died — timed out or returned non-zero. Named, and never a raw traceback.
 
@@ -644,8 +650,9 @@ def send(text: str) -> None:
     # ОСНОВА is the audit trail, not the message: v1 kept it in the text part because it was
     # the only way to trace a claim back to its figure, and he asked for it gone (t1154).
     # It stays in the log and the state, where tracing actually happens.
-    mood.send(spoken_part(text).strip(), role="mood",
-              voice=voice_text(text), profile=conf2("voice_profile", "zorya-reading"))
+    if not mood.send(spoken_part(text).strip(), role="mood",
+                     voice=voice_text(text), profile=conf2("voice_profile", "zorya-reading")):
+        raise Undelivered("notify.sh повернув помилку — читання не дійшло")
 
 
 def report_failure(text: str) -> None:
@@ -694,6 +701,11 @@ def main() -> int:
         if args.send:
             report_failure(f"Ранкове читання не склалось і не надіслане: {e}")
         return 3
+    except Undelivered as e:
+        print(f"v2: {e}", file=sys.stderr)
+        if args.send:
+            report_failure(f"Ранкове читання склалось, але не надіслалось: {e}")
+        return 5
     return 0
 
 

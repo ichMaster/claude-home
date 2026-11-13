@@ -135,7 +135,7 @@ def test_placeholders_block_sending(monkeypatch, tmp_path):
     sent = []
     monkeypatch.setattr(mood, "send",
                         lambda text, role="mood", voice=None, profile=None:
-                        sent.append(text))
+                        sent.append(text) or True)
     monkeypatch.setattr(mood2, "prompts_dir", lambda: tmp_path)
     for stage in mood2.stages():
         (tmp_path / f"{stage}.md").write_text("справжній промпт", encoding="utf-8")
@@ -222,7 +222,7 @@ def test_cli_send_refuses_while_any_prompt_is_a_stub(monkeypatch, tmp_path, caps
     monkeypatch.setattr(mood2, "reference_text", lambda day: FAKE_REFERENCE)
     monkeypatch.setattr(mood, "send",
                         lambda text, role="mood", voice=None, profile=None:
-                        sent.append(text))
+                        sent.append(text) or True)
     monkeypatch.setattr(sys, "argv", ["mood2.py", "--day", DAY.isoformat(), "--send"])
     assert mood2.main() == 2
     assert sent == []
@@ -237,7 +237,7 @@ def test_cli_send_delivers_once_the_prompts_are_real(monkeypatch, tmp_path):
     monkeypatch.setattr(mood2, "reference_text", lambda day: FAKE_REFERENCE)
     monkeypatch.setattr(mood, "send",
                         lambda text, role="mood", voice=None, profile=None:
-                        sent.append(text))
+                        sent.append(text) or True)
     monkeypatch.setattr(sys, "argv", ["mood2.py", "--day", DAY.isoformat(), "--send"])
     assert mood2.main() == 0
     assert len(sent) == 1 and "[p1]" not in sent[0], "the audit markers are not for the ear"

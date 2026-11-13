@@ -431,7 +431,7 @@ def test_osnova_never_leaves_the_log(monkeypatch):
     sent = []
     monkeypatch.setattr(mood2.mood, "send",
                         lambda text, role="mood", voice=None, profile=None:
-                        sent.append(text))
+                        sent.append(text) or True)
     mood2.send(READING)
     assert len(sent) == 1
     assert "ОСНОВА" not in sent[0] and "°" not in sent[0] and "[p" not in sent[0]
@@ -532,7 +532,7 @@ def test_the_tags_never_reach_the_written_message(monkeypatch):
     seen = {}
     monkeypatch.setattr(mood2.mood, "send",
                         lambda text, role="mood", voice=None, profile=None:
-                        seen.update(text=text, voice=voice, profile=profile))
+                        seen.update(text=text, voice=voice, profile=profile) or True)
     mood2.send(READING)
     assert "[пауза]" not in seen["text"] and "ОСНОВА" not in seen["text"]
     assert "[довга пауза]" in seen["voice"]

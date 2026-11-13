@@ -80,7 +80,7 @@ def _bio_run(monkeypatch, tmp_path, existing_state):
                         lambda day, computed: {"figures": "", "conclusion": "Тіло просить спокою.",
                                                "raw": "сире"})
     monkeypatch.setattr(mood, "log_run", lambda *a, **kw: None)
-    monkeypatch.setattr(mood, "send", lambda *a, **kw: None)
+    monkeypatch.setattr(mood, "send", lambda *a, **kw: True)
     monkeypatch.setattr(mood.sys, "argv", ["mood.py", "--only", "bio", "--day", TODAY])
     assert mood.main() == 0
     return json.loads(f.read_text(encoding="utf-8"))

@@ -651,7 +651,7 @@ def with_tags(text: str, note=lambda *a: None) -> str:
 
 
 def send(text: str, role: str = "mood", note=lambda *a: None,
-         voice: str | None = None, profile: str | None = None) -> None:
+         voice: str | None = None, profile: str | None = None) -> bool:
     """Voice first as its own message, then the text.
 
     A full reading is several Telegram messages and about a minute of synthesis, so one
@@ -677,9 +677,17 @@ def send(text: str, role: str = "mood", note=lambda *a: None,
     # forecast is several messages and a minute of audio, and it buried the conversation
     # in the main chat. notify.sh falls back to the main bot if the token is missing.
     bot = ["--bot", role] if conf(f"telegram.bots.{role}") else []
-    subprocess.run([notify, *bot, *voice, "--voice-only", body],
-                   check=False, cwd=str(HOME), timeout=300)
-    subprocess.run([notify, *bot, "--no-voice", text], check=False, cwd=str(HOME), timeout=180)
+    # notify.sh's exit code is the delivery verdict (t1121); dropping it meant a Telegram
+    # outage at 08:15 left the timer green and nobody told (t1172)
+    spoke = subprocess.run([notify, *bot, *voice, "--voice-only", body],
+                           check=False, cwd=str(HOME), timeout=300)
+    wrote = subprocess.run([notify, *bot, "--no-voice", text],
+                           check=False, cwd=str(HOME), timeout=180)
+    ok = spoke.returncode == 0 and wrote.returncode == 0
+    if not ok:
+        print(f"надсилання не вдалося (голос: код {spoke.returncode}, "
+              f"текст: код {wrote.returncode})", file=sys.stderr)
+    return ok
 
 
 def log_run(day: date, parts: dict[str, str]) -> None:
@@ -791,8 +799,7 @@ def main() -> int:
             return 0
         log_run(day, {"письмо (перероблено)": forecast["raw"]})
         save_claims(day, forecast["claim_list"])
-        send(text, note=note)
-        return 0
+        return 0 if send(text, note=note) else 2
 
     if args.only == "bio":                        # the biorhythms alone: one call, no ephemeris reading
         bio = write_biorhythms(day, computed)
@@ -802,8 +809,7 @@ def main() -> int:
             return 0
         log_run(day, {"біоритми": bio["raw"]})
         save_bio_state(day, bio, computed)
-        send(text, note=note)
-        return 0
+        return 0 if send(text, note=note) else 2
 
     natal = natal_text()
     note(f"1/3 вибір матеріалу: {len(facts)} фактів")
@@ -837,10 +843,9 @@ def main() -> int:
                   "біоритми": bio["raw"]})
     save_state(day, bio, forecast, computed)
     save_claims(day, forecast["claim_list"])
-    if args.only != "astro":
-        send(bio_text, note=note)
-    send(astro_text, note=note)
-    return 0
+    delivered = send(bio_text, note=note) if args.only != "astro" else True
+    delivered = send(astro_text, note=note) and delivered
+    return 0 if delivered else 2
 
 
 if __name__ == "__main__":
