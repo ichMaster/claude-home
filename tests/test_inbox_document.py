@@ -81,3 +81,31 @@ def test_dropped_record_carries_the_shape(tmp_path, monkeypatch):
     assert "document" in rec["shape"]["keys"]
     assert rec["shape"]["document"]["mime"] == "application/zip"
     assert rec["shape"]["document"]["size"] == 1234
+
+
+# --- t1176: the argv limit --------------------------------------------------------------
+# Linux caps one exec argument at 131072 bytes; a 150KB document passed whole made every
+# model call raise E2BIG after the offset was saved — the message got no reply, ever.
+
+def test_an_oversized_document_is_clamped_to_fit_argv(fake_telegram):
+    """TC1: a 150KB paste must come back small enough to exec, with the cut named."""
+    fake_telegram["payload"] = ("рядок тексту з довгого документа\n" * 3000).encode("utf-8")
+    assert len(fake_telegram["payload"]) > 131072
+    got = inbox.read_document("t", doc(file_size=len(fake_telegram["payload"])))
+    assert got, "the document must still be read"
+    assert len(got.encode("utf-8")) < 110000, "the body must fit an argv element with headroom"
+    assert "обрізано" in got[-60:]
+
+
+def test_a_document_inside_the_budget_is_untouched(fake_telegram):
+    """TC2: the clamp must not touch a normal reference."""
+    fake_telegram["payload"] = "☽ Пн 26 жовтня\nМісяць у Тельці".encode("utf-8")
+    got = inbox.read_document("t", doc())
+    assert got == "☽ Пн 26 жовтня\nМісяць у Тельці"
+
+
+def test_the_clamp_survives_a_multibyte_boundary(fake_telegram):
+    """TC3: cutting inside a Cyrillic character must not raise."""
+    fake_telegram["payload"] = ("ї" * 120000).encode("utf-8")   # 2 bytes each
+    got = inbox.read_document("t", doc(file_size=240000))
+    assert got and "обрізано" in got[-60:]

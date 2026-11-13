@@ -204,9 +204,18 @@ def read_document(token: str, doc: dict) -> str:
     remote = info["result"]["file_path"]
     try:
         with urllib.request.urlopen(f"{API}/file/bot{token}/{remote}", timeout=60) as r:
-            return as_text(r.read())
+            text = as_text(r.read())
     except Exception:                                 # noqa: BLE001
         return ""
+    # The body travels as ONE argv element (claude -p, mood_feedback.py, astro_learn), and
+    # Linux caps a single exec argument at 131072 bytes — a 150KB paste made every call
+    # raise E2BIG after the offset was saved, so the message got no reply, ever (t1176).
+    # Clamp with room left for the prompt around it: most of a reference still arrives.
+    budget = int(conf("telegram.inbox.max_document_prompt_bytes", 98304))
+    raw = text.encode("utf-8")
+    if len(raw) > budget:
+        text = raw[:budget].decode("utf-8", "ignore") + "\n…(документ обрізано, далі не влізло)"
+    return text
 
 
 def zirka_context() -> dict[str, str]:
