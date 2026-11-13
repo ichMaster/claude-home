@@ -189,3 +189,40 @@ def test_two_separate_runs_still_counted(task_log):
     t = store.state()["t001"]
     assert len(t["runs"]) == 2
     assert store.minutes(t) == 60
+
+
+# t1169 — genitive weekday forms after «до» must parse: «до п'ятниці» silently created a
+# task with no due date, though the phrase is the module's own docstring example.
+
+def _coming(weekday):
+    import datetime
+    today = datetime.date.today()
+    return today + datetime.timedelta(days=(weekday - today.weekday()) % 7 or 7)
+
+
+def test_parse_due_genitive_friday_docstring_example():
+    """TC1: the docstring's own example must carry Friday's deadline."""
+    due, title = store.parse_due("полагодити індексацію до п'ятниці")
+    assert due == _coming(4)
+    assert "п'ятниці" not in title
+
+
+def test_parse_due_all_genitive_weekdays():
+    """TC2: every genitive weekday after «до» parses."""
+    cases = {"до понеділка": 0, "до вівторка": 1, "до середи": 2, "до четверга": 3,
+             "до суботи": 5, "до неділі": 6}
+    for phrase, wd in cases.items():
+        due, _ = store.parse_due(f"звіт {phrase}")
+        assert due == _coming(wd), phrase
+
+
+def test_parse_due_genitive_modifier_apostrophe():
+    """TC3: the U+02BC apostrophe variant the dict already carries elsewhere."""
+    due, _ = store.parse_due("звіт до пʼятниці")
+    assert due == _coming(4)
+
+
+def test_parse_due_accusative_friday_still_works():
+    """TC4: the old forms keep working."""
+    due, _ = store.parse_due("звіт у п'ятницю")
+    assert due == _coming(4)
