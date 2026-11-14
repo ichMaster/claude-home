@@ -109,3 +109,46 @@ def test_the_clamp_survives_a_multibyte_boundary(fake_telegram):
     fake_telegram["payload"] = ("ї" * 120000).encode("utf-8")   # 2 bytes each
     got = inbox.read_document("t", doc(file_size=240000))
     assert got and "обрізано" in got[-60:]
+
+
+# --- t1178: history re-expands clamped documents past the argv limit ----------------------
+# The t1176 clamp bounded the incoming document, but the full clamped text was stored in
+# history and re-embedded in every later prompt — two large documents left ~125KB of history
+# that made every exec fail E2BIG, and history only rotates on success, so the bot bricked.
+
+def test_call_claude_sends_the_prompt_on_stdin(monkeypatch):
+    """TC1: no prompt byte travels as an argv element, so no size can raise E2BIG."""
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen["cmd"] = cmd
+        seen["input"] = kw.get("input")
+
+        class Out:
+            returncode = 0
+            stdout = "ок"
+            stderr = ""
+        return Out()
+
+    monkeypatch.setattr(inbox.subprocess, "run", fake_run)
+    prompt = "довгий промпт " * 20000          # ~0.5MB, far past MAX_ARG_STRLEN
+    assert inbox.call_claude(prompt) == "ок"
+    assert all(len(arg.encode("utf-8")) < 131072 for arg in seen["cmd"])
+    assert prompt not in seen["cmd"]
+    assert seen["input"] == prompt
+
+
+def test_history_entries_are_clipped():
+    """TC2: a stored turn is bounded, with the cut named; short ones pass untouched."""
+    big = "рядок із великого документа\n" * 5000
+    clipped = inbox.clip_entry(big)
+    assert len(clipped.encode("utf-8")) <= 8192 + 80
+    assert "обрізано" in clipped[-60:]
+    assert inbox.clip_entry("коротка репліка") == "коротка репліка"
+
+
+def test_clip_entry_survives_a_multibyte_boundary():
+    """TC3: cutting inside a Cyrillic character must not raise or produce mojibake."""
+    clipped = inbox.clip_entry("ї" * 9000)    # 2 bytes each — the cut lands mid-character
+    assert clipped.encode("utf-8").decode("utf-8")
+    assert "обрізано" in clipped[-60:]

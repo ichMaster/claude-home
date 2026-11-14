@@ -122,6 +122,19 @@ def load_state(bot: str) -> dict:
     return {"offset": 0, "history": [], "answers": []}
 
 
+def clip_entry(text: str) -> str:
+    """Bound one history turn so a stored document can never balloon later prompts (t1178).
+
+    The full clamped document still reaches the model once, in the turn it arrived; what the
+    history keeps is enough to stay on topic, not the whole paste.
+    """
+    budget = int(conf("telegram.inbox.max_history_entry_bytes", 8192))
+    raw = text.encode("utf-8")
+    if len(raw) <= budget:
+        return text
+    return raw[:budget].decode("utf-8", "ignore") + "\n…(обрізано для історії)"
+
+
 def save_state(bot: str, st: dict) -> None:
     st["history"] = st.get("history", [])[-int(conf("telegram.inbox.history", 12)):]
     # atomic, like every other state writer here: a SIGKILL past TimeoutStartSec (or a
@@ -425,14 +438,18 @@ def build_prompt(bot: str, history: list[dict], message: str,
 def call_claude(prompt: str, model: str = "", timeout: int = 180) -> str:
     """One headless call with no tools and no MCP: the reply is text, so nothing said in a
     bot's chat can make anything happen."""
-    cmd = ["claude", "-p", prompt,
+    # The prompt goes on stdin, never as an argv element: Linux caps one exec argument at
+    # 131072 bytes, and a prompt carrying a clamped document plus history crossed it, so
+    # execve raised E2BIG and the bot could never answer again until the state file was
+    # edited by hand (t1178).
+    cmd = ["claude", "-p",
            "--settings", str(HOME / "status" / "digest-settings.json"),
            "--mcp-config", '{"mcpServers":{}}', "--strict-mcp-config",
            "--allowedTools", ""]
     if model:
         cmd += ["--model", model]
     out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
-                         cwd=str(HOME), stdin=subprocess.DEVNULL)
+                         cwd=str(HOME), input=prompt)
     if out.returncode != 0:
         raise RuntimeError(f"виклик не вдався (код {out.returncode}): {out.stderr.strip()[:200]}")
     return out.stdout.strip()
@@ -572,8 +589,8 @@ def handle_update(bot: str, token: str, owner: str, st: dict, upd: dict,
         request = ""
     if not reply:
         return 0
-    st.setdefault("history", []).append({"role": "user", "text": text})
-    st["history"].append({"role": "bot", "text": reply})
+    st.setdefault("history", []).append({"role": "user", "text": clip_entry(text)})
+    st["history"].append({"role": "bot", "text": clip_entry(reply)})
     st.setdefault("answers", []).append(
         datetime.now().astimezone().isoformat(timespec="seconds"))
     send(bot, reply)

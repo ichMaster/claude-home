@@ -198,6 +198,7 @@
       "fetch_workers": 4,
       "max_document_bytes": 262144,
       "max_document_prompt_bytes": 98304,
+      "max_history_entry_bytes": 8192,
       "feedback_min_chars": 25
     },
     "bots": {
