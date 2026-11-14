@@ -185,3 +185,50 @@ def test_handoff_without_search_still_works(monkeypatch, bot_env):
                         lambda bot, asked, reply, request: handed.append(request))
     assert inbox.handle_update("bruno", "t", "42", {}, upd(1, text="зміни голос")) == 1
     assert handed == ["змінити голос"]
+
+
+# t1185 — a voice message the recognizer failed on must not vanish in silence: the owner
+# speaks rather than types, and a lost voice note looked exactly like being ignored.
+
+def test_failed_transcription_sends_a_visible_notice(monkeypatch, bot_env):
+    """TC1: dg_stt.sh failing (empty text) → one ask-to-repeat in the bot's chat."""
+    sent = []
+    monkeypatch.setattr(inbox, "send", lambda bot, text: sent.append((bot, text)))
+    monkeypatch.setattr(inbox, "transcribe", lambda token, fid: "")
+    monkeypatch.setattr(inbox, "api",
+                        lambda *a, **k: {"ok": True, "result": [upd(300, voice={"file_id": "f1"})]})
+    inbox.poll("zirka")
+    assert sent and "не розпізнал" in sent[0][1]
+    dropped = (bot_env / "dropped.jsonl").read_text()
+    assert "голос не розпізнано" in dropped
+
+
+def test_raising_transcription_sends_the_same_notice(monkeypatch, bot_env):
+    """TC2: a timeout inside transcribe must land in the same visible path."""
+    sent = []
+    monkeypatch.setattr(inbox, "send", lambda bot, text: sent.append((bot, text)))
+
+    def boom(token, fid):
+        raise subprocess.TimeoutExpired(cmd="dg_stt.sh", timeout=180)
+    monkeypatch.setattr(inbox, "transcribe", boom)
+    monkeypatch.setattr(inbox, "api",
+                        lambda *a, **k: {"ok": True, "result": [upd(301, voice={"file_id": "f1"})]})
+    inbox.poll("zirka")
+    assert sent and "не розпізнал" in sent[0][1]
+    st = json.loads((bot_env / "zirka.json").read_text())
+    assert st["offset"] == 302, "the offset still advances — no replay loop"
+
+
+def test_textless_messages_stay_silent_and_dry_run_sends_nothing(monkeypatch, bot_env):
+    """TC3: no notice for a sticker, and none from a dry run."""
+    sent = []
+    monkeypatch.setattr(inbox, "send", lambda bot, text: sent.append(text))
+    monkeypatch.setattr(inbox, "transcribe", lambda token, fid: "")
+    monkeypatch.setattr(inbox, "api",
+                        lambda *a, **k: {"ok": True, "result": [upd(302, sticker={"x": 1})]})
+    inbox.poll("zirka")
+    assert sent == []
+    monkeypatch.setattr(inbox, "api",
+                        lambda *a, **k: {"ok": True, "result": [upd(303, voice={"file_id": "f1"})]})
+    inbox.poll("zirka", dry_run=True)
+    assert sent == []

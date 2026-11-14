@@ -532,10 +532,17 @@ def handle_update(bot: str, token: str, owner: str, st: dict, upd: dict,
         log_dropped(bot, "чужий чат", upd)
         return 0
     text = (msg.get("text") or msg.get("caption") or "").strip()
+    voice_failed = False
     if not text and msg.get("voice"):
-        text = transcribe(token, msg["voice"]["file_id"])
+        try:
+            text = transcribe(token, msg["voice"]["file_id"])
+        except Exception as e:                                           # noqa: BLE001
+            print(f"{bot}: розпізнавання впало: {e}")
+            text = ""
         if text:
             print(f"{bot}: голосове розпізнано: {text[:80]}")
+        else:
+            voice_failed = True
     if msg.get("document"):
         # read it even under a caption: «це на завтра» on a forwarded .txt used to win the
         # `or` and the reference body was silently discarded (t1162) — the caption rides
@@ -545,6 +552,17 @@ def handle_update(bot: str, token: str, owner: str, st: dict, upd: dict,
             text = f"{text}\n\n{body}".strip()
             print(f"{bot}: документ прочитано: {len(body)} символів")
     if not text:
+        if voice_failed:
+            # the owner speaks rather than types: a voice note lost to a Deepgram outage
+            # looked exactly like being ignored (t1185). The offset stays committed —
+            # retrying against a dead recognizer every two minutes was rejected — but the
+            # loss is said out loud, in that bot's own chat, within the hourly cap.
+            log_dropped(bot, "голос не розпізнано", upd)
+            if not dry_run and within_cap(st, bot):
+                st.setdefault("answers", []).append(
+                    datetime.now().astimezone().isoformat(timespec="seconds"))
+                send(bot, "Голосове не розпізналось — повтори, будь ласка, або напиши текстом.")
+            return 0
         log_dropped(bot, "без тексту", upd)
         return 0
     if not within_cap(st, bot):
