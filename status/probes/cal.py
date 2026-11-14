@@ -55,7 +55,9 @@ def unfold(text):
 
 def parse_dt(value, params):
     """DTSTART/DTEND -> (datetime in the local zone, whether it is all-day)."""
-    if "VALUE=DATE" in params or re.fullmatch(r"\d{8}", value):
+    # the token, not the substring: VALUE=DATE-TIME is a timed event spelled out loud, and
+    # reading it as all-day made strptime raise and took the whole calendar down (t1180)
+    if re.search(r"VALUE=DATE(?!-)", params) or re.fullmatch(r"\d{8}", value):
         d = datetime.strptime(value, "%Y%m%d").replace(tzinfo=TZ)
         return d, True
     tzid = None
@@ -72,6 +74,28 @@ def parse_dt(value, params):
     return dt.astimezone(TZ), False
 
 
+def until_utc(rule):
+    """Normalise UNTIL so dateutil accepts it against a timezone-aware DTSTART (t1181).
+
+    RFC 5545 makes UNTIL match DTSTART's value type, so Google exports a recurring all-day
+    event with a date-form UNTIL — which rrulestr refuses once parse_dt has made dtstart
+    aware, and the whole series used to collapse to its first occurrence. A date-form UNTIL
+    becomes the end of that day in local time (the final day stays inclusive), a naive
+    datetime UNTIL is read as local time; both leave as UTC with the Z suffix. An already
+    UTC UNTIL passes through.
+    """
+    m = re.search(r"(UNTIL=)(\d{8}(?:T\d{6})?)(?=;|$)", rule)
+    if not m:
+        return rule
+    v = m.group(2)
+    if len(v) == 8:
+        dt = datetime.strptime(v, "%Y%m%d").replace(hour=23, minute=59, second=59, tzinfo=TZ)
+    else:
+        dt = datetime.strptime(v, "%Y%m%dT%H%M%S").replace(tzinfo=TZ)
+    stamp = dt.astimezone(ZoneInfo("UTC")).strftime("%Y%m%dT%H%M%SZ")
+    return rule[:m.start(2)] + stamp + rule[m.end(2):]
+
+
 def events(ics, lo, hi):
     """Events overlapping [lo, hi): plain ones plus expanded recurrences."""
     res, blocks, moved = [], [], set()
@@ -82,7 +106,12 @@ def events(ics, lo, hi):
                 continue
             name, value = line.split(":", 1)
             key = name.split(";")[0].upper()
-            fields.setdefault(key, (name[len(key):], value.strip()))
+            if key == "EXDATE":
+                # Google writes one EXDATE line per deleted occurrence and RFC 5545 allows
+                # the repeat; first-wins resurrected every deletion after the first (t1182)
+                fields.setdefault("EXDATE", []).append((name[len(key):], value.strip()))
+            else:
+                fields.setdefault(key, (name[len(key):], value.strip()))
         blocks.append(fields)
         # a moved occurrence arrives as its own VEVENT carrying RECURRENCE-ID; the master's
         # RRULE still yields the old time, so that occurrence has to be dropped from the
@@ -114,10 +143,10 @@ def events(ics, lo, hi):
             uid = (fields.get("UID") or ("", ""))[1]
             try:
                 excl = set()
-                if "EXDATE" in fields:
-                    for part in fields["EXDATE"][1].split(","):
-                        excl.add(parse_dt(part.strip(), fields["EXDATE"][0])[0])
-                for occ in rrulestr(rule, dtstart=start).between(
+                for exp, exv in fields.get("EXDATE") or []:
+                    for part in exv.split(","):
+                        excl.add(parse_dt(part.strip(), exp)[0])
+                for occ in rrulestr(until_utc(rule), dtstart=start).between(
                         lo - dur, hi, inc=True):
                     if occ not in excl and (uid, occ) not in moved:
                         starts.append(occ)
