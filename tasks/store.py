@@ -97,17 +97,21 @@ def parse_due(text):
     m = re.search(r"\b(післязавтра)\b", low)
     if m:
         cut(r"\bпіслязавтра\b"); return today + timedelta(days=2), t
-    m = re.search(r"через\s+(\d+)\s+(дн|тижн)", low)
+    # the whole word, not the stem: a stem-only cut left «ів» in the title, and the
+    # singulars («день», «тиждень») carry no contiguous stem at all, so they parsed
+    # nothing (t1183)
+    m = re.search(r"через\s+(\d+)\s+(день|дн(?:і|ів|я|и)?|тиждень|тижн(?:і|ів|и)?)\b", low)
     if m:
-        n = int(m.group(1)) * (7 if m.group(2) == "тижн" else 1)
+        n = int(m.group(1)) * (7 if m.group(2).startswith("тиж") else 1)
         cut_span(m); return today + timedelta(days=n), t
     m = re.search(r"\b(?:до|у|в|на)\s+(\d{1,2})\s+(" + "|".join(MONTHS) + r")\b", low)
     if m:
         d, mo = int(m.group(1)), MONTHS[m.group(2)]
         y = today.year + (1 if (mo, d) < (today.month, today.day) else 0)
         cut_span(m); return date(y, mo, d), t
-    m = re.search(r"\b(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?\b", low)
-    if m:
+    # every dotted candidate is tried, not only the first: an impossible «31.11» standing
+    # before a valid «20.12» used to swallow the deadline entirely (t1184)
+    for m in re.finditer(r"\b(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?\b", low):
         d, mo = int(m.group(1)), int(m.group(2))
         y = int(m.group(3) or today.year)
         y += 2000 if y < 100 else 0
@@ -118,9 +122,8 @@ def parse_due(text):
         try:
             when = date(y, mo, d)
         except ValueError:      # «python 3.14», «31.11» — a number, not a date (t1048)
-            when = None
-        if when:
-            cut_span(m); return when, t
+            continue
+        cut_span(m); return when, t
     m = re.search(r"\b(?:до|у|в|на)\s+(" + "|".join(map(re.escape, DAYS)) + r")\b", low)
     if m:
         want = DAYS[m.group(1)]

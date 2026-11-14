@@ -226,3 +226,64 @@ def test_parse_due_accusative_friday_still_works():
     """TC4: the old forms keep working."""
     due, _ = store.parse_due("звіт у п'ятницю")
     assert due == _coming(4)
+
+
+# t1183 — «через N …» must eat the whole word and understand the singular forms.
+
+def test_relative_days_cut_cleanly_from_the_title():
+    """TC1 (t1183): the stem-only cut left «ів» in the stored title."""
+    import datetime
+    due, title = store.parse_due("нагадати через 5 днів про оплату")
+    assert due == datetime.date.today() + datetime.timedelta(days=5)
+    assert title == "нагадати про оплату"
+
+
+def test_relative_one_week_parses():
+    """TC2 (t1183): «тиждень» carries no contiguous «тижн» — it parsed nothing."""
+    import datetime
+    due, title = store.parse_due("зробити через 1 тиждень")
+    assert due == datetime.date.today() + datetime.timedelta(days=7)
+    assert "тиждень" not in title
+
+
+def test_relative_one_day_parses():
+    """TC3 (t1183): «день» has no «дн» either."""
+    import datetime
+    due, _ = store.parse_due("подзвонити через 1 день")
+    assert due == datetime.date.today() + datetime.timedelta(days=1)
+
+
+def test_relative_plural_forms_still_work():
+    """TC4 (t1183): the forms that worked keep working, with clean titles."""
+    import datetime
+    due, title = store.parse_due("звіт через 2 тижні")
+    assert due == datetime.date.today() + datetime.timedelta(days=14)
+    assert title == "звіт"
+    due, title = store.parse_due("звіт через 3 дні")
+    assert due == datetime.date.today() + datetime.timedelta(days=3)
+    assert title == "звіт"
+
+
+# t1184 — one impossible dotted date must not hide a valid one further on.
+
+def test_invalid_first_dotted_date_does_not_hide_a_valid_one(monkeypatch):
+    """TC1 (t1184): «31.11 і ще 20.12» stored no deadline at all."""
+    monkeypatch.setattr(store, "date", _Nov1)
+    due, title = store.parse_due("оплатити 31.11 і ще 20.12 рахунок")
+    assert due is not None and (due.day, due.month) == (20, 12)
+    assert "31.11" in title
+
+
+def test_version_numbers_still_parse_nothing():
+    """TC2 (t1184): t1048 holds — no date invented from numbers."""
+    due, title = store.parse_due("оновити python 3.14")
+    assert due is None and "3.14" in title
+    due, title = store.parse_due("звіт до 31.11")
+    assert due is None and "31.11" in title
+
+
+def test_first_valid_dotted_date_wins(monkeypatch):
+    """TC3 (t1184): two valid dates — the earlier-written one is the deadline."""
+    monkeypatch.setattr(store, "date", _Nov1)
+    due, _ = store.parse_due("зустріч 20.11 або 25.11")
+    assert (due.day, due.month) == (20, 11)
