@@ -554,9 +554,14 @@ def check_reading(text: str, items, chosen_ids=None) -> list[str]:
     # The cause may be named, but only a cause the day actually carries (t1155).
     # Judged against the whole day, not only the selection: a body the day really carries is
     # at worst a misplaced emphasis, while a silent morning is a failure of the thing itself.
-    available = bodies_named(" ".join(
-        f"{i.get('bodies') or ''} {i.get('natal') or ''} {i.get('meaning') or ''}"
-        for i in items))
+    # The day's side obeys the same asymmetry as the reading's (t1179): `bodies` and `natal`
+    # are structured name fields, where a bare «вузли» can only be the nodes — they match
+    # wide; `meaning` is his prose, where «вузол» is an everyday noun first — it matches
+    # strict. A loose match there both demanded nodes from a nodeless day and excused a
+    # reading that complied.
+    structured = " ".join(f"{i.get('bodies') or ''} {i.get('natal') or ''}" for i in items)
+    prose = " ".join(str(i.get("meaning") or "") for i in items)
+    available = bodies_named(structured) | bodies_claimed(prose)
     said = bodies_named(head)
     invented_bodies = sorted(bodies_claimed(head) - available)
     if invented_bodies:

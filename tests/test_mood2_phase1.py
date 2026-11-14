@@ -691,3 +691,42 @@ def test_a_bare_knot_still_counts_as_naming_the_nodes():
     bad = READING.replace("Марс із Кету тримають", "Марс і цей вузол тримають")
     problems = mood2.check_reading(bad, ITEMS, CHOSEN)
     assert not any("яких у читанні немає" in p for p in problems), problems
+
+
+# --- t1179: the day's own prose must not whitelist a body ------------------------------------
+
+# The same nodeless day, but one meaning uses «вузол» as the everyday noun it is. The t1177
+# asymmetry was applied only to the reading's words; applied to the items it worked backwards:
+# the loose match put «вузли» into the day, demanded them from a correct reading, and excused
+# a reading that then asserted them.
+
+def knot_day():
+    items = [dict(i) for i in DAY_NO_NODES]
+    items[5]["meaning"] = "Вузол напруги у розмові сам не розв'яжеться."
+    return items
+
+
+def test_a_knot_in_the_days_prose_demands_no_nodes():
+    """TC1 (t1179): a correct nodeless reading is not refused over a word in his prose."""
+    problems = mood2.check_reading(READING_NO_NODES, knot_day(), CHOSEN_NO_NODES)
+    assert not any("яких у читанні немає" in p for p in problems), problems
+
+
+def test_a_knot_in_the_days_prose_excuses_no_invention():
+    """TC2 (t1179): asserting the lunar nodes over a nodeless day is still an invention."""
+    bad = READING_NO_NODES.replace("Різке лиши до ранку",
+                                   "Місячні вузли тиснуть, тож різке лиши до ранку")
+    problems = mood2.check_reading(bad, knot_day(), CHOSEN_NO_NODES)
+    assert any("яких у добі немає" in p and "вузли" in p for p in problems), problems
+
+
+def test_bare_nodes_in_the_bodies_field_still_carry_the_day():
+    """TC3 (t1179): in a structured field «вузли» can only be the nodes — no t1156 regression."""
+    items = [dict(i) for i in DAY_NO_NODES]
+    items[5]["bodies"] = "Уран і вузли"
+    fine = READING_NO_NODES.replace("Уран штовхає сказати різко",
+                                    "Уран і місячні вузли штовхають сказати різко")
+    assert not any("яких у добі немає" in p
+                   for p in mood2.check_reading(fine, items, CHOSEN_NO_NODES))
+    problems = mood2.check_reading(READING_NO_NODES, items, CHOSEN_NO_NODES)
+    assert any("яких у читанні немає" in p and "вузли" in p for p in problems), problems
