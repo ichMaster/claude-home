@@ -10,9 +10,19 @@ cd "$HOME/claude-home"
 # cannot read a script name out of the process tree (t1121).
 export NOOS_SENT_KIND="digest-headless.sh"
 part="${1:-ранковий}"
+# Bash rules name command prefixes, never bare "Bash": this session reads inbound mail —
+# text anyone on the internet can write — and an allowlist of everything turns a prompt
+# injection into arbitrary command execution (t1186). Only what the prompt prescribes,
+# plus harmless text helpers; no bare python (-c would be arbitrary code again).
 exec claude -p "$(cat status/digest-prompt.md | sed "s/{{ЧАСТИНА}}/$part/")" \
   --settings "$HOME/claude-home/status/digest-settings.json" \
-  --allowedTools "Bash" "mcp__claude_ai_Gmail__search_threads" \
+  --allowedTools "Bash(./status/run.sh:*)" "Bash(./notify.sh:*)" \
+                 "Bash(.venv-voice/bin/python status/candidates.py:*)" \
+                 "Bash(.venv-voice/bin/python status/tools/news_seen.py:*)" \
+                 "Bash(.venv-voice/bin/python tasks/store.py:*)" \
+                 "Bash(cat:*)" "Bash(echo:*)" "Bash(date:*)" \
+                 "Bash(head:*)" "Bash(tail:*)" \
+                 "mcp__claude_ai_Gmail__search_threads" \
                  "mcp__claude_ai_Google_Calendar__list_events" \
                  "mcp__claude_ai_Google_Calendar__list_calendars" \
   --permission-mode acceptEdits

@@ -8,7 +8,13 @@ cd "$HOME/claude-home"
 # Label this session's messages in the Sent log: the sender here is a model, so notify.sh
 # cannot read a script name out of the process tree (t1121).
 export NOOS_SENT_KIND="social-headless.sh"
+# Prefix rules, never bare "Bash": this session reads facebookmail bodies — foreign text —
+# and an allowlist of everything turns a prompt injection into command execution (t1186).
 exec claude -p "$(cat status/social-prompt.md)" \
   --settings "$HOME/claude-home/status/digest-settings.json" \
-  --allowedTools "Bash" "mcp__claude_ai_Gmail__search_threads" \
+  --allowedTools "Bash(./notify.sh:*)" "Bash(./status/run.sh:*)" \
+                 "Bash(.venv-voice/bin/python status/probes/youtube.py:*)" \
+                 "Bash(cat:*)" "Bash(echo:*)" "Bash(date:*)" \
+                 "Bash(head:*)" "Bash(tail:*)" \
+                 "mcp__claude_ai_Gmail__search_threads" \
   --permission-mode acceptEdits
