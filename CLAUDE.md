@@ -55,6 +55,20 @@ What a clean restart drops: the conversation only. What always survives: the sys
 prompt (rebuilt from `persona.md` plus pinned facts), `CLAUDE.md`, the facts store, the
 transcript index, tasks, the change log, probe state and configuration.
 
+## Claude login
+
+The regular login (`~/.claude/.credentials.json`, `/login` in the tmux session) carries
+inference, the claude.ai connectors and Remote Control, but its refresh token dies after a few
+weeks. The `auth` probe warns `probes.auth.warn_days` (3) ahead and alerts when it is gone
+(t1187, t1188).
+
+A one-year token from `claude setup-token` lives in `~/.claude/.env.oauth` (mode 600) as a
+**fallback only**: it is inference-only — measured 2026-11-15, a run on it sees none of the
+connectors — so `status/tools/claude_auth.py` hands it out only while the regular login is
+dead. Shell callers source `status/tools/claude-auth.sh`; Python callers of `claude -p` pass
+`env=claude_auth.env()`. A new caller of `claude` must do the same. `claude_auth.py status`
+says which one is in force.
+
 ## Voice (Telegram)
 
 Keys: `~/claude-home/.env.voice` (mode 600) — ElevenLabs + Deepgram, inherited from the

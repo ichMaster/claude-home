@@ -61,6 +61,8 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from noosconf import conf, path, atomic_write_text  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent / "tools"))
+import claude_auth  # noqa: E402  t1188: the year token only while the login is dead
 
 import astro  # noqa: E402  — same directory
 import mood_feedback  # noqa: E402  — the calibration rules
@@ -98,7 +100,7 @@ def run_claude(prompt: str, model: str = "", timeout: int = CALL_TIMEOUT) -> str
     if model:
         cmd += ["--model", model]
     out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
-                         cwd=str(HOME), stdin=subprocess.DEVNULL)
+                         cwd=str(HOME), stdin=subprocess.DEVNULL, env=claude_auth.env())
     if out.returncode != 0:
         raise RuntimeError(f"виклик не вдався (код {out.returncode}): {out.stderr.strip()[:300]}")
     return out.stdout.strip()

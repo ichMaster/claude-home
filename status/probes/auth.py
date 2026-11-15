@@ -10,6 +10,7 @@ exactly what is down.
 No tmux session means unknown, not expired: that alarm belongs to the `services` probe.
 """
 import json, subprocess, sys
+from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -17,6 +18,7 @@ from noosconf import conf
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from authcheck import pane_expired  # type: ignore
+import claude_auth  # type: ignore
 
 SESSION = conf("probes.auth.session", "claude")
 
@@ -40,7 +42,42 @@ def capture():
     return res.stdout if res.returncode == 0 else None
 
 
-def probe(pane=None):
+MONTHS = ["січня", "лютого", "березня", "квітня", "травня", "червня", "липня", "серпня",
+          "вересня", "жовтня", "листопада", "грудня"]
+
+
+def expiry(creds_path=None, fallback_path=None, now=None):
+    """A warn probe when the login is dead (the session runs on the fallback token, or on
+    nothing) or dies within `warn_days`; None while it is healthy (t1188)."""
+    now = now or datetime.now()
+    st = claude_auth.login_state(creds_path, now)
+    ttl = conf("probes.auth.ttl", 60)
+    if st["alive"]:
+        exp = st["expires"]
+        if not exp or exp - now > timedelta(days=int(conf("probes.auth.warn_days", 3))):
+            return None
+        day = f"{exp.day} {MONTHS[exp.month - 1]}"
+        return {"id": "auth", "ok": True, "severity": "warn",
+                "value": {"expired": False, "expires": exp.isoformat(timespec="minutes")},
+                "text": f"Вхід у Claude закінчиться {day} о {exp:%H:%M}. "
+                        f"Онови заздалегідь: tmux attach -t {SESSION} → /login.",
+                "voice": f"Вхід у Клод закінчиться {day}. Онови його заздалегідь "
+                         "командою логін у сесії клод.",
+                "ttl": ttl}
+    spare = claude_auth.fallback_file(creds_path, fallback_path, now) is not None
+    state = ("працюю на запасному токені: відповідаю, але без пошти, календаря й Remote Control"
+             if spare else "запасного токена немає, тож Ноос мовчить")
+    spoken = ("працюю на запасному токені, але без пошти й календаря" if spare
+              else "запасного токена немає")
+    return {"id": "auth", "ok": False, "severity": "warn",
+            "value": {"expired": True, "fallback": spare},
+            "text": f"Вхід у Claude закінчився — {state}. "
+                    f"Полагодити: tmux attach -t {SESSION} → /login.",
+            "voice": f"Вхід у Клод закінчився, {spoken}. Увійди знову командою логін у сесії клод.",
+            "ttl": ttl}
+
+
+def probe(pane=None, creds_path=None, fallback_path=None, now=None):
     pane = capture() if pane is None else pane
     ttl = conf("probes.auth.ttl", 60)
     if pane is None:
@@ -49,8 +86,9 @@ def probe(pane=None):
     if pane_expired(pane):
         return {"id": "auth", "ok": False, "severity": "alert", "value": {"expired": True},
                 "text": TEXT, "voice": VOICE, "ttl": ttl}
-    return {"id": "auth", "ok": True, "severity": "info", "value": {"expired": False},
-            "text": "Вхід у Claude: усе гаразд", "ttl": ttl}
+    return expiry(creds_path, fallback_path, now) or {
+        "id": "auth", "ok": True, "severity": "info", "value": {"expired": False},
+        "text": "Вхід у Claude: усе гаразд", "ttl": ttl}
 
 
 if __name__ == "__main__":

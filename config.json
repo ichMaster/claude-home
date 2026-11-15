@@ -69,7 +69,12 @@
       "lines": 80,
       "ttl": 60,
       "expired": ["Login expired", "Please run /login", "OAuth session expired", "Failed to authenticate", "OAuth token has expired"],
-      "recovered": ["Login successful"]
+      "recovered": ["Login successful"],
+      "credentials_": "t1188: the regular login; alive while its refresh token outlives margin_min. The year token in fallback_file (claude setup-token, inference-only: no connectors, no Remote Control) is used only while the login is dead. warn_days: announce a dying login this many days ahead.",
+      "credentials": "~/.claude/.credentials.json",
+      "fallback_file": "~/.claude/.env.oauth",
+      "margin_min": 30,
+      "warn_days": 3
     },
     "tasks": {
       "ttl": 120

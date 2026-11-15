@@ -42,6 +42,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from noosconf import atomic_write_text, conf, path                       # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+import claude_auth                                                       # noqa: E402  t1188
 
 HOME = Path(__file__).resolve().parents[2]
 PROMPTS = HOME / "status" / "bots"
@@ -449,7 +451,7 @@ def call_claude(prompt: str, model: str = "", timeout: int = 180) -> str:
     if model:
         cmd += ["--model", model]
     out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
-                         cwd=str(HOME), input=prompt)
+                         cwd=str(HOME), input=prompt, env=claude_auth.env())
     if out.returncode != 0:
         raise RuntimeError(f"виклик не вдався (код {out.returncode}): {out.stderr.strip()[:200]}")
     return out.stdout.strip()

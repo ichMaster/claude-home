@@ -27,6 +27,7 @@ from noosconf import conf, path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "status" / "tools"))
 from authcheck import is_auth_error  # type: ignore
+import claude_auth  # type: ignore  # t1188
 
 HOME = path("paths.home")
 OUT = HOME / "memory" / "handoff.md"
@@ -109,7 +110,7 @@ def main() -> None:
 
     res = subprocess.run(
         ["claude", "-p", prompt, "--settings", str(HOME / "status" / "digest-settings.json")],
-        capture_output=True, text=True, timeout=300)
+        capture_output=True, text=True, timeout=300, env=claude_auth.env())
     note = (res.stdout or "").strip()
     # a failed run's stdout is an error, not a note: on 2026-11-15 the OAuth error went into
     # the next session's system prompt as «Естафета» (t1187). Exiting non-zero makes

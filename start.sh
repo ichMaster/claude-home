@@ -43,6 +43,8 @@ while true; do
     ARGS+=(--continue)
     echo "сесія продовжує попередній контекст"
   fi
+  # t1188: the year token stands in only while the regular login is dead; re-decided per launch
+  . "$HOME/claude-home/status/tools/claude-auth.sh"
   claude "${ARGS[@]}"
   echo "claude завершився, перезапуск через ${NOOS_RESTART_DELAY:-5} с (Ctrl-C щоб зупинити цикл)"
   sleep "${NOOS_RESTART_DELAY:-5}"

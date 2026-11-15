@@ -37,9 +37,12 @@ def test_expired_pane_is_an_alert_with_the_fix():
     assert not any("a" <= c.lower() <= "z" for c in p["voice"])
 
 
-def test_healthy_pane_is_silent():
-    """TC2: ordinary replies and tool calls → info, not expired."""
-    p = auth.probe(HEALTHY)
+def test_healthy_pane_is_silent(tmp_path):
+    """TC2: ordinary replies and tool calls → info, not expired. The login itself is faked
+    healthy, so the t1188 expiry check does not read this machine's credentials."""
+    creds = tmp_path / "credentials.json"
+    creds.write_text(json.dumps({"claudeAiOauth": {"refreshToken": "r"}}))
+    p = auth.probe(HEALTHY, creds_path=creds, fallback_path=tmp_path / "none")
     assert p["severity"] == "info"
     assert p["value"]["expired"] is False
 
