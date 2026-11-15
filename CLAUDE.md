@@ -335,7 +335,10 @@ indexed into `memory/sessions.db` (project `факти`), so search finds them.
 ## Schedulers (systemd --user)
 
 - `noos-watch.timer` — every 15 min, `status/watch.py`: reports only changes and
-  problems.
+  problems. Its default probes include `auth` (`status/probes/auth.py`, t1187): when the
+  latest event in the `claude` tmux pane is `Login expired` / `OAuth session expired`, it
+  alerts through `notify.sh` with the fix (`tmux attach -t claude` → `/login`), once and then
+  every three hours while it lasts. `memory/handoff.py` refuses such an error as a note.
 - `noos-digest.timer` — 08:03 and 20:03, `status/digest-headless.sh`: a separate
   headless session (`claude -p`) collects candidates, picks the news itself and sends
   the digest as text and voice. Candidates come from all eight topics; selection is two

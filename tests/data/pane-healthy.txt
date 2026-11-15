@@ -1,0 +1,14 @@
+← telegram · 100000001: Що з задачами на сьогодні?
+
+● Bash(.venv-voice/bin/python tasks/store.py list)
+  ⎿  t1187  fix: something [noos]
+
+● telegram - reply (MCP)(chat_id: "100000001", text: "Одна задача відкрита.")
+  ⎿  sent
+
+✻ Worked for 12s
+
+────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents

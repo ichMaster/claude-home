@@ -25,6 +25,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from noosconf import conf, path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "status" / "tools"))
+from authcheck import is_auth_error  # type: ignore
+
 HOME = path("paths.home")
 OUT = HOME / "memory" / "handoff.md"
 TURNS = int(sys.argv[sys.argv.index("--turns") + 1]) if "--turns" in sys.argv else conf("memory.handoff_turns", 60)
@@ -108,8 +111,12 @@ def main() -> None:
         ["claude", "-p", prompt, "--settings", str(HOME / "status" / "digest-settings.json")],
         capture_output=True, text=True, timeout=300)
     note = (res.stdout or "").strip()
-    if not note:
-        sys.exit(f"не вдалося скласти записку: {(res.stderr or '')[:200]}")
+    # a failed run's stdout is an error, not a note: on 2026-11-15 the OAuth error went into
+    # the next session's system prompt as «Естафета» (t1187). Exiting non-zero makes
+    # restart-session.sh keep the conversation instead.
+    if res.returncode != 0 or not note or is_auth_error(note):
+        sys.exit(f"не вдалося скласти записку (код {res.returncode}): "
+                 f"{(note or res.stderr or '')[:200]}")
 
     OUT.write_text(
         f"<!-- handoff written {datetime.now().isoformat(timespec='seconds')} "

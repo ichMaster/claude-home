@@ -63,6 +63,14 @@
     "services": {
       "ttl": 120
     },
+    "auth": {
+      "_": "Lost Claude login in the always-on session (t1187): the latest event in the tmux pane decides.",
+      "session": "claude",
+      "lines": 80,
+      "ttl": 60,
+      "expired": ["Login expired", "Please run /login", "OAuth session expired", "Failed to authenticate", "OAuth token has expired"],
+      "recovered": ["Login successful"]
+    },
     "tasks": {
       "ttl": 120
     },

@@ -1,0 +1,24 @@
+
+
+← telegram · 100000001: Що з задачами на сьогодні?
+
+● Login expired · Please run /login
+
+✻ Worked for 0s
+
+← telegram · 100000001: Ти тут?
+
+● Login expired · Please run /login
+
+✻ Churned for 0s
+
+← telegram · 100000001: що сталось?
+
+● Login expired · Please run /login
+
+✻ Brewed for 0s
+                    Update available! Run: your package manager update command
+────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents

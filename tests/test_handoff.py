@@ -105,3 +105,46 @@ def test_successful_handoff_reports_fresh_size(tmp_path):
     ch, notified = _run_restart(tmp_path, handoff_ok=True)
     assert (ch / ".fresh").exists()
     assert "Записка: 4 символів" in notified
+
+
+# --- t1187: an auth error is not a note ----------------------------------------------------
+
+def _run_handoff(monkeypatch, tmp_path, stdout, rc):
+    """Run handoff.main() against a fake `claude -p` and one qualifying transcript."""
+    proj = tmp_path / "projects" / "-home-ich-claude-home"
+    proj.mkdir(parents=True)
+    _transcript(proj / "talk.jsonl", ["раз", "два", "три", "чотири"], time.time())
+    out = tmp_path / "handoff.md"
+    monkeypatch.setattr(handoff, "OUT", out)
+    monkeypatch.setattr(handoff, "path", lambda key: tmp_path / "projects")
+    monkeypatch.setattr(handoff.subprocess, "run",
+                        lambda *a, **kw: subprocess.CompletedProcess(a, rc, stdout, ""))
+    try:
+        handoff.main()
+        code = 0
+    except SystemExit as e:
+        code = e.code
+    return out, code
+
+
+def test_auth_error_is_not_written_as_a_note(monkeypatch, tmp_path):
+    """TC7 (t1187): `claude -p` printed the OAuth error → no handoff.md, non-zero exit, so
+    restart-session.sh keeps the conversation instead of injecting the error."""
+    err = "Failed to authenticate: OAuth session expired and could not be refreshed\n"
+    for rc in (0, 1):
+        out, code = _run_handoff(monkeypatch, tmp_path / f"rc{rc}", err, rc)
+        assert not out.exists(), "помилку входу записано як естафету"
+        assert code not in (0, None)
+
+
+def test_failed_claude_run_is_not_a_note(monkeypatch, tmp_path):
+    """TC7 (t1187): any non-zero `claude -p` exit is a failure, whatever it printed."""
+    out, code = _run_handoff(monkeypatch, tmp_path, "часткова відповідь", 1)
+    assert not out.exists()
+    assert code not in (0, None)
+
+
+def test_good_note_is_still_written(monkeypatch, tmp_path):
+    """TC7 (t1187): a normal note still goes through."""
+    out, code = _run_handoff(monkeypatch, tmp_path, "## Над чим працюємо\nнад тестами", 0)
+    assert out.exists() and "над тестами" in out.read_text(encoding="utf-8")

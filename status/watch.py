@@ -19,7 +19,9 @@ from noosconf import atomic_write_text, conf, path
 
 HOME = path("paths.home")
 STATE = HOME / "status" / "state" / "watch.json"
-PROBES = sys.argv[1:] or ["alarm", "loe", "host", "services"]
+# `auth` (t1187): a lost Claude login is otherwise silent — the session is alive and mute
+DEFAULT_PROBES = ["alarm", "loe", "host", "services", "auth"]
+PROBES = sys.argv[1:] or DEFAULT_PROBES
 REMIND_AFTER = conf("watch.remind_after_sec", 3 * 3600)  # reminder for a lasting alert
 
 def signature(p):
@@ -96,7 +98,13 @@ def main():
 
     body = "\n".join(f"{mark} {p.get('text','')}" for mark, p in send)
     voice = any(p.get("severity") == "alert" for _, p in send)
-    cmd = [str(HOME / "notify.sh")] + (["--voice"] if voice else []) + [body]
+    # a probe may carry a `voice` copy without Latin script, which the synthesizer mangles
+    # (t1187: the login fix names ssh, tmux and /login)
+    spoken = "\n".join(p.get("voice") or p.get("text", "") for _, p in send)
+    cmd = [str(HOME / "notify.sh")] + (["--voice"] if voice else [])
+    if any(p.get("voice") for _, p in send):
+        cmd += ["--voice-text", spoken]
+    cmd.append(body)
     # state is persisted only after a delivered send: warn fires on signature change alone,
     # so recording an undelivered one would silence that alert forever (t1046)
     if subprocess.run(cmd).returncode == 0:
