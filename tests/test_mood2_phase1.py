@@ -851,3 +851,47 @@ def test_a_level_day_is_handed_no_false_emphasis():
     """TC7 — nothing weighted, so the emphasis field says so instead of naming the whole day."""
     assert mood2.accent_ids(quiet_day()) == []
     assert mood2.accent_ids(ITEMS) == ["p6"]
+
+
+# --- t1194: his compact notation is a pair of bodies, not one unknown word ------------------
+# Measured on 15 November: `"bodies": "Солнце90Раху"` — his shorthand for a square — hid the
+# Sun and the nodes from the day, so a correct reading was accused of inventing them and an
+# incomplete one went unnoticed. The whole morning failed four attempts on it.
+
+def pair_day():
+    """The day with his compact pair notation in the structured fields."""
+    items = [dict(i) for i in ITEMS]
+    items[7] = dict(items[7], bodies="Солнце90Раху",
+                    meaning="Хаос і метання між минулим і майбутнім.")
+    return items
+
+
+PAIR_READING = READING.replace(
+    "фоном | Марс із Кету тримають енергійне минуле під дверима [p8]",
+    "фоном | Сонце з вузлами тримає метання між минулим і тим, що настає [p8]")
+
+
+def test_a_compact_pair_is_both_bodies():
+    """TC3 — the digits are an angle, not part of a name."""
+    assert mood2.bodies_named("Солнце90Марс") == {"Сонце", "Марс"}
+
+
+def test_a_body_hidden_in_his_shorthand_is_not_an_invention():
+    """TC1 — the regression: the day's own Sun must not be reported as invented."""
+    problems = mood2.check_reading(PAIR_READING, pair_day(), CHOSEN)
+    assert not any("яких у добі немає" in p for p in problems), problems
+
+
+def test_a_body_hidden_in_his_shorthand_is_still_demanded():
+    """TC2 — and the other direction: dropping it is still dropping a fact of his."""
+    silent = READING.replace(
+        "фоном | Марс із Кету тримають енергійне минуле під дверима [p8]",
+        "фоном | Далеке минуле стукає у двері [p8]")
+    problems = mood2.check_reading(silent, pair_day(), CHOSEN)
+    assert any("яких у читанні немає" in p and "Сонце" in p for p in problems), problems
+
+
+def test_an_ordinary_bodies_field_is_unchanged():
+    """TC4 — the fix touches his shorthand and nothing else."""
+    assert mood2.bodies_named("Марс і Кету") == {"Марс", "вузли"}
+    assert mood2.check_reading(READING, ITEMS, CHOSEN) == []

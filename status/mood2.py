@@ -529,8 +529,13 @@ def bodies_named(text: str) -> set[str]:
 
     Wide on purpose: used for «did the reading drop something he gave us», where an
     ambiguous word counts in the reading's favour.
+
+    A run of digits reads as a space (t1194). His multi-day entries name a pair in one token
+    — `Солнце90Раху`, his shorthand for a square — and the anchored patterns find no word
+    boundary between `е` and `9`, so the day's own Sun and nodes went missing from it: a
+    correct reading was accused of inventing them and a reading that dropped them passed.
     """
-    low = (text or "").lower()
+    low = re.sub(r"\d+", " ", (text or "").lower())
     return {name for name, rx in WIDE_BODIES.items() if rx.search(low)}
 
 
