@@ -950,10 +950,24 @@ def send(text: str) -> None:
 def report_failure(text: str) -> None:
     """A --send run that stopped must say so in the chat: the 08:15 timer has no other mouth,
     and nothing watches its exit code — without this the reading just never arrives, with no
-    sign why (t1160). Never raises: the real exit code must survive a broken notify."""
+    sign why (t1160).
+
+    In **her** chat and her voice (t1196). The notice used to go to the main chat, so the
+    chat where the reading lives stayed silent — and a silent chat is indistinguishable from
+    one whose message was missed: «Не бачив від Зірки гороскоп сьогодні» (2026-11-16), an hour
+    and a half after the run had already explained itself somewhere else.
+
+    Never raises: the real exit code must survive a broken notify.
+    """
+    role = "mood"
+    args = [str(HOME / "notify.sh")]
+    if conf(f"telegram.bots.{role}"):
+        args += ["--bot", role]
+    profile = conf2("voice_profile", "zorya-reading")
+    if profile:
+        args += ["--voice-profile", str(profile)]
     try:
-        subprocess.run([str(HOME / "notify.sh"), text],
-                       check=False, cwd=str(HOME), timeout=120)
+        subprocess.run([*args, text], check=False, cwd=str(HOME), timeout=120)
     except Exception:                                                    # noqa: BLE001
         pass
 

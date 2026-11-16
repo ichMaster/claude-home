@@ -282,3 +282,52 @@ def test_failed_stage_exits_three_and_writes_nothing(monkeypatch, tmp_path, caps
     assert mood2.main() == 3
     assert not list(tmp_path.iterdir())
     assert "read" in capsys.readouterr().err
+
+
+# --- t1196: a missing reading is announced where the reading lives --------------------------
+# 16 November: the 08:15 run stopped for want of his calendar and said so in the main chat.
+# He waits in Zirka's — «Не бачив від Зірки гороскоп сьогодні» — and a silent chat looks
+# exactly like a chat whose message was missed.
+
+def _failure_command(monkeypatch, bots=True):
+    seen = {}
+
+    def fake_run(args, **kw):
+        seen["args"] = args
+        class R:                                              # noqa: D401 - a stub result
+            returncode = 0
+        return R()
+
+    monkeypatch.setattr(mood2.subprocess, "run", fake_run)
+    if not bots:
+        real = mood2.conf
+        monkeypatch.setattr(mood2, "conf", lambda key, *a, **kw:
+                            None if key.startswith("telegram.bots") else real(key, *a, **kw))
+    mood2.report_failure("читання не склалось")
+    return seen["args"]
+
+
+def test_the_failure_speaks_in_her_chat_and_her_voice(monkeypatch):
+    """TC1 — the regression: the notice goes where the reading goes."""
+    args = _failure_command(monkeypatch)
+    assert "--bot" in args and args[args.index("--bot") + 1] == "mood"
+    assert "--voice-profile" in args
+    assert args[args.index("--voice-profile") + 1] == mood2.conf2("voice_profile",
+                                                                 "zorya-reading")
+    assert args[-1] == "читання не склалось"
+
+
+def test_without_a_bot_of_its_own_it_still_goes_out(monkeypatch):
+    """TC2 — a plain setup keeps the main bot."""
+    args = _failure_command(monkeypatch, bots=False)
+    assert "--bot" not in args
+    assert args[-1] == "читання не склалось"
+
+
+def test_a_broken_notify_cannot_raise(monkeypatch):
+    """TC3 — the run's own exit code must survive a failing notify."""
+    def boom(*a, **kw):
+        raise OSError("notify.sh зник")
+
+    monkeypatch.setattr(mood2.subprocess, "run", boom)
+    mood2.report_failure("читання не склалось")
