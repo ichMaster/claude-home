@@ -32,7 +32,7 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from noosconf import conf                                               # noqa: E402
+from noosconf import atomic_write_text, conf, locked                    # noqa: E402
 
 HOME = Path(__file__).resolve().parents[2]
 ARCHIVE = HOME / "status" / "state" / "youtube-archive.jsonl"
@@ -131,8 +131,11 @@ def main() -> int:
                 print(f"  {done}/{len(targets)} каналів, +{added} відео")
 
     rows.sort(key=lambda r: r.get("published", ""))
-    ARCHIVE.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows[-20000:]),
-                       encoding="utf-8")
+    # atomic + locked, like the probe's own archive write: a kill mid-write or a probe run
+    # landing during the crawl must not tear or clobber the file (t1191)
+    with locked(ARCHIVE):
+        atomic_write_text(ARCHIVE, "".join(json.dumps(r, ensure_ascii=False) + "\n"
+                                           for r in rows[-20000:]))
     days = sorted(r.get("published", "")[:10] for r in rows if r.get("published"))
     print(f"\nдодано {added}, в архіві {len(rows)}, "
           f"період {days[0] if days else '?'} … {days[-1] if days else '?'}, "

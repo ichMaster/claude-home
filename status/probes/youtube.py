@@ -24,7 +24,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from noosconf import atomic_write_text, conf, path
+from noosconf import atomic_write_text, conf, locked, path
 
 STATE = path("paths.home") / "status" / "state" / "youtube.json"
 FEED = "https://www.youtube.com/feeds/videos.xml?channel_id={}"
@@ -107,6 +107,32 @@ def trim_seen(order, cap=4000):
             if len(out_) >= cap:
                 break
     return out_[::-1]
+
+
+def update_archive(archive, fresh):
+    """Merge fresh entries into the topic-search archive: trim by age, dedupe by link,
+    replace atomically under a lock. A bare write_text truncated the file first, so a power
+    cut mid-write lost the 45-day history the feeds (~15 entries a channel) cannot give
+    back, and two overlapping writers dropped each other's records — the same torn-write
+    failure t1044 fixed on youtube.json (t1191)."""
+    with locked(archive):
+        kept = []
+        if archive.exists():
+            keep_after = (datetime.now(timezone.utc)
+                          - timedelta(days=conf("probes.youtube.archive_days", 45))).isoformat()
+            for line in archive.read_text(encoding="utf-8").splitlines():
+                if line.strip() and line.find('"published": "') > 0:
+                    try:
+                        rec = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if rec.get("published", "") >= keep_after:
+                        kept.append(rec)
+        have = {r.get("link") for r in kept}
+        kept += [{"channel": e["channel"], "title": e["title"], "link": e["link"],
+                  "published": e["published"]} for e in fresh if e["link"] not in have]
+        atomic_write_text(archive, "".join(json.dumps(r, ensure_ascii=False) + "\n"
+                                           for r in kept[-20000:]))
 
 
 def main():
@@ -230,25 +256,8 @@ def main():
     # A longer archive than `pending`, which the digest empties every evening: Bruno searches
     # the subscriptions by topic (the owner, 2026-10-30 — searching all of YouTube "буде багато
     # трешу", so his own 600 channels are the filter). Append-only, trimmed by age on write.
-    archive = STATE.parent / "youtube-archive.jsonl"
     if fresh:
-        kept = []
-        if archive.exists():
-            keep_after = (datetime.now(timezone.utc)
-                          - timedelta(days=conf("probes.youtube.archive_days", 45))).isoformat()
-            for line in archive.read_text(encoding="utf-8").splitlines():
-                if line.strip() and line.find('"published": "') > 0:
-                    try:
-                        rec = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if rec.get("published", "") >= keep_after:
-                        kept.append(rec)
-        have = {r.get("link") for r in kept}
-        kept += [{"channel": e["channel"], "title": e["title"], "link": e["link"],
-                  "published": e["published"]} for e in fresh if e["link"] not in have]
-        archive.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n"
-                                   for r in kept[-20000:]), encoding="utf-8")
+        update_archive(STATE.parent / "youtube-archive.jsonl", fresh)
     if DRAIN:
         drained, pending = pending, []
     STATE.parent.mkdir(parents=True, exist_ok=True)
