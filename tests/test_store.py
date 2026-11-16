@@ -287,3 +287,32 @@ def test_first_valid_dotted_date_wins(monkeypatch):
     monkeypatch.setattr(store, "date", _Nov1)
     due, _ = store.parse_due("зустріч 20.11 або 25.11")
     assert (due.day, due.month) == (20, 11)
+
+
+def test_parse_due_impossible_month_name_day_does_not_crash():
+    """t1190 TC1: «до 31 листопада» is a number, not a date — the month-name branch must
+    fall through instead of raising ValueError and killing add/defer."""
+    due, title = store.parse_due("купити квитки до 31 листопада")
+    assert due is None
+    assert "31 листопада" in title
+
+
+def test_parse_due_feb_29_non_leap_does_not_crash():
+    """t1190 TC2: «до 29 лютого» must never raise; in a leap target year it parses, in a
+    non-leap one it falls through as text."""
+    due, _ = store.parse_due("звіт до 29 лютого")
+    assert due is None or (due.month, due.day) == (2, 29)
+
+
+def test_parse_due_impossible_month_name_then_valid_dotted():
+    """t1190 TC3: an impossible month-name date before a valid dotted one still yields the
+    dotted deadline, mirroring t1184."""
+    due, _ = store.parse_due("здати до 31 листопада, крайній строк 20.12")
+    assert due is not None and (due.month, due.day) == (12, 20)
+
+
+def test_parse_due_valid_month_name_still_works():
+    """t1190 TC4: a possible month-name date keeps parsing and is cut from the title."""
+    due, title = store.parse_due("звіт до 20 грудня")
+    assert due is not None and (due.month, due.day) == (12, 20)
+    assert "грудня" not in title

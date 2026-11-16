@@ -108,7 +108,12 @@ def parse_due(text):
     if m:
         d, mo = int(m.group(1)), MONTHS[m.group(2)]
         y = today.year + (1 if (mo, d) < (today.month, today.day) else 0)
-        cut_span(m); return date(y, mo, d), t
+        try:                    # «до 31 листопада» — a number, not a date, like t1048
+            when = date(y, mo, d)
+        except ValueError:
+            when = None
+        if when:
+            cut_span(m); return when, t
     # every dotted candidate is tried, not only the first: an impossible «31.11» standing
     # before a valid «20.12» used to swallow the deadline entirely (t1184)
     for m in re.finditer(r"\b(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?\b", low):
