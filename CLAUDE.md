@@ -510,6 +510,19 @@ over-long line. Whatever it finds is handed back and the reading is rewritten, u
   accented window «the longest `ПРОГНОЗ` line of all» — which cost two of four attempts on a
   real day by blowing the 420-character line cap. A rule that can fail every retry buys a
   silent morning; a section of its own costs nothing.
+- **His month and his year reach the day** (t1195, his request on 2026-11-16). He publishes
+  three horizons; until now only the hourly calendar was read. `astro_learn.py add --period
+  місяць|рік` stores the other two, `covering()` finds the ones containing a day, and a `wide`
+  stage reads them into entries — `scope`, `kind`, `from`, `to`, `weight`, `bodies`, `meaning`,
+  `natal`. **The model reads his prose; arithmetic decides what covers today**
+  (`wide_relevant()`): a `date` entry has to *be* the day, a `period` entry has to contain it,
+  an unreadable date is dropped and logged rather than guessed. A dated entry becomes a
+  position of the day (kind `wide`, id `w1…`), so it weighs on `pressure()` like any other;
+  the periods stay out of the positions and are said in `ПЕРІОД`, the last spoken part, in his
+  own style — «протягом з … до … — …», dates in words because a figure comes back from the
+  synthesizer in the wrong case. His month carries eight «Весь ноябрь» blocks, so the periods
+  are capped at `astro2.wide_max` (3) by weight and what was dropped is logged. The extraction
+  is cached in `astro2.wide_cache` by the hash of both texts: one call a month, not thirty.
 - **It breathes** (t1157): `voice_text()` places `[довга пауза]` before each part of the day
   and a `[пауза]` after naming it, deterministically. The delivery is `zorya-reading` — the
   forecast voice at tempo 0.95 — because at 1.1 two thousand characters arrive as one block.

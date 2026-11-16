@@ -535,17 +535,21 @@
     "stages": [
       "read",
       "pick",
+      "wide",
       "day"
     ],
     "models": {
       "read": "sonnet",
       "pick": "",
+      "wide": "sonnet",
       "day": ""
     },
     "timeout": 420,
     "budget_chars": 2200,
     "items_max": 5,
     "loud_min": 3,
+    "wide_max": 3,
+    "wide_cache": "status/state/astro2/wide.json",
     "accent_min": 4,
     "heavy_blocks": 3,
     "weight_max": 5,

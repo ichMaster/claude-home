@@ -30,6 +30,7 @@ itself.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -40,7 +41,7 @@ from pathlib import Path
 HOME = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HOME))
 sys.path.insert(0, str(HOME / "status"))
-from noosconf import conf, path                                         # noqa: E402
+from noosconf import atomic_write_text, conf, path                      # noqa: E402
 
 import astro                                                            # noqa: E402
 import astro_learn                                                      # noqa: E402
@@ -183,7 +184,7 @@ KINDS = {"moon_sign", "moon_house", "void", "ingress", "window", "span", "natal"
 # Only these carry his `✤` marks, so only these are counted against them. A `natal` position
 # inherits the weight of the window it hangs under — counting it too would report two loud
 # windows where he printed one, which is how the first run of the fidelity check failed.
-WEIGHTED = {"window", "span"}
+WEIGHTED = {"window", "span", "wide"}
 
 
 def weight_of(item) -> int:
@@ -323,6 +324,99 @@ def mandatory_ids(items) -> list[str]:
                    or i.get("kind") == "natal" for i in group)]
 
 
+def _as_day(value):
+    try:
+        return date.fromisoformat(str(value or ""))
+    except ValueError:
+        return None
+
+
+def wide_relevant(entries, day: date, cap: int | None = None) -> dict:
+    """His month and his year, narrowed to this one day by arithmetic (t1195).
+
+    The model reads his prose into entries; this decides which of them touch today, because
+    «does 3 October to 14 November contain the sixteenth» is a comparison and a model asked to
+    judge it will sometimes say yes. A date entry has to *be* today; a period has to contain
+    it. An entry whose dates cannot be read is dropped and reported — never guessed into the
+    day.
+
+    The periods are capped: his month carries eight «Весь ноябрь» blocks, and reading all of
+    them every morning would bury the day in its own background. The loudest `wide_max` of
+    them are kept and the rest is named in the log.
+    """
+    cap = int(conf2("wide_max", 3)) if cap is None else cap
+    days: list[dict] = []
+    periods: list[dict] = []
+    dropped: list[str] = []
+    for entry in entries or []:
+        if not isinstance(entry, dict):
+            dropped.append(f"не обʼєкт: {repr(entry)[:40]}")
+            continue
+        label = str(entry.get("bodies") or entry.get("meaning") or "")[:40]
+        kind = str(entry.get("kind") or "")
+        frm, to = _as_day(entry.get("from")), _as_day(entry.get("to"))
+        if kind == "date":
+            if frm is None:
+                dropped.append(f"дата не читається: {label}")
+            elif frm == day:
+                days.append(entry)
+        elif kind == "period":
+            if frm is None or to is None:
+                dropped.append(f"межі періоду не читаються: {label}")
+            elif frm <= day <= to:
+                periods.append(entry)
+        else:
+            dropped.append(f"невідомий вид «{kind}»: {label}")
+
+    periods.sort(key=lambda e: -weight_of(e))
+    for extra in periods[cap:]:
+        dropped.append("периодів більше за межу, знято: "
+                       + str(extra.get("bodies") or extra.get("meaning") or "")[:40])
+    periods = periods[:cap]
+
+    out = {"day": [], "period": [], "dropped": dropped}
+    number = 0
+    for entry in days:
+        number += 1
+        out["day"].append(dict(entry, id=f"w{number}", kind="wide"))
+    for entry in periods:
+        number += 1
+        out["period"].append(dict(entry, id=f"w{number}", kind="period"))
+    return out
+
+
+def wide_entries(day: date, note=lambda *a: None) -> list[dict]:
+    """His month and year read into entries once, then cached by the text (t1195).
+
+    A month's text does not change through the month, so reading it thirty times would be
+    thirty calls for one answer. The cache is keyed by the hash of both texts, so a corrected
+    forward is read again and nothing else is.
+    """
+    texts = astro_learn.covering(day)
+    joined = "\n\n".join(texts.get(k, "") for k in ("місяць", "рік")).strip()
+    if not joined:
+        return []
+    key = hashlib.sha256(joined.encode("utf-8")).hexdigest()
+    cache = state_path("wide_cache")
+    if cache.is_file():
+        try:
+            held = json.loads(cache.read_text(encoding="utf-8"))
+            if held.get("key") == key and isinstance(held.get("entries"), list):
+                return held["entries"]
+        except (json.JSONDecodeError, OSError):
+            pass                                    # a torn cache is a cache miss, not a stop
+    answer = json_answer(call("wide", fill("wide", ДАТА=day.isoformat(),
+                                           МІСЯЦЬ=texts.get("місяць", "—"),
+                                           РІК=texts.get("рік", "—"))))
+    entries = [e for e in answer if isinstance(e, dict)] if isinstance(answer, list) else []
+    if not entries:
+        note("ширші горизонти: стадія не повернула жодного запису")
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(cache, json.dumps({"key": key, "entries": entries},
+                                        ensure_ascii=False, indent=2))
+    return entries
+
+
 def pressure(items) -> dict:
     """How heavy the day is, counted rather than judged (t1192).
 
@@ -442,8 +536,8 @@ def part_of_day(frm, to=None) -> str:
 
 # --- the reading, and whether it is his day or a made-up one --------------------------------
 
-MARK = re.compile(r"[ \t]*\[(p\d+(?:[ \t]*,[ \t]*p\d+)*)\]")
-SECTIONS = ("ДЕНЬ", "ПРОГНОЗ", "АКЦЕНТ", "ДІЯ", "ОСНОВА")
+MARK = re.compile(r"[ \t]*\[([pw]\d+(?:[ \t]*,[ \t]*[pw]\d+)*)\]")
+SECTIONS = ("ДЕНЬ", "ПРОГНОЗ", "АКЦЕНТ", "ДІЯ", "ПЕРІОД", "ОСНОВА")
 CLOCK = re.compile(r"\d{1,2}:\d{2}")
 LINE_MAX = 420
 
@@ -523,6 +617,11 @@ def accent_part(text: str) -> str:
     return (text or "").split("АКЦЕНТ", 1)[-1].split("ДІЯ", 1)[0]
 
 
+def period_part(text: str) -> str:
+    """The `ПЕРІОД` block alone, markers intact — his month and year, at the end (t1195)."""
+    return (text or "").split("ПЕРІОД", 1)[-1].split("ОСНОВА", 1)[0]
+
+
 def forecast_lines(text: str) -> list[str]:
     """The ПРОГНОЗ lines alone, markers stripped.
 
@@ -581,7 +680,7 @@ def voice_text(text: str) -> str:
     return "\n\n".join(out)
 
 
-def check_reading(text: str, items, chosen_ids=None) -> list[str]:
+def check_reading(text: str, items, chosen_ids=None, wide=None) -> list[str]:
     """Arithmetic, not judgement: does the reading stand on the positions it was given?
 
     Three ways it can go wrong, and all three are countable. It can name a position that was
@@ -604,6 +703,8 @@ def check_reading(text: str, items, chosen_ids=None) -> list[str]:
     # The writing stage sees the whole day (t1156), so by default every position is fair
     # game for a marker; a narrower set is only ever passed by a test.
     chosen = set(chosen_ids) if chosen_ids else {i["id"] for i in items}
+    periods = list((wide or {}).get("period") or [])
+    chosen |= {p["id"] for p in periods if p.get("id")}
     used = set(marked_ids(text.split("ОСНОВА")[0]))
     invented = sorted(used - chosen)
     if invented:
@@ -638,6 +739,18 @@ def check_reading(text: str, items, chosen_ids=None) -> list[str]:
     if missing:
         problems.append("АКЦЕНТ не підсвічує голосного: " + ", ".join(missing))
 
+    # His month and his year are said at the end, in his own style (t1195). Each selected
+    # period must be there — it is the only place in the reading where a background holding
+    # for weeks is named at all.
+    said_periods = set(marked_ids(period_part(text)))
+    lost_periods = [p["id"] for p in periods if p["id"] not in said_periods]
+    if lost_periods:
+        problems.append("ПЕРІОД не називає того, що тримається: " + ", ".join(lost_periods))
+    # And no figure there: a date read out by the synthesizer comes back in the wrong case,
+    # so the months are words.
+    if re.search(r"\d", strip_marks(period_part(text))):
+        problems.append("у ПЕРІОД є цифра — дати словами")
+
     head = spoken_part(text)
     for bad in ("°", "✤"):
         if bad in head:
@@ -652,8 +765,9 @@ def check_reading(text: str, items, chosen_ids=None) -> list[str]:
     # wide; `meaning` is his prose, where «вузол» is an everyday noun first — it matches
     # strict. A loose match there both demanded nodes from a nodeless day and excused a
     # reading that complied.
-    structured = " ".join(f"{i.get('bodies') or ''} {i.get('natal') or ''}" for i in items)
-    prose = " ".join(str(i.get("meaning") or "") for i in items)
+    whole = list(items) + periods
+    structured = " ".join(f"{i.get('bodies') or ''} {i.get('natal') or ''}" for i in whole)
+    prose = " ".join(str(i.get("meaning") or "") for i in whole)
     available = bodies_named(structured) | bodies_claimed(prose)
     said = bodies_named(head)
     invented_bodies = sorted(bodies_claimed(head) - available)
@@ -696,6 +810,7 @@ def run(day: date, dry_run: bool = False, note=lambda *a: None) -> dict:
     out: dict[str, str] = {}
     items: list[dict] = []
     chosen: dict = {}
+    wide: dict = {"day": [], "period": [], "dropped": []}
     previous = ""
     for stage in stages():
         note(f"стадія {stage}")
@@ -718,6 +833,14 @@ def run(day: date, dry_run: bool = False, note=lambda *a: None) -> dict:
                 note("обов'язкові позиції повернуто у вибір: "
                      + ", ".join(chosen["restored"]))
             previous = out[stage] = json.dumps(chosen, ensure_ascii=False)
+        elif stage == "wide":
+            # His month and his year (t1195). Read by the model, narrowed by arithmetic, and
+            # the dated ones become positions of this day like any other.
+            wide = wide_relevant(wide_entries(day, note), day)
+            for dropped in wide["dropped"]:
+                note("ширші горизонти: " + dropped)
+            items = items + wide["day"]
+            previous = out[stage] = json.dumps(wide, ensure_ascii=False)
         else:
             base = fill(stage, ДАТА=day.isoformat(),
                         ВИБРАНЕ=items_text(items, label=True),
@@ -728,6 +851,7 @@ def run(day: date, dry_run: bool = False, note=lambda *a: None) -> dict:
                         ПОПЕРЕДНЄ=previous,
                         БЮДЖЕТ=str(conf2("budget_chars", 1200)),
                         МАКСИМУМ=str(conf2("items_max", 5)),
+                        ПЕРІОД=items_text(wide["period"]) or "немає",
                         ГОЛОСНЕ=str(conf2("loud_min", 3)))
             final = stage == stages()[-1]
             wrong: list[str] = []
@@ -740,7 +864,7 @@ def run(day: date, dry_run: bool = False, note=lambda *a: None) -> dict:
                                 + "\n\nПерепиши читання цілком, не коментуючи правку.")
                 if not final:
                     break
-                wrong = check_reading(previous, items)
+                wrong = check_reading(previous, items, wide=wide)
                 if not wrong:
                     break
                 note(f"читання не пройшло перевірку ({attempt + 1}): " + "; ".join(wrong))

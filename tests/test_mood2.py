@@ -14,11 +14,22 @@ from pathlib import Path
 
 import pytest
 
+import astro_learn
 import mood2
 import mood
 import astro
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture(autouse=True)
+def no_wider_horizons(monkeypatch):
+    """No month and no year unless a test asks for them (t1195).
+
+    The wider horizons are read from the owner's own reference store, and a test must never
+    depend on what he forwarded this month — nor pay for a model call to parse it.
+    """
+    monkeypatch.setattr(astro_learn, "covering", lambda day: {})
 DAY = date(2026, 11, 11)
 
 V1_FILES = ["status/state/mood.log", "status/state/mood.json",
@@ -55,6 +66,7 @@ def canned(stage, prompt):
             "ПРОГНОЗ\nзранку | Сатурн у домі себе — тягне тиснути й доводити своє [p1]\n\n"
             "АКЦЕНТ\nзранку | голосне в добі: впертість, що приймає себе за правоту [p1]\n\n"
             "ДІЯ\nНе плутай впертість із правотою. [p1]\n\n"
+            "ПЕРІОД\nнічого довгого зараз не тримається\n\n"
             "ОСНОВА\np1 10:00-12:00 ✤✤✤ (☽9°♍△♄9°♉)\n")
 
 
@@ -81,7 +93,9 @@ def test_dry_run_writes_nothing(staged):
     calls, tmp = staged
     before = _digests()
     parts = mood2.run(DAY, dry_run=True)
-    assert [c[0] for c in calls] == mood2.stages()
+    # every stage is paid for except `wide`, which costs nothing on a day with no month and
+    # no year on file (t1195) — and still reports itself in the result
+    assert [c[0] for c in calls] == [s for s in mood2.stages() if s != "wide"]
     assert list(parts) == mood2.stages()
     assert not list(tmp.iterdir()), "dry run wrote files"
     assert _digests() == before

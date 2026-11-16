@@ -154,6 +154,32 @@ def for_day(day: date) -> str:
     return refs[-1]["text"] if refs else ""
 
 
+def covering(day: date) -> dict[str, str]:
+    """His month and his year for that day — the two wider horizons (t1195).
+
+    He publishes three: an hourly calendar for the day, a month, and a year. A monthly
+    reference is stored under the first of its month and a yearly one under the first of its
+    year, so «which one covers this day» is a comparison and not a search through prose. The
+    latest record of each kind wins, which is what makes a corrected forward replace the one
+    before it.
+    """
+    out: dict[str, str] = {}
+    for rec in references():
+        period = str(rec.get("period") or "")
+        try:
+            when = date.fromisoformat(str(rec.get("day") or ""))
+        except ValueError:
+            continue
+        text = str(rec.get("text") or "").strip()
+        if not text:
+            continue
+        if period == "місяць" and (when.year, when.month) == (day.year, day.month):
+            out["місяць"] = text
+        elif period == "рік" and when.year == day.year:
+            out["рік"] = text
+    return out
+
+
 def references(day: date | None = None) -> list[dict]:
     f = store()
     if not f.is_file():

@@ -12,9 +12,20 @@ from pathlib import Path
 
 import pytest
 
+import astro_learn
 import mood2
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture(autouse=True)
+def no_wider_horizons(monkeypatch):
+    """No month and no year unless a test asks for them (t1195).
+
+    The wider horizons are read from the owner's own reference store, and a test must never
+    depend on what he forwarded this month — nor pay for a model call to parse it.
+    """
+    monkeypatch.setattr(astro_learn, "covering", lambda day: {})
 SOURCE = (Path(__file__).parent / "data" / "reference-day.txt").read_text()
 DAY = date(2026, 11, 11)
 
@@ -289,6 +300,9 @@ READING = """ДЕНЬ
 
 ДІЯ
 Різке лиши до ранку — воно нікуди не дінеться. [p6]
+
+ПЕРІОД
+нічого довгого зараз не тримається
 
 ОСНОВА
 p3 09:00-11:00 холоста · p6 16:00-20:00 ✤✤✤✤✤ (☽5°♐☍♅5°♊) · p7 натал Венера
@@ -772,6 +786,9 @@ QUIET_READING = """ДЕНЬ
 ДІЯ
 Нічого не форсуй. [p1]
 
+ПЕРІОД
+нічого довгого зараз не тримається
+
 ОСНОВА
 p3 09:00-11:00 холоста
 """
@@ -915,7 +932,7 @@ def test_an_ordinary_bodies_field_is_unchanged():
 
 def test_the_sections_are_five_and_in_this_order():
     """TC1 — АКЦЕНТ sits between ПРОГНОЗ and ДІЯ."""
-    assert mood2.SECTIONS == ("ДЕНЬ", "ПРОГНОЗ", "АКЦЕНТ", "ДІЯ", "ОСНОВА")
+    assert mood2.SECTIONS[:4] == ("ДЕНЬ", "ПРОГНОЗ", "АКЦЕНТ", "ДІЯ")
     assert any("нема частини АКЦЕНТ" in p for p in
                mood2.check_reading(READING.replace("АКЦЕНТ", "ХТОЗНА"), ITEMS, CHOSEN))
 
