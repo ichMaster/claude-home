@@ -227,3 +227,41 @@ def test_no_reference_costs_no_call(monkeypatch, tmp_path):
     monkeypatch.setattr(mood2, "state_path", lambda key: tmp_path / f"v2-{key}")
     monkeypatch.setattr(astro_learn, "references", lambda day=None: [])
     assert mood2.wide_entries(DAY) == []
+
+
+# --- a natal block belongs to the period above it -------------------------------------------
+# Measured on his real November: the cap of three went to Pluto, Pluto's own natal block and
+# Uranus, so six other bodies of the month were never said.
+
+PAIR = [
+    {"scope": "місяць", "kind": "period", "from": "2026-11-01", "to": "2026-11-30",
+     "weight": 3, "bodies": "Плутон", "meaning": "Надзадачі, що вимагають самовіддачі.",
+     "natal": None},
+    {"scope": "місяць", "kind": "period", "from": "2026-11-01", "to": "2026-11-30",
+     "weight": 3, "bodies": "Плутон", "meaning": "Пристрасть ламає звичні шаблони.",
+     "natal": "Венера(-)"},
+    {"scope": "місяць", "kind": "period", "from": "2026-11-01", "to": "2026-11-30",
+     "weight": 2, "bodies": "Уран", "meaning": "Нові інструменти епохи.", "natal": None},
+    {"scope": "місяць", "kind": "period", "from": "2026-11-01", "to": "2026-11-30",
+     "weight": 2, "bodies": "Сатурн", "meaning": "Тиск брати довгі зобов'язання.",
+     "natal": None},
+]
+
+
+def test_a_natal_block_does_not_eat_a_slot():
+    out = mood2.wide_relevant(PAIR, DAY, cap=3)
+    assert [e["bodies"] for e in out["period"]] == ["Плутон", "Уран", "Сатурн"]
+
+
+def test_the_merged_period_keeps_both_meanings_and_the_natal_hit():
+    out = mood2.wide_relevant(PAIR, DAY, cap=3)
+    pluto = out["period"][0]
+    assert "самовіддачі" in pluto["meaning"] and "шаблони" in pluto["meaning"]
+    assert pluto["natal"] == "Венера(-)"
+
+
+def test_two_natal_hits_under_one_period_are_both_named():
+    pair = PAIR[:2] + [dict(PAIR[1], natal="Місяць(+)", meaning="Стабільність у почуттях.")]
+    out = mood2.wide_relevant(pair, DAY, cap=3)
+    assert out["period"][0]["natal"] == "Венера(-), Місяць(+)"
+    assert len(out["period"]) == 1

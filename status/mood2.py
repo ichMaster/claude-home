@@ -331,6 +331,34 @@ def _as_day(value):
         return None
 
 
+def merge_entries(entries) -> list[dict]:
+    """His own nesting, applied to the wider horizons (t1195).
+
+    A «Событие влияет: на мой <планета>» block is printed *under* the event above it, so the
+    reading stage returns it as an entry of its own. Counted separately it eats a slot under
+    the cap and names the same month twice — measured on his November, where the cap of three
+    went to Pluto, Pluto's natal block, and Uranus, leaving six other bodies of the month
+    unsaid. This is `blocks()` for the day, one horizon up.
+    """
+    out: dict[tuple, dict] = {}
+    for entry in entries:
+        key = (str(entry.get("scope") or ""), str(entry.get("bodies") or ""),
+               str(entry.get("from") or ""), str(entry.get("to") or ""))
+        held = out.get(key)
+        if held is None:
+            out[key] = dict(entry)
+            continue
+        held["weight"] = max(weight_of(held), weight_of(entry))
+        extra = str(entry.get("meaning") or "").strip()
+        if extra and extra not in str(held.get("meaning") or ""):
+            held["meaning"] = (str(held.get("meaning") or "").strip() + " " + extra).strip()
+        hit = str(entry.get("natal") or "").strip()
+        if hit and hit not in str(held.get("natal") or ""):
+            held["natal"] = ", ".join(x for x in (str(held.get("natal") or "").strip(), hit)
+                                      if x)
+    return list(out.values())
+
+
 def wide_relevant(entries, day: date, cap: int | None = None) -> dict:
     """His month and his year, narrowed to this one day by arithmetic (t1195).
 
@@ -368,6 +396,7 @@ def wide_relevant(entries, day: date, cap: int | None = None) -> dict:
         else:
             dropped.append(f"невідомий вид «{kind}»: {label}")
 
+    days, periods = merge_entries(days), merge_entries(periods)
     periods.sort(key=lambda e: -weight_of(e))
     for extra in periods[cap:]:
         dropped.append("периодів більше за межу, знято: "
