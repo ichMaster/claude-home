@@ -35,7 +35,9 @@ def capture():
     """The tail of the pane, or None when there is no session to read."""
     lines = int(conf("probes.auth.lines", 80))
     try:
-        res = subprocess.run(["tmux", "capture-pane", "-p", "-t", SESSION, "-S", f"-{lines}"],
+        # -J rejoins soft-wrapped lines, so a reply quoting the error never lands on a
+        # column-0 line of its own (t1189)
+        res = subprocess.run(["tmux", "capture-pane", "-p", "-J", "-t", SESSION, "-S", f"-{lines}"],
                              capture_output=True, text=True, timeout=10)
     except (OSError, subprocess.SubprocessError):
         return None

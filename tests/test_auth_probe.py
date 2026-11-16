@@ -103,3 +103,26 @@ def test_watcher_sends_once_and_speaks_the_voice_copy(monkeypatch, tmp_path):
 def test_auth_is_in_the_watchers_default_list():
     """TC6: the timer runs watch.py with no arguments, so `auth` must be a default."""
     assert "auth" in watch.DEFAULT_PROBES
+
+
+def test_indented_quote_of_error_is_not_an_event():
+    """t1189 TC1: a reply quoting the error on its own indented continuation line is a
+    reply, not the CLI's error output — only a column-0 line can be the CLI speaking."""
+    assert not authcheck.pane_expired(
+        "● Ось що було в терміналі:\n"
+        "  Login expired · Please run /login\n"
+        "  Тепер усе знову працює.\n")
+
+
+def test_capture_rejoins_wrapped_lines(monkeypatch):
+    """t1189 TC2: capture-pane must pass -J, so a reply soft-wrapped by the terminal is
+    rejoined with its bullet instead of leaving the quoted error on a column-0 line."""
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen["cmd"] = cmd
+        return types.SimpleNamespace(returncode=0, stdout="")
+
+    monkeypatch.setattr(auth.subprocess, "run", fake_run)
+    auth.capture()
+    assert "-J" in seen["cmd"]

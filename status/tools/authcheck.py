@@ -43,8 +43,9 @@ def classify(line: str):
         if body.startswith("api error") and any(p in body for p in expired):
             return "expired"
         return "ok"
-    # the CLI's own error output is not a bullet
-    if _starts_with_any(s, expired):
+    # the CLI's own error output is not a bullet — and it starts at the margin; an
+    # indented line is a reply's continuation under its ●, not the CLI speaking (t1189)
+    if not line[:1].isspace() and _starts_with_any(s, expired):
         return "expired"
     return None
 
