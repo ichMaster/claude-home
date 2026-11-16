@@ -500,11 +500,16 @@ over-long line. Whatever it finds is handed back and the reading is rewritten, u
   it into one block, reports the day's top weight, its loud blocks (`astro2.loud_min`, 3) and
   its accented ones (`astro2.accent_min`, 4); a day is heavy with one accented block or
   `heavy_blocks` (3) loud ones. The writing stage is handed that line and the accented ids —
-  `{{ТИСК}}` and `{{НАГОЛОС}}`, which used to be filled with the whole selection and
-  therefore said nothing. The accented window gets the longest `ПРОГНОЗ` line, and on a heavy
-  day `ДЕНЬ` — what he calls «самарі» — grows to a second sentence naming what presses;
-  `check_reading()` enforces the second half by marker, since a line-length rule that can fail
-  every retry buys a silent morning.
+  `{{ТИСК}}`, `{{ГОЛОСНІ}}` and `{{НАГОЛОС}}` — the last of which used to be filled with the
+  whole selection and therefore said nothing. On a heavy day `ДЕНЬ` — what he calls «самарі» —
+  grows to a second sentence naming what presses, and `check_reading()` enforces that by
+  marker.
+- **`АКЦЕНТ` is the fifth part** (t1193, his request the same day): every loud position, one
+  line each, the state unfolded rather than the `ПРОГНОЗ` line repeated, and `check_reading()`
+  requires each of them to be there. It replaced the first attempt at emphasis — giving the
+  accented window «the longest `ПРОГНОЗ` line of all» — which cost two of four attempts on a
+  real day by blowing the 420-character line cap. A rule that can fail every retry buys a
+  silent morning; a section of its own costs nothing.
 - **It breathes** (t1157): `voice_text()` places `[довга пауза]` before each part of the day
   and a `[пауза]` after naming it, deterministically. The delivery is `zorya-reading` — the
   forecast voice at tempo 0.95 — because at 1.1 two thousand characters arrive as one block.

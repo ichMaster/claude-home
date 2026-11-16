@@ -284,6 +284,9 @@ READING = """ДЕНЬ
 ввечері | Уран штовхає сказати різко, а натальна Венера робить це дорожчим, ніж здається [p6,p7]
 фоном | Марс із Кету тримають енергійне минуле під дверима [p8]
 
+АКЦЕНТ
+ввечері | найголосніше в добі: тягне сказати різко й одразу, і та сама різкість зачіпає те, що дороге [p6,p7]
+
 ДІЯ
 Різке лиши до ранку — воно нікуди не дінеться. [p6]
 
@@ -304,9 +307,14 @@ def test_an_invented_position_is_caught():
 
 def test_a_dropped_loud_window_is_caught():
     """The failure that makes a heavy day sound calm."""
-    bad = READING.replace(
-        "ввечері | Уран штовхає сказати різко, а натальна Венера робить це дорожчим, "
-        "ніж здається [p6,p7]\n", "").replace("[p1,p6]", "[p1]")
+    bad = (READING
+           .replace("ввечері | Уран штовхає сказати різко, а натальна Венера робить це "
+                    "дорожчим, ніж здається [p6,p7]\n", "")
+           .replace("ввечері | найголосніше в добі: тягне сказати різко й одразу, і та сама "
+                    "різкість зачіпає те, що дороге [p6,p7]",
+                    "нічого голосного в добі немає — підсвічувати нічого")
+           .replace("[p1,p6]", "[p1]").replace("Різке лиши до ранку — воно нікуди не "
+                                               "дінеться. [p6]", "Нічого не форсуй."))
     problems = mood2.check_reading(bad, ITEMS, CHOSEN)
     assert any("не прозвучала" in p for p in problems), problems
 
@@ -758,6 +766,9 @@ QUIET_READING = """ДЕНЬ
 зранку | Місяць дотягує впертий знак, і починати нове не тягне [p3]
 в обід | Місяць переходить у новий знак — тягне на широкі плани [p2,p4]
 
+АКЦЕНТ
+нічого голосного в добі немає — підсвічувати нічого
+
 ДІЯ
 Нічого не форсуй. [p1]
 
@@ -895,3 +906,80 @@ def test_an_ordinary_bodies_field_is_unchanged():
     """TC4 — the fix touches his shorthand and nothing else."""
     assert mood2.bodies_named("Марс і Кету") == {"Марс", "вузли"}
     assert mood2.check_reading(READING, ITEMS, CHOSEN) == []
+
+
+# --- t1193: the loud positions get a section of their own -----------------------------------
+# The owner, 16 November: «перевірку залиши, але додай ще розділ Акцент і там підсвіти все що
+# 3+ рангу». It also replaces t1192's longest-line rule, which cost two of four attempts on a
+# real day by blowing the line cap.
+
+def test_the_sections_are_five_and_in_this_order():
+    """TC1 — АКЦЕНТ sits between ПРОГНОЗ and ДІЯ."""
+    assert mood2.SECTIONS == ("ДЕНЬ", "ПРОГНОЗ", "АКЦЕНТ", "ДІЯ", "ОСНОВА")
+    assert any("нема частини АКЦЕНТ" in p for p in
+               mood2.check_reading(READING.replace("АКЦЕНТ", "ХТОЗНА"), ITEMS, CHOSEN))
+
+
+def test_the_sections_out_of_order_are_caught():
+    """TC1 — a reading that puts the accent before the forecast is not in his order."""
+    lines = READING.splitlines()
+    accent = lines.index("АКЦЕНТ")
+    moved = lines[:1] + lines[accent:accent + 3] + lines[1:accent] + lines[accent + 3:]
+    problems = mood2.check_reading("\n".join(moved), ITEMS, CHOSEN)
+    assert any("не в тому порядку" in p for p in problems), problems
+
+
+def test_a_loud_position_missing_from_the_accent_is_caught():
+    """TC2 — the regression: three marks or more must be highlighted there."""
+    bad = READING.replace(
+        "ввечері | найголосніше в добі: тягне сказати різко й одразу, і та сама різкість "
+        "зачіпає те, що дороге [p6,p7]",
+        "ввечері | ніч буде спокійна [p5]")
+    problems = mood2.check_reading(bad, ITEMS, CHOSEN)
+    assert any("АКЦЕНТ" in p and "p6" in p for p in problems), problems
+    assert mood2.check_reading(READING, ITEMS, CHOSEN) == []
+
+
+def test_the_accent_is_not_measured_as_a_forecast_line():
+    """TC3 — the accent line lives outside the ПРОГНОЗ cap and outside its part ordering."""
+    lines = mood2.forecast_lines(READING)
+    assert any("Уран штовхає" in ln for ln in lines)
+    assert not any("найголосніше в добі" in ln for ln in lines)
+    long_accent = READING.replace("і та сама різкість зачіпає те, що дороге",
+                                  "і та сама різкість " + "зачіпає дороге " * 40)
+    assert not any("довший за" in p
+                   for p in mood2.check_reading(long_accent, ITEMS, CHOSEN))
+
+
+def test_a_level_day_needs_no_id_in_the_accent():
+    """TC4 — nothing loud, nothing to highlight, and the section is still there."""
+    assert mood2.check_reading(QUIET_READING, quiet_day(), ["p1", "p2", "p3", "p4"]) == []
+
+
+def test_the_accent_is_spoken_and_its_heading_is_not():
+    """TC5 — it reaches the ear, with a breath before it, and never as a word."""
+    said = mood2.voice_text(READING)
+    assert "найголосніше в добі" in said
+    assert "АКЦЕНТ" not in said
+    assert "[довга пауза] ввечері. [пауза] найголосніше в добі" in said
+
+
+def test_the_writing_stage_is_handed_the_loud_ids(monkeypatch, tmp_path):
+    """TC6 — which positions belong in АКЦЕНТ is computed, not left to the model."""
+    prompts = {}
+
+    def fake_call(stage, prompt):
+        prompts[stage] = prompt
+        if stage == "read":
+            return json.dumps(ITEMS, ensure_ascii=False)
+        if stage == "pick":
+            return json.dumps({"ids": ["p6"]}, ensure_ascii=False)
+        return READING
+
+    monkeypatch.setattr(mood2, "call", fake_call)
+    monkeypatch.setattr(mood2, "reference_text", lambda day: SOURCE)
+    monkeypatch.setattr(mood2, "state_path", lambda key: tmp_path / f"v2-{key}")
+    mood2.run(DAY, dry_run=True)
+    assert "{{ГОЛОСНІ}}" not in prompts["day"]
+    assert mood2.pressure(ITEMS)["loud"] == ["p6"]
+    assert "АКЦЕНТ" in prompts["day"]

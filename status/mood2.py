@@ -443,7 +443,7 @@ def part_of_day(frm, to=None) -> str:
 # --- the reading, and whether it is his day or a made-up one --------------------------------
 
 MARK = re.compile(r"[ \t]*\[(p\d+(?:[ \t]*,[ \t]*p\d+)*)\]")
-SECTIONS = ("ДЕНЬ", "ПРОГНОЗ", "ДІЯ", "ОСНОВА")
+SECTIONS = ("ДЕНЬ", "ПРОГНОЗ", "АКЦЕНТ", "ДІЯ", "ОСНОВА")
 CLOCK = re.compile(r"\d{1,2}:\d{2}")
 LINE_MAX = 420
 
@@ -518,9 +518,18 @@ def summary_part(text: str) -> str:
     return (text or "").split("ДЕНЬ", 1)[-1].split("ПРОГНОЗ", 1)[0]
 
 
+def accent_part(text: str) -> str:
+    """The `АКЦЕНТ` block alone, markers intact (t1193)."""
+    return (text or "").split("АКЦЕНТ", 1)[-1].split("ДІЯ", 1)[0]
+
+
 def forecast_lines(text: str) -> list[str]:
-    """The ПРОГНОЗ lines alone, markers stripped."""
-    body = (text or "").split("ПРОГНОЗ", 1)[-1].split("ДІЯ", 1)[0]
+    """The ПРОГНОЗ lines alone, markers stripped.
+
+    Stops at `АКЦЕНТ` (t1193): an accent line is the state unfolded, so it is neither
+    measured against the forecast's line cap nor read as a part of the day for the ordering.
+    """
+    body = (text or "").split("ПРОГНОЗ", 1)[-1].split("АКЦЕНТ", 1)[0].split("ДІЯ", 1)[0]
     return [ln for ln in strip_marks(body).splitlines() if ln.strip()]
 
 
@@ -621,6 +630,14 @@ def check_reading(text: str, items, chosen_ids=None) -> list[str]:
             problems.append("ДЕНЬ не називає найважчого в добі: "
                             + ", ".join(state["accent"]))
 
+    # And everything he marked three or more is highlighted in its own section (t1193).
+    # Coverage only: a quiet position named beside a loud one is a matter for the prompt, not
+    # a reason to rewrite.
+    highlighted = {block_of(i, items) for i in marked_ids(accent_part(text))}
+    missing = [key for key in state["loud"] if key not in highlighted]
+    if missing:
+        problems.append("АКЦЕНТ не підсвічує голосного: " + ", ".join(missing))
+
     head = spoken_part(text)
     for bad in ("°", "✤"):
         if bad in head:
@@ -705,6 +722,7 @@ def run(day: date, dry_run: bool = False, note=lambda *a: None) -> dict:
             base = fill(stage, ДАТА=day.isoformat(),
                         ВИБРАНЕ=items_text(items, label=True),
                         НАГОЛОС=", ".join(accent_ids(items)) or "немає, доба рівна",
+                        ГОЛОСНІ=", ".join(pressure(items)["loud"]) or "немає",
                         ТИСК=pressure_text(items),
                         РЯДОК=str(LINE_MAX),
                         ПОПЕРЕДНЄ=previous,
