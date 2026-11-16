@@ -323,6 +323,61 @@ def mandatory_ids(items) -> list[str]:
                    or i.get("kind") == "natal" for i in group)]
 
 
+def pressure(items) -> dict:
+    """How heavy the day is, counted rather than judged (t1192).
+
+    His scale runs one to five marks (the owner, 16 November: «максимум це 5»), and the
+    intensity he publishes is the one thing in his calendar that says a day has a shape
+    instead of being a flat list. A `natal` line inherits the window it hangs under, so a
+    window carrying three personal hits is one heavy event and not three.
+
+    `loud` is what may not be dropped; `accent` is what has to be heard loudest.
+    """
+    floor = int(conf2("loud_min", 3))
+    accent_at = int(conf2("accent_min", 4))
+    weights = {key: max(weight_of(i) for i in group)
+               for key, group in blocks(items).items()}
+    return {"top": max(weights.values(), default=0),
+            "loud": [k for k, w in weights.items() if w >= floor],
+            "accent": [k for k, w in weights.items() if w >= accent_at],
+            "weights": weights}
+
+
+def is_heavy(state: dict) -> bool:
+    """A day presses either through one very loud window or through several loud ones."""
+    return (bool(state["accent"])
+            or len(state["loud"]) >= int(conf2("heavy_blocks", 3)))
+
+
+def pressure_text(items) -> str:
+    """The day's weight in one line, for the writing stage to lean on.
+
+    Deliberately without a single `✤`: the mark is forbidden in everything the voice reads,
+    and a glyph put into the prompt is a glyph that can come back out of it — which costs a
+    rewrite for nothing. Digits say the same thing.
+    """
+    state = pressure(items)
+    scale = int(conf2("weight_max", 5))
+    if not state["loud"]:
+        return (f"Доба рівна: голосних позицій немає, найважча важить "
+                f"{state['top']} з {scale}. Не роздувай те, чого в добі немає.")
+    where = ", ".join(state["accent"] or state["loud"])
+    line = (f"Голосних позицій у добі {len(state['loud'])}, найважча важить "
+            f"{state['top']} з {scale} — {where}.")
+    return line + (" Це важка доба." if is_heavy(state) else "")
+
+
+def accent_ids(items) -> list[str]:
+    """What must be heard loudest: the accented blocks, the loud ones when nothing is louder.
+
+    Empty on a day with nothing weighted at all, and that is the point: `{{НАГОЛОС}}` used to
+    be filled with every chosen position, which named the whole day as its own emphasis and so
+    said nothing (t1192).
+    """
+    state = pressure(items)
+    return state["accent"] or state["loud"]
+
+
 def selection(answer, items) -> dict:
     """The model's choice, with the mandatory positions put back and strangers thrown out."""
     picked = answer.get("ids") if isinstance(answer, dict) else None
@@ -458,6 +513,11 @@ def spoken_part(text: str) -> str:
 PART_ORDER = ("вночі", "зранку", "в обід", "після обіду", "ввечері", "фоном")
 
 
+def summary_part(text: str) -> str:
+    """The `ДЕНЬ` block alone, markers intact — what he calls «самарі»."""
+    return (text or "").split("ДЕНЬ", 1)[-1].split("ПРОГНОЗ", 1)[0]
+
+
 def forecast_lines(text: str) -> list[str]:
     """The ПРОГНОЗ lines alone, markers stripped."""
     body = (text or "").split("ПРОГНОЗ", 1)[-1].split("ДІЯ", 1)[0]
@@ -545,6 +605,17 @@ def check_reading(text: str, items, chosen_ids=None) -> list[str]:
         if must and item_id not in used:
             problems.append(f"{item_id}: голосна позиція не прозвучала")
 
+    # The summary of a heavy day names what makes it heavy (t1192). Checked on the markers
+    # rather than on the words, because that is the audit trail the reading already carries —
+    # and demanded only where it is cheap to satisfy: the length of the loud line is a prompt
+    # rule, since a hard check that can fail every retry buys a silent morning.
+    state = pressure(items)
+    if state["accent"]:
+        named = {block_of(i, items) for i in marked_ids(summary_part(text))}
+        if not named & set(state["accent"]):
+            problems.append("ДЕНЬ не називає найважчого в добі: "
+                            + ", ".join(state["accent"]))
+
     head = spoken_part(text)
     for bad in ("°", "✤"):
         if bad in head:
@@ -628,7 +699,8 @@ def run(day: date, dry_run: bool = False, note=lambda *a: None) -> dict:
         else:
             base = fill(stage, ДАТА=day.isoformat(),
                         ВИБРАНЕ=items_text(items, label=True),
-                        НАГОЛОС=", ".join(chosen.get("ids") or []),
+                        НАГОЛОС=", ".join(accent_ids(items)) or "немає, доба рівна",
+                        ТИСК=pressure_text(items),
                         РЯДОК=str(LINE_MAX),
                         ПОПЕРЕДНЄ=previous,
                         БЮДЖЕТ=str(conf2("budget_chars", 1200)),

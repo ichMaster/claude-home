@@ -277,7 +277,7 @@ def test_the_fixture_carries_no_natal_position_of_his():
 # --- the reading: does it stand on the day it was given? ------------------------------------
 
 READING = """ДЕНЬ
-Доба, яка хоче планувати більше, ніж устигне. [p1]
+Доба, яка хоче планувати більше, ніж устигне, і ввечері впирається в різке слово. [p1,p6]
 
 ПРОГНОЗ
 зранку | Місяць дотягує впертий знак, і починати нове не тягне; Нептун додає мрійливості [p3,p5]
@@ -306,7 +306,7 @@ def test_a_dropped_loud_window_is_caught():
     """The failure that makes a heavy day sound calm."""
     bad = READING.replace(
         "ввечері | Уран штовхає сказати різко, а натальна Венера робить це дорожчим, "
-        "ніж здається [p6,p7]\n", "")
+        "ніж здається [p6,p7]\n", "").replace("[p1,p6]", "[p1]")
     problems = mood2.check_reading(bad, ITEMS, CHOSEN)
     assert any("не прозвучала" in p for p in problems), problems
 
@@ -730,3 +730,124 @@ def test_bare_nodes_in_the_bodies_field_still_carry_the_day():
                    for p in mood2.check_reading(fine, items, CHOSEN_NO_NODES))
     problems = mood2.check_reading(READING_NO_NODES, items, CHOSEN_NO_NODES)
     assert any("яких у читанні немає" in p and "вузли" in p for p in problems), problems
+
+
+# --- t1192: a heavy day is read as heavy ----------------------------------------------------
+# The owner, 16 November: «максимум ✤✤ може бути 4 і якщо їх багато то ставити на цьому акцент
+# в прогнозі і більше деталей в самарі». So the intensity he publishes has to reach the
+# writing stage as arithmetic, and the summary of a heavy day has to name what makes it heavy.
+
+def calm_day():
+    """The same day with nothing loud in it: the top window drops to two marks."""
+    items = [dict(i) for i in ITEMS]
+    for item in items:
+        if item["id"] in ("p6", "p7"):
+            item["weight"] = 2
+    return items
+
+
+def quiet_day():
+    """A day with no weighted position at all — the Moon and nothing else."""
+    return [dict(i) for i in ITEMS[:4]]
+
+
+QUIET_READING = """ДЕНЬ
+Доба тиха, і це не комплімент. [p1]
+
+ПРОГНОЗ
+зранку | Місяць дотягує впертий знак, і починати нове не тягне [p3]
+в обід | Місяць переходить у новий знак — тягне на широкі плани [p2,p4]
+
+ДІЯ
+Нічого не форсуй. [p1]
+
+ОСНОВА
+p3 09:00-11:00 холоста
+"""
+
+
+def test_pressure_counts_the_day(): 
+    """TC3 — the top weight, the loud blocks and the accented ones, natal hits folded in."""
+    p = mood2.pressure(ITEMS)
+    assert p["top"] == 5
+    assert p["loud"] == ["p6"], "p7 hangs under p6 — one heavy event, not two"
+    assert p["accent"] == ["p6"]
+
+
+def test_a_calm_day_has_no_accent():
+    """TC2 — two marks is not loud, so nothing is demanded of the summary."""
+    p = mood2.pressure(calm_day())
+    assert p["top"] == 2 and p["loud"] == [] and p["accent"] == []
+    assert not any("ДЕНЬ" in problem
+                   for problem in mood2.check_reading(READING, calm_day(), CHOSEN))
+
+
+def test_the_summary_must_name_the_heaviest():
+    """TC1 — a reading whose ДЕНЬ describes the mood and skips what presses."""
+    bad = READING.replace("[p1,p6]", "[p1]")
+    problems = mood2.check_reading(bad, ITEMS, CHOSEN)
+    assert any("ДЕНЬ" in p and "p6" in p for p in problems), problems
+    assert mood2.check_reading(READING, ITEMS, CHOSEN) == []
+
+
+def test_a_natal_hit_in_the_summary_counts_as_its_window():
+    """The block is the unit: marking the personal hit names its window too."""
+    fine = READING.replace("[p1,p6]", "[p1,p7]")
+    assert mood2.check_reading(fine, ITEMS, CHOSEN) == []
+
+
+def test_many_loud_windows_make_the_day_heavy():
+    """TC4 — three loud blocks weigh on a day even with nothing at the top of the scale."""
+    items = [dict(i) for i in ITEMS]
+    for item in items:
+        if item["id"] in ("p6", "p7"):
+            item["weight"] = 3
+    items[4]["weight"] = 3          # p5, the quiet midday window
+    items[7]["weight"] = 3          # p8, the multi-day span
+    p = mood2.pressure(items)
+    assert p["top"] == 3 and len(p["loud"]) == 3 and p["accent"] == []
+    assert mood2.is_heavy(p)
+    text = mood2.pressure_text(items)
+    assert "3" in text and "✤" not in text, text
+
+
+def test_five_marks_are_the_top_of_the_scale():
+    """TC5 — five is the top (the owner, 16 November) and it is accented, not an error."""
+    assert mood2.check_items(ITEMS, SOURCE) == []
+    assert mood2.pressure(ITEMS)["accent"] == ["p6"]
+
+
+def test_a_quiet_day_demands_nothing_of_the_summary():
+    """TC6 — no weighted position, no accent, and the pressure line says so."""
+    p = mood2.pressure(quiet_day())
+    assert p["top"] == 0 and p["accent"] == []
+    assert not mood2.is_heavy(p)
+    assert "рівна" in mood2.pressure_text(quiet_day())
+    assert mood2.check_reading(QUIET_READING, quiet_day(), ["p1", "p2", "p3", "p4"]) == []
+
+
+def test_the_writing_stage_is_handed_the_pressure(monkeypatch, tmp_path):
+    """The emphasis is computed here, so the prompt carries it instead of counting marks."""
+    prompts = {}
+
+    def fake_call(stage, prompt):
+        prompts[stage] = prompt
+        if stage == "read":
+            return json.dumps(ITEMS, ensure_ascii=False)
+        if stage == "pick":
+            return json.dumps({"ids": ["p6"]}, ensure_ascii=False)
+        return READING
+
+    monkeypatch.setattr(mood2, "call", fake_call)
+    monkeypatch.setattr(mood2, "reference_text", lambda day: SOURCE)
+    monkeypatch.setattr(mood2, "state_path", lambda key: tmp_path / f"v2-{key}")
+    mood2.run(DAY, dry_run=True)
+    assert "{{ТИСК}}" not in prompts["day"]
+    assert mood2.pressure_text(ITEMS) in prompts["day"]
+    assert "p6" in prompts["day"]
+
+
+def test_a_level_day_is_handed_no_false_emphasis():
+    """TC7 — nothing weighted, so the emphasis field says so instead of naming the whole day."""
+    assert mood2.accent_ids(quiet_day()) == []
+    assert mood2.accent_ids(ITEMS) == ["p6"]

@@ -546,6 +546,9 @@
     "budget_chars": 2200,
     "items_max": 5,
     "loud_min": 3,
+    "accent_min": 4,
+    "heavy_blocks": 3,
+    "weight_max": 5,
     "retries": 3
   }
 }

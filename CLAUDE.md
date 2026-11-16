@@ -495,6 +495,16 @@ over-long line. Whatever it finds is handed back and the reading is rewritten, u
   construction twice.
 - **`ОСНОВА` is never sent** (t1154) — not to the voice and not to the chat. It stays in the
   log and the state, which is where a claim is traced back to its figure.
+- **The intensity he publishes is arithmetic here** (t1192). His scale is one to five `✤`
+  («максимум це 5», 2026-11-16). `pressure()` folds a window and the natal hits hanging under
+  it into one block, reports the day's top weight, its loud blocks (`astro2.loud_min`, 3) and
+  its accented ones (`astro2.accent_min`, 4); a day is heavy with one accented block or
+  `heavy_blocks` (3) loud ones. The writing stage is handed that line and the accented ids —
+  `{{ТИСК}}` and `{{НАГОЛОС}}`, which used to be filled with the whole selection and
+  therefore said nothing. The accented window gets the longest `ПРОГНОЗ` line, and on a heavy
+  day `ДЕНЬ` — what he calls «самарі» — grows to a second sentence naming what presses;
+  `check_reading()` enforces the second half by marker, since a line-length rule that can fail
+  every retry buys a silent morning.
 - **It breathes** (t1157): `voice_text()` places `[довга пауза]` before each part of the day
   and a `[пауза]` after naming it, deterministically. The delivery is `zorya-reading` — the
   forecast voice at tempo 0.95 — because at 1.1 two thousand characters arrive as one block.
