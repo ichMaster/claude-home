@@ -331,3 +331,44 @@ def test_a_broken_notify_cannot_raise(monkeypatch):
 
     monkeypatch.setattr(mood2.subprocess, "run", boom)
     mood2.report_failure("читання не склалось")
+
+
+# --- t1200: any crash under --send still speaks ---------------------------------------------
+# main() caught only the typed pipeline errors; disk full in log_run or a vanished claude
+# binary died with a raw traceback and report_failure never ran — the silent morning t1160
+# and t1196 were written to close, reachable through every untyped exception class.
+
+def _crashing_main(monkeypatch, exc, send=True):
+    said = []
+
+    def fake_run(day, dry_run=False, note=None):
+        raise exc
+
+    monkeypatch.setattr(mood2, "require_config", lambda: None)
+    monkeypatch.setattr(mood2, "run", fake_run)
+    monkeypatch.setattr(mood2, "report_failure", lambda text: said.append(text))
+    argv = ["mood2.py", "--day", DAY.isoformat()] + (["--send"] if send else [])
+    monkeypatch.setattr(sys, "argv", argv)
+    return mood2.main(), said
+
+
+def test_an_untyped_crash_reports_and_exits_six(monkeypatch):
+    """TC1 — the regression: disk full must not leave the morning silent."""
+    code, said = _crashing_main(monkeypatch, OSError("диск повний"))
+    assert code == 6
+    assert said and "OSError" in said[0] and "диск повний" in said[0]
+
+
+def test_without_send_the_crash_stays_in_the_terminal(monkeypatch, capsys):
+    """TC2 — a manual run speaks to the terminal, not to her chat."""
+    code, said = _crashing_main(monkeypatch, OSError("диск повний"), send=False)
+    assert code == 6
+    assert said == []
+    assert "диск повний" in capsys.readouterr().err
+
+
+def test_no_calendar_keeps_its_own_code(monkeypatch, capsys):
+    """TC3 — the typed branches stay first and keep their codes."""
+    code, said = _crashing_main(monkeypatch, mood2.NoCalendar("календаря немає"))
+    assert code == 4
+    assert said and "Ранкового читання сьогодні немає" in said[0]

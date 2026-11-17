@@ -1018,6 +1018,14 @@ def main() -> int:
         if args.send:
             report_failure(f"Ранкове читання склалось, але не надіслалось: {e}")
         return 5
+    except Exception as e:                                               # noqa: BLE001
+        # The net under the typed errors (t1200): disk full in log_run, a vanished claude
+        # binary — anything untyped used to die with a raw traceback and the morning stayed
+        # silent, which is the exact failure t1160 and t1196 were written to close.
+        print(f"v2: {e.__class__.__name__}: {e}", file=sys.stderr)
+        if args.send:
+            report_failure(f"Ранкове читання впало: {e.__class__.__name__}: {e}")
+        return 6
     return 0
 
 
