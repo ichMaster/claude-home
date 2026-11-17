@@ -109,3 +109,32 @@ def test_subject_never_inherits_owner_portrait(monkeypatch, tmp_path):
 
     monkeypatch.setattr(mood.astro, "SUBJECT", None)
     assert "дуже особисте" in mood.natal_text()
+
+
+# --- t1199: the headless call is text-in, text-out ------------------------------------------
+# The stages whose prompt embeds the forwarded astrologer's text run on run_claude, and a
+# call with default tool access can be told by that text to read a file. The bots' inbox
+# already disables tools; the pipeline must do the same.
+
+def test_run_claude_disables_tools(monkeypatch):
+    """TC1 — the regression: --allowedTools \"\" is on the command, like inbox.py."""
+    seen = {}
+
+    class Done:
+        returncode = 0
+        stdout = "ok"
+        stderr = ""
+
+    def fake_run(cmd, **kw):
+        seen["cmd"] = cmd
+        return Done()
+
+    monkeypatch.setattr(mood.subprocess, "run", fake_run)
+    assert mood.run_claude("привіт", model="sonnet") == "ok"
+    cmd = seen["cmd"]
+    assert "--allowedTools" in cmd
+    assert cmd[cmd.index("--allowedTools") + 1] == ""
+    # TC2 — the rest of the call is what it was
+    assert cmd[:2] == ["claude", "-p"]
+    assert "--strict-mcp-config" in cmd
+    assert cmd[cmd.index("--model") + 1] == "sonnet"

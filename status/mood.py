@@ -95,8 +95,12 @@ def plain(text: str) -> str:
 
 def run_claude(prompt: str, model: str = "", timeout: int = CALL_TIMEOUT) -> str:
     """One headless call. An empty `model` means the session default — the strongest one."""
+    # No tools (t1199): every caller is a text transformation, and the read/wide/learn
+    # prompts embed the forwarded astrologer's text — untrusted input that must not be able
+    # to make the call read anything. Same guard as the bots' inbox.
     cmd = ["claude", "-p", prompt, "--settings", str(SETTINGS),
-           "--mcp-config", '{"mcpServers":{}}', "--strict-mcp-config"]
+           "--mcp-config", '{"mcpServers":{}}', "--strict-mcp-config",
+           "--allowedTools", ""]
     if model:
         cmd += ["--model", model]
     out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
