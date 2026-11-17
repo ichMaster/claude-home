@@ -263,7 +263,10 @@ def main() -> int:
     p_add.add_argument("--file", help="взяти текст із файлу замість аргументу")
     p_add.add_argument("--day")
     p_add.add_argument("--author", default="")
-    p_add.add_argument("--period", default="день")
+    # `covering()` matches the exact strings, so anything else would be stored and never
+    # found again — refused at the door instead (t1198)
+    p_add.add_argument("--period", default="день",
+                       choices=("день", "тиждень", "місяць", "рік"))
     p_add.add_argument("--learn", action="store_true", help="одразу витягти правила")
     p_add.add_argument("--split", action="store_true",
                        help="порізати багатоденний текст на дні за заголовками")
@@ -281,6 +284,11 @@ def main() -> int:
     day = date.fromisoformat(args.day) if getattr(args, "day", None) else date.today()
 
     if args.cmd == "add":
+        # A month or a year is matched by the day it is stored under; today is a guess about
+        # which month his forecast is for — a December text forwarded in late November would
+        # feed November's mornings (t1198).
+        if args.period in ("місяць", "рік") and not args.day:
+            sys.exit("для --period місяць|рік вкажи --day — будь-який день того місяця чи року")
         text = args.text
         if getattr(args, "file", None):
             f = Path(args.file).expanduser()

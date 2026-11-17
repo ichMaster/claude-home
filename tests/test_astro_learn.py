@@ -129,3 +129,43 @@ def test_add_file_consumes_the_parked_reference(monkeypatch, tmp_path):
     assert rec["text"] == "текст еталона"
     assert not f.exists(), "the ingested file must leave the inbox"
     assert (inbox / "ingested" / f.name).is_file()
+
+
+# --- t1198: --period is validated, and a month or a year names its day ----------------------
+# A typo («месяц») stored a record covering() could never match, and --day defaulting to
+# today let a December forecast forwarded in late November feed November's mornings.
+
+def test_an_unknown_period_is_refused(monkeypatch, tmp_path):
+    """TC1 — the regression: a period covering() cannot match is refused at the door."""
+    store = tmp_path / "ref.jsonl"
+    monkeypatch.setattr(learn, "store", lambda: store)
+    monkeypatch.setattr(sys, "argv",
+                        ["astro_learn.py", "add", "текст", "--period", "месяц"])
+    with pytest.raises(SystemExit) as e:
+        learn.main()
+    assert e.value.code == 2, "argparse's own refusal"
+    assert not store.exists(), "nothing may be stored under an unmatchable period"
+
+
+def test_a_month_without_a_day_is_refused(monkeypatch, tmp_path):
+    """TC2 — the regression: today is a guess about which month his forecast is for."""
+    store = tmp_path / "ref.jsonl"
+    monkeypatch.setattr(learn, "store", lambda: store)
+    monkeypatch.setattr(sys, "argv",
+                        ["astro_learn.py", "add", "текст місяця", "--period", "місяць"])
+    with pytest.raises(SystemExit) as e:
+        learn.main()
+    assert "--day" in str(e.value.code)
+    assert not store.exists()
+
+
+def test_a_month_with_its_day_lands_in_covering(monkeypatch, tmp_path):
+    """TC3 — with the day said, the record lands in its own month and nowhere else."""
+    store = tmp_path / "ref.jsonl"
+    monkeypatch.setattr(learn, "store", lambda: store)
+    monkeypatch.setattr(sys, "argv",
+                        ["astro_learn.py", "add", "грудень попереду",
+                         "--period", "місяць", "--day", "2026-12-01"])
+    assert learn.main() == 0
+    assert learn.covering(date(2026, 12, 15)).get("місяць") == "грудень попереду"
+    assert "місяць" not in learn.covering(date(2026, 11, 20))
