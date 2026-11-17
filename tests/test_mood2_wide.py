@@ -265,3 +265,38 @@ def test_two_natal_hits_under_one_period_are_both_named():
     out = mood2.wide_relevant(pair, DAY, cap=3)
     assert out["period"][0]["natal"] == "Венера(-), Місяць(+)"
     assert len(out["period"]) == 1
+
+
+# --- t1197: an empty extraction must not be cached for the month ----------------------------
+# One transient flake — the array wrapped in an object, or a bare [] — used to be written to
+# the cache under the hash of his unchanging texts, so every later morning served the empty
+# answer with no model call and no note: a month of readings silently without its horizon.
+
+def test_a_wrapped_answer_is_unwrapped(monkeypatch, tmp_path):
+    """TC1 — the regression: {"entries": [...]} is the array, not an empty day."""
+    monkeypatch.setattr(mood2, "call", lambda stage, prompt:
+                        json.dumps({"entries": ENTRIES}, ensure_ascii=False))
+    monkeypatch.setattr(mood2, "state_path", lambda key: tmp_path / f"v2-{key}")
+    monkeypatch.setattr(astro_learn, "references",
+                        lambda day=None: [{"day": "2026-11-01", "period": "місяць",
+                                           "text": "листопад"}])
+    assert mood2.wide_entries(DAY) == ENTRIES
+
+
+def test_an_empty_answer_is_not_cached(monkeypatch, tmp_path):
+    """TC2 — the regression: an empty extraction is retried next run, never remembered."""
+    answers = ["[]", json.dumps(ENTRIES, ensure_ascii=False)]
+    calls = []
+
+    def fake_call(stage, prompt):
+        calls.append(stage)
+        return answers.pop(0)
+
+    monkeypatch.setattr(mood2, "call", fake_call)
+    monkeypatch.setattr(mood2, "state_path", lambda key: tmp_path / f"v2-{key}")
+    monkeypatch.setattr(astro_learn, "references",
+                        lambda day=None: [{"day": "2026-11-01", "period": "місяць",
+                                           "text": "листопад"}])
+    assert mood2.wide_entries(DAY) == []
+    assert mood2.wide_entries(DAY) == ENTRIES
+    assert calls == ["wide", "wide"], "the empty first answer must not come back from cache"

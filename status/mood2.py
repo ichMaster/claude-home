@@ -437,9 +437,15 @@ def wide_entries(day: date, note=lambda *a: None) -> list[dict]:
     answer = json_answer(call("wide", fill("wide", ДАТА=day.isoformat(),
                                            МІСЯЦЬ=texts.get("місяць", "—"),
                                            РІК=texts.get("рік", "—"))))
+    if isinstance(answer, dict) and isinstance(answer.get("entries"), list):
+        answer = answer["entries"]                  # the array arrived wrapped in an object
     entries = [e for e in answer if isinstance(e, dict)] if isinstance(answer, list) else []
     if not entries:
+        # An empty extraction is a flake until proven otherwise, and the texts do not change
+        # through the month — cached, it would come back every morning with no model call and
+        # no note (t1197). Retrying tomorrow costs one call; remembering costs the horizon.
         note("ширші горизонти: стадія не повернула жодного запису")
+        return entries
     cache.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_text(cache, json.dumps({"key": key, "entries": entries},
                                         ensure_ascii=False, indent=2))
