@@ -73,11 +73,12 @@ def test_no_tmux_session_is_not_a_login_alert(monkeypatch):
 
 
 def _fake_run(probes, calls):
-    def run(cmd, **kw):
+    """Fakes watch.run_bounded (t1201): run.sh answers with the probe list, notify.sh with 0."""
+    def run(cmd, timeout=None):
         calls.append(cmd)
         if str(cmd[0]).endswith("run.sh"):
-            return types.SimpleNamespace(stdout=json.dumps(probes, ensure_ascii=False), returncode=0)
-        return types.SimpleNamespace(stdout="", returncode=0)
+            return 0, json.dumps(probes, ensure_ascii=False)
+        return 0, ""
     return run
 
 
@@ -86,7 +87,7 @@ def test_watcher_sends_once_and_speaks_the_voice_copy(monkeypatch, tmp_path):
     monkeypatch.setattr(watch, "STATE", tmp_path / "watch.json")
     p = auth.probe(EXPIRED)
     calls = []
-    monkeypatch.setattr(watch.subprocess, "run", _fake_run([p], calls))
+    monkeypatch.setattr(watch, "run_bounded", _fake_run([p], calls))
     watch.main()
     sends = [c for c in calls if str(c[0]).endswith("notify.sh")]
     assert len(sends) == 1

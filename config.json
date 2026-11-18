@@ -187,7 +187,9 @@
     }
   },
   "watch": {
-    "remind_after_sec": 10800
+    "remind_after_sec": 10800,
+    "probe_timeout_sec": 300,
+    "notify_timeout_sec": 180
   },
   "codereview": {
     "_": "Nightly self code-review after the 05:00 restart (status/code-review-headless.sh, noos-codereview.timer). Fable 5, ultracode multi-agent; fixes High/Medium findings locally with a task + spec + test each, writes a scan report then a fix report under status/state/code-review/ (git-ignored), never pushes.",

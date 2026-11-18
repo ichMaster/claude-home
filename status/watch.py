@@ -11,7 +11,7 @@ Rules:
 The signature is what counts as "the same news". If it has not changed, the user is
 not disturbed again.
 """
-import json, subprocess, sys, time
+import json, os, signal, subprocess, sys, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -23,6 +23,29 @@ STATE = HOME / "status" / "state" / "watch.json"
 DEFAULT_PROBES = ["alarm", "loe", "host", "services", "auth"]
 PROBES = sys.argv[1:] or DEFAULT_PROBES
 REMIND_AFTER = conf("watch.remind_after_sec", 3 * 3600)  # reminder for a lasting alert
+PROBE_TIMEOUT = conf("watch.probe_timeout_sec", 300)     # a wedged probe must not hang the run
+NOTIFY_TIMEOUT = conf("watch.notify_timeout_sec", 180)
+
+
+def run_bounded(cmd, timeout):
+    """(returncode, stdout) — or None when the command did not finish in time.
+
+    The whole process group dies on timeout (t1201): killing the shell alone leaves a
+    wedged grandchild (docker ps, tmux) holding the inherited stdout pipe, and the
+    follow-up communicate() would block on it forever — which is exactly how one stuck
+    daemon used to stop all alerting until someone killed the oneshot by hand."""
+    proc = subprocess.Popen([str(c) for c in cmd], stdout=subprocess.PIPE,
+                            stderr=subprocess.DEVNULL, text=True, start_new_session=True)
+    try:
+        out, _ = proc.communicate(timeout=timeout)
+        return proc.returncode, out
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        proc.communicate()
+        return None
 
 def signature(p):
     """What counts as a change — one rule per probe."""
@@ -57,8 +80,11 @@ def save_state(st):
 
 
 def main():
-    raw = subprocess.run([str(HOME / "status" / "run.sh"), *PROBES],
-                         capture_output=True, text=True).stdout
+    res = run_bounded([HOME / "status" / "run.sh", *PROBES], PROBE_TIMEOUT)
+    if res is None:
+        print(f"run.sh не відповів за {PROBE_TIMEOUT} с — стан не чіпаю")
+        return
+    raw = res[1]
     try:
         probes = json.loads(raw) if raw.strip() else []
     except json.JSONDecodeError:
@@ -107,7 +133,8 @@ def main():
     cmd.append(body)
     # state is persisted only after a delivered send: warn fires on signature change alone,
     # so recording an undelivered one would silence that alert forever (t1046)
-    if subprocess.run(cmd).returncode == 0:
+    sent_res = run_bounded(cmd, NOTIFY_TIMEOUT)
+    if sent_res is not None and sent_res[0] == 0:
         save_state(newstate)
     else:
         print("notify.sh не вдався — стан не записую, повторю наступного разу")
