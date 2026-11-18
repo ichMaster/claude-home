@@ -232,3 +232,28 @@ def test_textless_messages_stay_silent_and_dry_run_sends_nothing(monkeypatch, bo
                         lambda *a, **k: {"ok": True, "result": [upd(303, voice={"file_id": "f1"})]})
     inbox.poll("zirka", dry_run=True)
     assert sent == []
+
+
+# --- t1204: a torn mood.json must not silently consume Zirka's messages ----------------
+
+def test_zirka_context_survives_torn_state(monkeypatch, tmp_path):
+    """t1204: a half-written mood.json (power cut mid-write at 08:20) used to raise
+    JSONDecodeError, swallowed after the offset commit — every message to Zirka consumed
+    with no reply for up to a day. Torn must read as "no reading yet"."""
+    f = tmp_path / "mood.json"
+    f.write_text('{"day": "2026-11-18", "summ')
+    monkeypatch.setattr(inbox, "path", lambda *a, **k: f)
+    ctx = inbox.zirka_context()
+    assert "ПРОГНОЗ" in ctx and "БІОРИТМИ" in ctx
+
+
+def test_zirka_context_valid_state_renders(monkeypatch, tmp_path):
+    """t1204 TC3: a healthy file still renders the forecast and bio fields."""
+    f = tmp_path / "mood.json"
+    f.write_text(json.dumps({"day": "2026-11-18", "summary": "день як день",
+                             "biorhythms": "Ф+10", "bio_conclusion": "норм"},
+                            ensure_ascii=False))
+    monkeypatch.setattr(inbox, "path", lambda *a, **k: f)
+    ctx = inbox.zirka_context()
+    assert "день як день" in ctx["ПРОГНОЗ"]
+    assert "Ф+10" in ctx["БІОРИТМИ"]

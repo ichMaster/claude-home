@@ -235,9 +235,13 @@ def read_document(token: str, doc: dict) -> str:
 
 def zirka_context() -> dict[str, str]:
     f = Path(str(path("astro.state", "status/state/mood.json")))
-    if not f.exists():
+    # A torn file (kill mid-write) must read as "no reading yet", not raise: the error was
+    # swallowed after the offset commit, so every message to Zirka was consumed with no
+    # reply until the next mood run (t1204). bruno_context below guards its reads the same way.
+    try:
+        d = json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
         return {"ПРОГНОЗ": "(сьогоднішнього читання немає)", "БІОРИТМИ": "(немає)"}
-    d = json.loads(f.read_text(encoding="utf-8"))
     return {"ПРОГНОЗ": f"({d.get('day', '')})\n{d.get('summary', '') or '(немає)'}",
             "БІОРИТМИ": f"{d.get('biorhythms', '')}\n{d.get('bio_conclusion', '')}".strip()
                         or "(немає)"}

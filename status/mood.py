@@ -719,7 +719,7 @@ def save_state(day: date, bio: dict, forecast: dict, computed: str) -> None:
         f"{c['window']} — {c['claim']}" for c in forecast.get("claim_list", []))
     f = state_path("state")
     f.parent.mkdir(parents=True, exist_ok=True)
-    f.write_text(json.dumps(
+    atomic_write_text(f, json.dumps(
         {"day": day.isoformat(), "biorhythms": computed,
          "bio_conclusion": bio.get("conclusion", ""),
          "summary": "\n\n".join(p for p in (forecast.get("day", ""), claims_text) if p),
@@ -749,7 +749,7 @@ def save_bio_state(day: date, bio: dict, computed: str) -> None:
     st["biorhythms"] = computed
     st["bio_conclusion"] = bio.get("conclusion", "")
     st["sent_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
-    f.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_text(f, json.dumps(st, ensure_ascii=False, indent=2))
 
 
 def main() -> int:

@@ -54,3 +54,23 @@ def test_mood2_main_reports_a_failed_delivery(monkeypatch):
     rc = mood2.main()
     assert rc != 0
     assert reported and "не надіслал" in reported[0]
+
+
+# --- t1204: mood.json is written atomically, like every other state file ---------------
+
+def test_state_writes_are_atomic(monkeypatch, tmp_path):
+    """t1204: save_state and save_bio_state used a bare write_text (truncate, then write);
+    a kill mid-write left torn JSON that zirka_context choked on. Both must go through
+    atomic_write_text, and still produce the same valid state."""
+    import json as _json
+    from datetime import date as _date
+    calls = []
+    monkeypatch.setattr(mood, "state_path", lambda key: tmp_path / "mood.json")
+    monkeypatch.setattr(mood, "atomic_write_text",
+                        lambda p, s, **kw: calls.append((p, s)))
+    mood.save_state(_date(2026, 11, 18), {"conclusion": "ок"},
+                    {"day": "день", "claim_list": []}, "Ф+1")
+    mood.save_bio_state(_date(2026, 11, 18), {"conclusion": "ок"}, "Ф+1")
+    assert len(calls) == 2
+    for p, s in calls:
+        assert _json.loads(s)["day"] == "2026-11-18"
