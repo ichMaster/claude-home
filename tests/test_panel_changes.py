@@ -373,3 +373,44 @@ def test_a_commit_with_no_reading_still_says_so(tmp_path, monkeypatch):
     monkeypatch.setattr(changes, "SPECS", tmp_path / "specs")
     monkeypatch.setattr(changes, "TESTS", tmp_path / "tests")
     assert changes.commit_detail({"sha": "c" * 40, "task": None}, {})["review"] is None
+
+
+# --- t1206: a Low named as deliberately-left-open must stay in the backlog -------------
+
+def test_a_low_declined_in_a_fixes_report_stays_open(tmp_path):
+    """t1206: fixes reports also NAME the Lows they deliberately did not fix; naming is
+    not fixing. Five real titles were silently missing from «Накопичені Low»."""
+    (tmp_path / "2026-11-01-scan.md").write_text(NIGHTLY, encoding="utf-8")
+    (tmp_path / "2026-11-01-fixes.md").write_text(
+        "# Fixes\n\n## Fixed\n\nНічого.\n\n## Left open deliberately\n\n"
+        "- **panel/server.py:532 — POST /zirka без Post/Redirect/Get.**\n",
+        encoding="utf-8")
+    lows = changes.open_lows(changes.review_nights(tmp_path))
+    assert any("/zirka" in low["title"] for low in lows), \
+        "a deliberately-declined Low vanished from the backlog"
+    assert len(lows) == 3
+
+
+def test_a_low_fixed_in_a_sectioned_report_is_removed(tmp_path):
+    """t1206 TC2: the t1110 contract survives — a title under the Fixed section still
+    counts as fixed."""
+    (tmp_path / "2026-11-01-scan.md").write_text(NIGHTLY, encoding="utf-8")
+    (tmp_path / "2026-11-01-fixes.md").write_text(
+        "# Fixes\n\n## Fixed\n\nПолагоджено: **panel/server.py:532 — POST /zirka без "
+        "Post/Redirect/Get.** (t1099)\n\n## Left open deliberately\n\nНічого.\n",
+        encoding="utf-8")
+    lows = changes.open_lows(changes.review_nights(tmp_path))
+    assert all("/zirka" not in low["title"] for low in lows)
+    assert len(lows) == 2
+
+
+def test_the_ukrainian_left_open_heading_is_recognized(tmp_path):
+    """t1206 TC3: one real report (2026-11-01) titles the section «Свідомо лишилось
+    відкритим»."""
+    (tmp_path / "2026-11-01-scan.md").write_text(NIGHTLY, encoding="utf-8")
+    (tmp_path / "2026-11-01-fixes.md").write_text(
+        "# Виправлення\n\n## Свідомо лишилось відкритим (Low)\n\n"
+        "- **panel/server.py:532 — POST /zirka без Post/Redirect/Get.**\n",
+        encoding="utf-8")
+    lows = changes.open_lows(changes.review_nights(tmp_path))
+    assert any("/zirka" in low["title"] for low in lows)

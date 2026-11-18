@@ -216,6 +216,22 @@ def review_nights(report_dir: Path | None = None) -> list[dict]:
     return sorted(nights.values(), key=lambda n: n["key"], reverse=True)
 
 
+def fixed_text(fixes: str) -> str:
+    """The part of a fixes report that actually means "fixed": every report also NAMES the
+    Lows it deliberately left open, and naming is not fixing (t1206) — five real titles were
+    silently missing from the backlog. Sections under a left-open heading are cut before
+    matching; exclusion rather than a "Fixed"-heading allowlist, because one real report
+    titles its fixed sections «High»/«Medium». No headings → the whole text, as before."""
+    out, drop = [], False
+    for line in fixes.splitlines():
+        if line.startswith("## "):
+            h = line.lower()
+            drop = any(w in h for w in ("left open", "не виправ", "відкрит"))
+        if not drop:
+            out.append(line)
+    return "\n".join(out)
+
+
 def open_lows(nights: list[dict]) -> list[dict]:
     """Low findings across every night, deduplicated, oldest first.
 
@@ -224,7 +240,7 @@ def open_lows(nights: list[dict]) -> list[dict]:
     for a fortnight says something an item raised last night does not.
     """
     seen: dict[str, dict] = {}
-    fixed = "\n".join(n.get("fixes", "") for n in nights).lower()
+    fixed = "\n".join(fixed_text(n.get("fixes", "")) for n in nights).lower()
     for night in sorted(nights, key=lambda n: n["key"]):
         for title in findings(night.get("scan", "")).get("low", []):
             key = title.split("(")[0].strip().lower()
