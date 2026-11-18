@@ -50,6 +50,11 @@ while true; do
     --bot)        bot="${2:-}"; shift 2 ;;         # a named bot from telegram.bots
     --kind)       kind="${2:-}"; shift 2 ;;        # what kind of message, for the Sent log
     --no-stamp)   stamp=0; shift ;;                # send exactly what was given, no moment
+    --help|-h)    awk 'NR>1 && !/^#/{exit} NR>1{sub(/^# ?/,""); print}' "$0"; exit 0 ;;
+    --)           shift; break ;;                  # end of flags: what follows is text
+    # an unknown --flag is a caller's mistake, never a message — «--help» went out voiced
+    # three mornings before this guard (t1202); single-dash text («-5 градусів») still passes
+    --*)          echo "невідомий прапорець: $1 — нічого не надіслано" >&2; exit 2 ;;
     *) break ;;
   esac
 done
