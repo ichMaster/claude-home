@@ -28,7 +28,8 @@ def test_recorded_nudge_not_resent(monkeypatch, tmp_path):
     now = datetime.now()
     start = (now + timedelta(minutes=remind.LEAD)).isoformat(timespec="seconds")
     st = tmp_path / "reminders.json"
-    st.write_text(json.dumps({"ev1:lead": now.isoformat(timespec="seconds")}))
+    st.write_text(json.dumps({remind.nudge_key("ev1", start, "lead"):
+                              now.isoformat(timespec="seconds")}))
     monkeypatch.setattr(remind, "STATE", st)
     monkeypatch.setattr(remind, "asleep", lambda now: False)
     monkeypatch.setattr(remind, "task_state", lambda: {
@@ -66,10 +67,34 @@ def test_failed_send_is_not_recorded(monkeypatch, tmp_path):
     """TC1 (t1167): notify.sh exits 1 → the key must not be recorded, so the next tick
     retries inside the window instead of losing the nudge forever."""
     saved = _run_with_notify_rc(monkeypatch, tmp_path, 1)
-    assert "ev1:lead" not in saved
+    assert not [k for k in saved if k.startswith("ev1:") and k.endswith(":lead")]
 
 
 def test_delivered_send_is_recorded(monkeypatch, tmp_path):
     """TC2 (t1167): notify.sh exits 0 → recorded, so it is not sent twice."""
     saved = _run_with_notify_rc(monkeypatch, tmp_path, 0)
-    assert "ev1:lead" in saved
+    assert [k for k in saved if k.startswith("ev1:") and k.endswith(":lead")]
+
+
+# --- t1205: a rebooked block (same event id, new start) must nudge again ---------------
+
+def test_rebooked_block_nudges_again(monkeypatch, tmp_path):
+    """TC1 (t1205): the replan flow moves a block via update_event — the Google event keeps
+    its id — and the id-only key silently swallowed the new time's nudges. The key is
+    scoped to the start now, so the moved block gets its heads-up."""
+    now = datetime.now()
+    old_start = (now - timedelta(hours=6)).isoformat(timespec="seconds")
+    new_start = (now + timedelta(minutes=remind.LEAD)).isoformat(timespec="seconds")
+    st = tmp_path / "reminders.json"
+    st.write_text(json.dumps({
+        remind.nudge_key("ev1", old_start, "lead"): now.isoformat(timespec="seconds"),
+        remind.nudge_key("ev1", old_start, "checkin"): now.isoformat(timespec="seconds")}))
+    monkeypatch.setattr(remind, "STATE", st)
+    monkeypatch.setattr(remind, "asleep", lambda now: False)
+    monkeypatch.setattr(remind, "task_state", lambda: {
+        "t1": {"status": "open", "title": "тест",
+               "events": [{"event": "ev1", "start": new_start, "end": ""}]}})
+    sent = []
+    monkeypatch.setattr(remind, "notify", lambda text: sent.append(text) or True)
+    remind.main()
+    assert len(sent) == 1, "the moved block got no heads-up"

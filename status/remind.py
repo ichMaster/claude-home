@@ -30,6 +30,14 @@ sys.path.insert(0, str(HOME / "tasks"))
 from store import state as task_state          # noqa: E402
 
 
+def nudge_key(event, start, kind):
+    """The dedup key is scoped to the start the nudge is about (t1205): a replanned block
+    keeps its Google event id, and an id-only key swallowed the moved block's nudges —
+    the one flow the check-in exists for arrived unannounced. Old id-only entries age out
+    through the two-day window on their own."""
+    return f"{event}:{start}:{kind}"
+
+
 def asleep(now):
     h = now.strftime("%H:%M")
     return SLEEP_FROM <= h < SLEEP_TO if SLEEP_FROM < SLEEP_TO else (h >= SLEEP_FROM or h < SLEEP_TO)
@@ -78,13 +86,13 @@ def main():
             check_at = start + timedelta(minutes=CHECKIN)
             end = e.get("end", "")
 
-            key_lead = f"{e['event']}:lead"
+            key_lead = nudge_key(e["event"], start_raw, "lead")
             if key_lead not in fresh and lead_at <= now < lead_at + timedelta(minutes=WINDOW):
                 tail = f" до {end[11:16]}" if len(end) > 10 else ""
                 if notify(f"⏰ За {LEAD} хв: {t['title']}\n{start:%H:%M}{tail}"):
                     fresh[key_lead] = now.isoformat(timespec="seconds")
 
-            key_check = f"{e['event']}:checkin"
+            key_check = nudge_key(e["event"], start_raw, "checkin")
             if key_check not in fresh and check_at <= now < check_at + timedelta(minutes=WINDOW):
                 if notify(f"Минуло {CHECKIN} хв від «{t['title']}». Усе за планом?\n"
                           f"Якщо ні — скажи, що заважає, і я перепланую решту дня."):
