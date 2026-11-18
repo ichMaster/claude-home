@@ -10,7 +10,17 @@ cd "$HOME/claude-home"
 # Label this session's messages in the Sent log: the sender here is a model, so notify.sh
 # cannot read a script name out of the process tree (t1121).
 export NOOS_SENT_KIND="digest-headless.sh"
-part="${1:-ранковий}"
+# The timer fires at 08:03 and 20:03 with no argument, so the part comes from the clock —
+# the unit used to hardcode вечірній and the designed morning digest never ran (t1203).
+# An explicit argument still wins: the /digest command passes the part by hand.
+# NOOS_DIGEST_HOUR pins the hour in tests.
+part="${1:-}"
+if [ -z "$part" ]; then
+  . "$HOME/claude-home/config.sh"
+  until_h=$(NOOS_PYTHON="$HOME/claude-home/.venv-voice/bin/python" conf digest.morning_until_hour)
+  hour=$((10#${NOOS_DIGEST_HOUR:-$(date +%H)}))
+  if [ "$hour" -lt "${until_h:-14}" ]; then part="ранковий"; else part="вечірній"; fi
+fi
 # Bash rules name command prefixes, never bare "Bash": this session reads inbound mail —
 # text anyone on the internet can write — and an allowlist of everything turns a prompt
 # injection into arbitrary command execution (t1186). Only what the prompt prescribes,

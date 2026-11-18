@@ -144,6 +144,7 @@
     }
   },
   "digest": {
+    "morning_until_hour": 14,
     "items_per_topic": 2,
     "items_total": 4,
     "model": "claude-opus-5",
