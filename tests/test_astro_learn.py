@@ -169,3 +169,37 @@ def test_a_month_with_its_day_lands_in_covering(monkeypatch, tmp_path):
     assert learn.main() == 0
     assert learn.covering(date(2026, 12, 15)).get("місяць") == "грудень попереду"
     assert "місяць" not in learn.covering(date(2026, 11, 20))
+
+
+def _put(store, day, text, period=None):
+    rec = {"day": day, "text": text}
+    if period is not None:
+        rec["period"] = period
+    with store.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+
+def test_for_day_ignores_a_month_stored_under_the_day(monkeypatch, tmp_path):
+    """t1210 TC1: a месяць forward appended after the daily calendar must not replace it."""
+    store = tmp_path / "ref.jsonl"
+    monkeypatch.setattr(learn, "store", lambda: store)
+    _put(store, "2026-11-01", "денний календар", "день")
+    _put(store, "2026-11-01", "весь місяць попереду", "місяць")
+    assert learn.for_day(date(2026, 11, 1)) == "денний календар"
+
+
+def test_for_day_is_empty_when_only_a_month_covers_the_day(monkeypatch, tmp_path):
+    """t1210 TC2: no daily calendar → empty answer, so the run stops with NoCalendar."""
+    store = tmp_path / "ref.jsonl"
+    monkeypatch.setattr(learn, "store", lambda: store)
+    _put(store, "2026-12-01", "весь місяць попереду", "місяць")
+    assert learn.for_day(date(2026, 12, 1)) == ""
+
+
+def test_for_day_year_ignored_old_lines_still_daily(monkeypatch, tmp_path):
+    """t1210 TC3: a рік record is ignored; an old line with no period stays daily."""
+    store = tmp_path / "ref.jsonl"
+    monkeypatch.setattr(learn, "store", lambda: store)
+    _put(store, "2026-01-01", "старий запис без періоду")
+    _put(store, "2026-01-01", "весь рік попереду", "рік")
+    assert learn.for_day(date(2026, 1, 1)) == "старий запис без періоду"

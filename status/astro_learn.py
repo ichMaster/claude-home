@@ -149,8 +149,12 @@ def split_days(text: str, first: date) -> list[tuple[date, str]]:
 
 
 def for_day(day: date) -> str:
-    """The latest reference for that date — what the morning pipeline cross-checks against."""
-    refs = references(day)
+    """The latest DAILY reference for that date — what the morning pipeline cross-checks
+    against. A місяць/рік forward is stored under an arbitrary day of its span (t1198) and
+    must never pass for that day's hourly calendar — it reaches the day through covering()
+    and the wide stage instead (t1210). Old lines with no period field are daily."""
+    refs = [r for r in references(day)
+            if str(r.get("period") or "день") == "день"]
     return refs[-1]["text"] if refs else ""
 
 
