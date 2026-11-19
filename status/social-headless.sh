@@ -11,11 +11,12 @@ cd "$HOME/claude-home"
 export NOOS_SENT_KIND="social-headless.sh"
 # Prefix rules, never bare "Bash": this session reads facebookmail bodies — foreign text —
 # and an allowlist of everything turns a prompt injection into command execution (t1186).
+# No cat/head/tail (they reach the .env files) and no Write/Edit: acceptEdits reopened
+# the same injection through a file a trusted session later obeys (t1207).
 exec claude -p "$(cat status/social-prompt.md)" \
   --settings "$HOME/claude-home/status/digest-settings.json" \
   --allowedTools "Bash(./notify.sh:*)" "Bash(./status/run.sh:*)" \
                  "Bash(.venv-voice/bin/python status/probes/youtube.py:*)" \
-                 "Bash(cat:*)" "Bash(echo:*)" "Bash(date:*)" \
-                 "Bash(head:*)" "Bash(tail:*)" \
+                 "Bash(echo:*)" "Bash(date:*)" \
                  "mcp__claude_ai_Gmail__search_threads" \
-  --permission-mode acceptEdits
+  --disallowedTools "Write" "Edit" "MultiEdit" "NotebookEdit"

@@ -10,10 +10,11 @@ cd "$HOME/claude-home"
 export NOOS_SENT_KIND="youtube-headless.sh"
 # Prefix rules, never bare "Bash": RSS titles from 600 channels are foreign text, and an
 # allowlist of everything turns a prompt injection into command execution (t1186).
+# No cat/head/tail (they reach the .env files) and no Write/Edit: acceptEdits reopened
+# the same injection through a file a trusted session later obeys (t1207).
 exec claude -p "$(cat status/youtube-prompt.md)" \
   --settings "$HOME/claude-home/status/digest-settings.json" \
   --allowedTools "Bash(./notify.sh:*)" \
                  "Bash(.venv-voice/bin/python status/probes/youtube.py:*)" \
-                 "Bash(cat:*)" "Bash(echo:*)" "Bash(date:*)" \
-                 "Bash(head:*)" "Bash(tail:*)" \
-  --permission-mode acceptEdits
+                 "Bash(echo:*)" "Bash(date:*)" \
+  --disallowedTools "Write" "Edit" "MultiEdit" "NotebookEdit"
