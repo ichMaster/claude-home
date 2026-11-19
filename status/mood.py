@@ -752,6 +752,23 @@ def save_bio_state(day: date, bio: dict, computed: str) -> None:
     atomic_write_text(f, json.dumps(st, ensure_ascii=False, indent=2))
 
 
+def report_failure(text: str) -> None:
+    """A timer-driven run that stopped must say so in the chat: nothing watches the unit's
+    exit code, and the bio probe reports a stale state as ok — without this the morning
+    biorhythms just never arrive, with no sign why (t1211; the mood2 pattern, t1160).
+
+    Never raises: the real exit code must survive a broken notify.
+    """
+    role = "mood"
+    args = [str(HOME / "notify.sh")]
+    if conf(f"telegram.bots.{role}"):
+        args += ["--bot", role]
+    try:
+        subprocess.run([*args, text], check=False, cwd=str(HOME), timeout=120)
+    except Exception as e:
+        print(f"не вдалося повідомити про збій: {e}", file=sys.stderr)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="ранковий прогноз: біоритми й астрологія окремо")
     ap.add_argument("--day", help="дата YYYY-MM-DD (типово — сьогодні)")
@@ -808,7 +825,15 @@ def main() -> int:
         return 0 if send(text, note=note) else 2
 
     if args.only == "bio":                        # the biorhythms alone: one call, no ephemeris reading
-        bio = write_biorhythms(day, computed)
+        try:
+            bio = write_biorhythms(day, computed)
+        except Exception as e:
+            if args.dry_run:
+                raise                             # an interactive run wants the traceback
+            report_failure("Біоритми сьогодні не порахувались: збій на виклику моделі. "
+                           "Можна попросити порахувати їх вручну.")
+            print(f"збій біоритмів: {e}", file=sys.stderr)
+            return 1
         text = bio_message(day, bio, computed)
         if args.dry_run:
             print(text)

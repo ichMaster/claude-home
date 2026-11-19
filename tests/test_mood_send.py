@@ -74,3 +74,45 @@ def test_state_writes_are_atomic(monkeypatch, tmp_path):
     assert len(calls) == 2
     for p, s in calls:
         assert _json.loads(s)["day"] == "2026-11-18"
+
+
+# --- t1211: a failed 08:20 biorhythms run must say so in the chat ----------------------
+
+def _bio_argv(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["mood.py", "--only", "bio", "--day", "2026-11-19"])
+    monkeypatch.setattr(mood.astro, "birth_data",
+                        lambda: types.SimpleNamespace(date="1980-01-01"))
+    monkeypatch.setattr(mood.astro, "biorhythms", lambda *a, **k: {})
+    monkeypatch.setattr(mood.astro, "format_biorhythms", lambda *a, **k: {})
+    monkeypatch.setattr(mood.astro, "facts", lambda day: [])
+
+
+def test_bio_failure_is_reported_in_the_chat(monkeypatch):
+    """t1211 TC1: a RuntimeError from the model call becomes a notice, not silence."""
+    reported = []
+    _bio_argv(monkeypatch)
+    monkeypatch.setattr(mood, "write_biorhythms",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("login expired")))
+    monkeypatch.setattr(mood, "report_failure", lambda text: reported.append(text))
+    rc = mood.main()
+    assert rc != 0
+    assert reported and "іоритми" in reported[0]
+
+
+def test_bio_failure_propagates_under_dry_run(monkeypatch):
+    """t1211 TC2: --dry-run wants the traceback, not a Telegram message."""
+    _bio_argv(monkeypatch)
+    monkeypatch.setattr(sys, "argv",
+                        ["mood.py", "--only", "bio", "--day", "2026-11-19", "--dry-run"])
+    monkeypatch.setattr(mood, "write_biorhythms",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    with pytest.raises(RuntimeError):
+        mood.main()
+
+
+def test_report_failure_never_raises(monkeypatch):
+    """t1211 TC3: a broken notify must not mask the real exit code."""
+    def boom(*a, **k):
+        raise OSError("notify зламався")
+    monkeypatch.setattr(mood.subprocess, "run", boom)
+    mood.report_failure("текст")  # must not raise
