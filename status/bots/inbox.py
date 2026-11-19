@@ -347,17 +347,21 @@ def recompute_forecast(day) -> str:
     one thing this function does.
     """
     unit = str(conf("astro.recalc_unit", "noos-mood-recalc"))
+    # v2, not v1: since 2026-11-12 the morning reading is mood2.py and v1 astrology is
+    # stopped by the owner's order — a recalc through mood.py delivered a reading from
+    # the deprecated pipeline, contradicting the morning's real one (t1214). mood2's own
+    # failure path (t1196/t1200) reports into her chat when the day cannot be read.
     cmd = ["systemd-run", "--user", f"--unit={unit}", "--collect",
            "--setenv", f"HOME={os.environ.get('HOME', '')}",
-           str(HOME / ".venv-voice" / "bin" / "python"), str(HOME / "status" / "mood.py"),
-           "--day", day.isoformat()]
+           str(HOME / ".venv-voice" / "bin" / "python"), str(HOME / "status" / "mood2.py"),
+           "--day", day.isoformat(), "--send"]
     out = subprocess.run(cmd, capture_output=True, text=True, timeout=60, cwd=str(HOME))
     if out.returncode != 0:
         err = (out.stderr or "").strip()
         if "already exists" in err or "Unit" in err and "exists" in err:
             return "перерахунок уже йде"
         return f"перерахунок не запустився: {err[:200]}"
-    return "перерахунок запущено — нове читання прийде сюди хвилин за вісім"
+    return "перерахунок запущено — нове читання прийде сюди за кілька хвилин"
 
 
 def park_reference(message: str, meta: dict) -> str:

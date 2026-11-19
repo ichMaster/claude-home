@@ -54,3 +54,15 @@ def test_failed_start_is_reported_not_swallowed(monkeypatch):
     out = inbox.recompute_forecast(date.today())
     assert out.startswith("перерахунок не запустився")
     assert "D-Bus" in out
+
+
+def test_recalc_runs_the_live_v2_pipeline(monkeypatch):
+    """t1214: v1 astrology is stopped (2026-11-12) — a recalc must re-read the day with
+    mood2.py --send, not deliver a reading from the deprecated pipeline."""
+    calls = fake_run(monkeypatch, [])
+    inbox.recompute_forecast(date.today())
+    started = systemd_calls(calls)
+    assert len(started) == 1
+    joined = " ".join(str(c) for c in started[0])
+    assert "mood2.py" in joined, "recalc still launches the stopped v1 mood.py"
+    assert "--send" in started[0]
