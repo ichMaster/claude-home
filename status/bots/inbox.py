@@ -553,7 +553,21 @@ def handle_update(bot: str, token: str, owner: str, st: dict, upd: dict,
         # read it even under a caption: «це на завтра» on a forwarded .txt used to win the
         # `or` and the reference body was silently discarded (t1162) — the caption rides
         # above the body instead, so the intent call still sees both
-        body = read_document(token, msg["document"])
+        try:
+            body = read_document(token, msg["document"])
+        except Exception as e:                                           # noqa: BLE001
+            # one transient getFile/network error used to propagate to poll's blanket
+            # catch after the offset was advanced: the reference was consumed forever
+            # with no reply (t1213). Same contract as the voice path (t1185): the loss
+            # is said out loud, the offset stays committed — and a caption does not get
+            # answered as if the body never existed, that is the silent loss again.
+            print(f"{bot}: документ не прочитався: {e}")
+            log_dropped(bot, "документ не прочитався", upd)
+            if not dry_run and within_cap(st, bot):
+                st.setdefault("answers", []).append(
+                    datetime.now().astimezone().isoformat(timespec="seconds"))
+                send(bot, "Документ не прочитався — надішли його ще раз, будь ласка.")
+            return 0
         if body:
             text = f"{text}\n\n{body}".strip()
             print(f"{bot}: документ прочитано: {len(body)} символів")

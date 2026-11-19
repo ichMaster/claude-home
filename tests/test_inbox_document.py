@@ -152,3 +152,41 @@ def test_clip_entry_survives_a_multibyte_boundary():
     clipped = inbox.clip_entry("ї" * 9000)    # 2 bytes each — the cut lands mid-character
     assert clipped.encode("utf-8").decode("utf-8")
     assert "обрізано" in clipped[-60:]
+
+
+# --- t1213: a transient getFile error must not consume the document silently -----------
+
+def _doc_update(caption=""):
+    msg = {"chat": {"id": 42}, "document": doc()}
+    if caption:
+        msg["caption"] = caption
+    return {"update_id": 1, "message": msg}
+
+
+def _broken_telegram(monkeypatch, sent):
+    def api(token, method, **params):
+        raise inbox.urllib.error.URLError("timed out")
+    monkeypatch.setattr(inbox, "api", api)
+    monkeypatch.setattr(inbox, "send", lambda bot, text, **k: sent.append(text))
+    monkeypatch.setattr(inbox, "log_dropped", lambda *a, **k: None)
+    monkeypatch.setattr(inbox, "answer", lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("answer() must not run for a lost document")))
+
+
+def test_getfile_failure_sends_a_notice(monkeypatch):
+    """TC1: one network hiccup — the loss is said out loud, not raised past the offset."""
+    sent = []
+    _broken_telegram(monkeypatch, sent)
+    st = {}
+    got = inbox.handle_update("zirka", "t", "42", st, _doc_update())
+    assert got == 0
+    assert sent and "окумент" in sent[0]
+
+
+def test_getfile_failure_wins_over_the_caption(monkeypatch):
+    """TC2: answering the caption while dropping the body is the silent loss again."""
+    sent = []
+    _broken_telegram(monkeypatch, sent)
+    st = {}
+    inbox.handle_update("zirka", "t", "42", st, _doc_update(caption="це на завтра"))
+    assert sent and "окумент" in sent[0]
