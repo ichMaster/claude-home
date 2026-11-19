@@ -316,3 +316,27 @@ def test_parse_due_valid_month_name_still_works():
     due, title = store.parse_due("звіт до 20 грудня")
     assert due is not None and (due.month, due.day) == (12, 20)
     assert "грудня" not in title
+
+
+# --- t1215: version and decimal numbers are numbers, not deadlines ---------------------
+
+def test_version_after_latin_word_is_not_a_date():
+    """t1215 TC1: «python 2.7» set due 2 July next year and cut the title."""
+    due, title = store.parse_due("оновити python 2.7")
+    assert due is None
+    assert title == "оновити python 2.7"
+
+
+def test_decimal_before_a_measure_word_is_not_a_date():
+    """t1215 TC2: «10.5 тис» is money, not the 10th of May."""
+    due, title = store.parse_due("бюджет 10.5 тис")
+    assert due is None
+    assert title == "бюджет 10.5 тис"
+
+
+def test_real_dates_still_parse_after_the_guards():
+    """t1215 TC3: the guards must not eat genuine dates."""
+    due, _ = store.parse_due("зустріч 18.10 в кафе")
+    assert due is not None and (due.day, due.month) == (18, 10)
+    due, _ = store.parse_due("звіт до 30.11")
+    assert due is not None and (due.day, due.month) == (30, 11)

@@ -117,6 +117,15 @@ def parse_due(text):
     # every dotted candidate is tried, not only the first: an impossible «31.11» standing
     # before a valid «20.12» used to swallow the deadline entirely (t1184)
     for m in re.finditer(r"\b(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?\b", low):
+        # a pair after a Latin word is a version («python 2.7», «v1.2»), and one before a
+        # measure word is a decimal («10.5 тис») — both passed the possible-date check and
+        # became confident wrong deadlines with a mutilated title (t1215). A Latin word
+        # before a genuine date now reads as no-date: tasks here are Ukrainian, and a
+        # silent wrong deadline costs more than an unparsed one (the t1048 principle).
+        if re.search(r"[a-z][\w.-]*\s*$", low[:m.start()]):
+            continue
+        if re.match(r"\s*(?:(?:тис|млн|млрд|грн|кг|км|мм|см)\b|%)", low[m.end():]):
+            continue
         d, mo = int(m.group(1)), int(m.group(2))
         y = int(m.group(3) or today.year)
         y += 2000 if y < 100 else 0
