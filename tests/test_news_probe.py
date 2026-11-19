@@ -39,8 +39,8 @@ class FakeResponse:
 
 def run(tmp_path, monkeypatch, seen_text=None):
     status = tmp_path / "status"
-    (status / "topics").mkdir(parents=True)
-    (status / "state").mkdir(parents=True)
+    (status / "topics").mkdir(parents=True, exist_ok=True)
+    (status / "state").mkdir(parents=True, exist_ok=True)
     (status / "topics" / "demo.json").write_text(json.dumps(
         {"назва": "Демо", "запит": "випробування", "ліміт": 5}, ensure_ascii=False),
         encoding="utf-8")
@@ -76,3 +76,27 @@ def test_healthy_seen_file_still_filters(tmp_path, monkeypatch):
     out, _ = run(tmp_path, monkeypatch, seen_text=json.dumps([key]))
     assert out["value"]["items"] == []
     assert out["severity"] == "quiet"
+
+
+def test_trim_keeps_recent_keys_not_sort_winners(tmp_path, monkeypatch):
+    """t1209 TC1: with the seen file full of keys that sort above the new story's hash
+    (c4ed1c218d14), the freshly added key must survive the trim — before the fix
+    sorted(seen)[-800:] evicted it and the same story came back as new every poll."""
+    full = json.dumps([f"ffffffff{i:04d}" for i in range(800)])
+    out1, state = run(tmp_path, monkeypatch, seen_text=full)
+    assert out1["value"]["items"], "first run should report the story"
+    kept = json.loads(state.read_text())
+    assert "c4ed1c218d14" in kept, "the fresh key was evicted by the trim"
+
+    out2, _ = run(tmp_path, monkeypatch, seen_text=state.read_text())
+    assert not out2["value"]["items"], "the story was re-reported after the trim"
+
+
+def test_trim_evicts_oldest_at_cap(tmp_path, monkeypatch):
+    """t1209 TC2: the cap evicts from the head (oldest), keeps 800."""
+    full = json.dumps([f"ffffffff{i:04d}" for i in range(800)])
+    _, state = run(tmp_path, monkeypatch, seen_text=full)
+    kept = json.loads(state.read_text())
+    assert len(kept) == 800
+    assert "ffffffff0000" not in kept          # oldest evicted
+    assert kept[-1] == "c4ed1c218d14"          # newest at the tail
