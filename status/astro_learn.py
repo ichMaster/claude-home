@@ -293,6 +293,13 @@ def main() -> int:
         # feed November's mornings (t1198).
         if args.period in ("місяць", "рік") and not args.day:
             sys.exit("для --period місяць|рік вкажи --day — будь-який день того місяця чи року")
+        # «тиждень» has no reader of its own: for_day() takes only «день», covering() only
+        # «місяць»/«рік». A week is readable only cut into days, each stored as that day's
+        # calendar; stored whole it was dead data and the morning raised NoCalendar for
+        # dates he actually covered (t1223).
+        if args.period == "тиждень" and not args.split:
+            sys.exit("для --period тиждень додай --split — тижневий текст ріжеться на дні, "
+                     "кожен записується як день")
         text = args.text
         if getattr(args, "file", None):
             f = Path(args.file).expanduser()
@@ -303,8 +310,10 @@ def main() -> int:
             sys.exit("порожній текст — нічого записувати")
         args.text = text
         parts = split_days(text, day) if args.split else [(day, text)]
+        # a split piece is one day's calendar whatever the source called itself (t1223)
+        period = "день" if args.period == "тиждень" else args.period
         for when, body in parts:
-            add(body, when, args.author, args.period)
+            add(body, when, args.author, period)
             print(f"записано: {when} · {args.author or 'без автора'} · {len(body)} символів")
         if getattr(args, "file", None):
             # the store now holds the text, so the inbox copy is no longer "waiting";

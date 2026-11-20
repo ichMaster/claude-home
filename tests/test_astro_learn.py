@@ -203,3 +203,37 @@ def test_for_day_year_ignored_old_lines_still_daily(monkeypatch, tmp_path):
     _put(store, "2026-01-01", "старий запис без періоду")
     _put(store, "2026-01-01", "весь рік попереду", "рік")
     assert learn.for_day(date(2026, 1, 1)) == "старий запис без періоду"
+
+
+# --- t1223: a weekly reference splits into daily records or is refused --------------------
+# «тиждень» was accepted and stored, but for_day() reads only «день» and covering() only
+# «місяць»/«рік» — the forward was dead data and the morning raised NoCalendar for dates
+# the astrologer actually covered.
+
+def test_weekly_with_split_stores_daily_records(monkeypatch, tmp_path):
+    """TC1: each split piece is one day's calendar, so it is stored as «день»."""
+    store = tmp_path / "ref.jsonl"
+    monkeypatch.setattr(learn, "store", lambda: store)
+    monkeypatch.setattr(learn, "ask", lambda *a, **k: answer([
+        {"day": "2026-11-24", "text": "Луна в Тельце"},
+        {"day": "2026-11-25", "text": "Луна в Близнецах"}]))
+    monkeypatch.setattr(sys, "argv",
+                        ["astro_learn.py", "add", "тижневий текст", "--day", "2026-11-24",
+                         "--period", "тиждень", "--split"])
+    assert learn.main() == 0
+    recs = [json.loads(line) for line in store.read_text(encoding="utf-8").splitlines()]
+    assert [r["period"] for r in recs] == ["день", "день"]
+    assert learn.for_day(date(2026, 11, 25)) == "Луна в Близнецах"
+
+
+def test_weekly_without_split_is_refused(monkeypatch, tmp_path):
+    """TC2: a whole week under one day would be unreadable — refused at the door (t1198)."""
+    store = tmp_path / "ref.jsonl"
+    monkeypatch.setattr(learn, "store", lambda: store)
+    monkeypatch.setattr(sys, "argv",
+                        ["astro_learn.py", "add", "тижневий текст", "--day", "2026-11-24",
+                         "--period", "тиждень"])
+    with pytest.raises(SystemExit) as e:
+        learn.main()
+    assert "--split" in str(e.value)
+    assert not store.exists(), "nothing may be stored on refusal"
