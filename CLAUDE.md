@@ -692,7 +692,8 @@ sign, ours from this chart's houses and transits. Only rules cross over; the pro
 explicitly, and so does Zirka if asked.
 
 ```
-status/astro_learn.py add "<текст>" [--day …] [--author …] [--period день|тиждень|місяць] [--learn]
+status/astro_learn.py add "<текст>" [--day …] [--author …] [--period день|тиждень|місяць|рік] [--learn]
+                                    # тиждень вимагає --split: кожен день пишеться окремо (t1223)
 status/astro_learn.py learn --day 2026-10-31
 status/astro_learn.py rules
 status/astro_learn.py list
