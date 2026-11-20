@@ -197,6 +197,16 @@ def transcribe(token: str, file_id: str) -> str:
         tmp.unlink(missing_ok=True)
 
 
+class DocumentRefused(Exception):
+    """A deliberate refusal to read a document (size cap, binary mime, binary bytes) — a
+    drop has to say what it dropped (t1054/t1218), so it carries the user-facing notice and
+    is distinguishable from a transient failure (t1213/t1217)."""
+
+    def __init__(self, reason: str, notice: str):
+        super().__init__(reason)
+        self.notice = notice
+
+
 def read_document(token: str, doc: dict) -> str:
     """A large paste arrives as a .txt document, not as message text — Telegram's client turns
     a long paste into a file (the owner, 2026-10-31: Zirka could not take the reference, «може
@@ -205,14 +215,17 @@ def read_document(token: str, doc: dict) -> str:
     mime = (doc.get("mime_type") or "").lower()
     size = int(doc.get("file_size") or 0)
     if size > int(conf("telegram.inbox.max_document_bytes", 262144)):
-        return ""
+        raise DocumentRefused("завеликий",
+                              "Документ завеликий — надішли текстом або частинами, будь ласка.")
     # Judge by the bytes, not by the label. Telegram picks the mime itself and gives a long
     # paste something like application/octet-stream with no extension; the old whitelist
     # (text/* or .txt/.md/.csv/.log) refused exactly those, so a forwarded reference was
     # dropped as «без тексту» (t1054). Only mimes that are certainly binary are refused
     # here — everything else is fetched and decided on content.
     if mime.startswith(BINARY_MIME_PREFIXES) or mime in BINARY_MIMES:
-        return ""
+        raise DocumentRefused(f"не текстовий ({mime})",
+                              "Це не текстовий файл — прочитати не можу. "
+                              "Надішли текстом, будь ласка.")
     info = api(token, "getFile", file_id=doc["file_id"])
     if not info.get("ok"):
         # a 200 body with ok:false is still a failure: returning "" here bypassed the
@@ -222,6 +235,12 @@ def read_document(token: str, doc: dict) -> str:
     # the download leg raises too — a timeout here used to return "" past the guard (t1217)
     with urllib.request.urlopen(f"{API}/file/bot{token}/{remote}", timeout=60) as r:
         text = as_text(r.read())
+    if not text:
+        # the bytes turned out not to be text (or the file is empty) — the same deliberate
+        # refusal as a binary mime, said out loud instead of «без тексту» (t1218)
+        raise DocumentRefused("не текст після завантаження",
+                              "Це не текстовий файл — прочитати не можу. "
+                              "Надішли текстом, будь ласка.")
     # The body travels as ONE argv element (claude -p, mood_feedback.py, astro_learn), and
     # Linux caps a single exec argument at 131072 bytes — a 150KB paste made every call
     # raise E2BIG after the offset was saved, so the message got no reply, ever (t1176).
@@ -559,6 +578,16 @@ def handle_update(bot: str, token: str, owner: str, st: dict, upd: dict,
         # above the body instead, so the intent call still sees both
         try:
             body = read_document(token, msg["document"])
+        except DocumentRefused as e:
+            # a deliberate refusal names itself: answering the caption alone, or logging
+            # the generic «без тексту», was the silent loss again (t1218)
+            print(f"{bot}: документ відхилено: {e}")
+            log_dropped(bot, f"документ відхилено: {e}", upd)
+            if not dry_run and within_cap(st, bot):
+                st.setdefault("answers", []).append(
+                    datetime.now().astimezone().isoformat(timespec="seconds"))
+                send(bot, e.notice)
+            return 0
         except Exception as e:                                           # noqa: BLE001
             # one transient getFile/network error used to propagate to poll's blanket
             # catch after the offset was advanced: the reference was consumed forever

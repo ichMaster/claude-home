@@ -51,22 +51,26 @@ def test_unknown_mime_text_is_read(fake_telegram):
 
 
 def test_binary_mime_not_downloaded(fake_telegram):
-    """TC3: a picture or an archive is refused on its mime, before any download."""
+    """TC3: a picture or an archive is refused on its mime, before any download.
+    Since t1218 the refusal is an exception that names itself, not an empty string."""
     for mime in ("image/png", "audio/ogg", "video/mp4", "application/pdf",
                  "application/zip"):
-        assert inbox.read_document("t", doc(mime_type=mime)) == ""
+        with pytest.raises(inbox.DocumentRefused):
+            inbox.read_document("t", doc(mime_type=mime))
     assert fake_telegram["download"] == 0
 
 
 def test_binary_content_rejected(fake_telegram):
     """TC4: a .txt name on binary bytes must not reach the model as mojibake."""
     fake_telegram["payload"] = b"\x00\x01\x02\xff\xfe binary"
-    assert inbox.read_document("t", doc(file_name="notes.txt")) == ""
+    with pytest.raises(inbox.DocumentRefused):
+        inbox.read_document("t", doc(file_name="notes.txt"))
 
 
 def test_oversized_document_ignored(fake_telegram):
     """TC5: the size cap holds, and nothing is fetched."""
-    assert inbox.read_document("t", doc(file_size=10_000_000)) == ""
+    with pytest.raises(inbox.DocumentRefused):
+        inbox.read_document("t", doc(file_size=10_000_000))
     assert fake_telegram["download"] == 0
 
 
@@ -222,3 +226,37 @@ def test_getfile_not_ok_raises(monkeypatch):
                         lambda token, method, **p: {"ok": False, "description": "bad"})
     with pytest.raises(Exception):
         inbox.read_document("t", doc())
+
+
+# --- t1218: a deliberate refusal (size, binary) is said out loud, not silence ------------
+
+def test_oversized_document_sends_a_named_notice(monkeypatch, fake_telegram):
+    """TC1: the size refusal reaches the chat and the caption is not answered alone."""
+    sent, dropped = [], []
+    monkeypatch.setattr(inbox, "send", lambda bot, text, **k: sent.append(text))
+    monkeypatch.setattr(inbox, "log_dropped",
+                        lambda bot, why, upd: dropped.append(why))
+    monkeypatch.setattr(inbox, "answer", lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("answer() must not run for a refused document")))
+    msg = {"chat": {"id": 42}, "caption": "це на завтра",
+           "document": doc(file_size=10_000_000)}
+    got = inbox.handle_update("zirka", "t", "42", {}, {"update_id": 1, "message": msg})
+    assert got == 0
+    assert sent and "завеликий" in sent[0]
+    assert dropped and "відхилено" in dropped[0]
+
+
+def test_binary_mime_refusal_carries_a_notice(fake_telegram):
+    """TC2: a PDF raises a refusal with a user-facing notice, before any download."""
+    with pytest.raises(inbox.DocumentRefused) as e:
+        inbox.read_document("t", doc(mime_type="application/pdf"))
+    assert e.value.notice
+    assert fake_telegram["download"] == 0
+
+
+def test_binary_bytes_refusal_carries_a_notice(fake_telegram):
+    """TC3: binary bytes under a .txt name raise the same refusal after the download."""
+    fake_telegram["payload"] = b"\x00\x01\x02\xff\xfe binary"
+    with pytest.raises(inbox.DocumentRefused) as e:
+        inbox.read_document("t", doc(file_name="notes.txt"))
+    assert e.value.notice
