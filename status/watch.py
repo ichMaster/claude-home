@@ -54,7 +54,9 @@ def signature(p):
     if pid == "loe":
         return f"{v.get('schedule')}|{v.get('updated')}"
     if pid == "alarm":
-        return f"{v.get('district_alert')}|{v.get('region_alert')}"
+        # the level too: a yellow→red escalation used to read as "no change" and stay
+        # silent until the 3-hour reminder (t1222)
+        return f"{v.get('district_alert')}|{v.get('region_alert')}|{v.get('level')}"
     if pid == "host":
         # do not twitch on every percent, only on tens
         return f"{(v.get('disk_used_pct') or 0)//10}|{p.get('severity')}"

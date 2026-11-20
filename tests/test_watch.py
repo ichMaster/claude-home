@@ -126,3 +126,20 @@ def test_notify_timeout_keeps_state(monkeypatch, tmp_path):
     watch.main()
     saved = json.loads(st.read_text()) if st.exists() else {}
     assert saved.get("loe", {}).get("sig") != "s1|u1"
+
+
+# --- t1222: a yellow→red escalation is a change, not silence until the 3h reminder -------
+
+def _alarm(level):
+    return {"id": "alarm", "severity": "alert",
+            "value": {"district_alert": True, "region_alert": True, "level": level}}
+
+
+def test_alarm_level_change_changes_the_signature():
+    """TC1: the same alert escalating to red must read as changed."""
+    assert watch.signature(_alarm("yellow")) != watch.signature(_alarm("red"))
+
+
+def test_alarm_same_level_keeps_the_signature():
+    """TC2: no level change, no duplicate alert."""
+    assert watch.signature(_alarm("red")) == watch.signature(_alarm("red"))
