@@ -16,5 +16,5 @@ exec claude -p "$(cat status/youtube-prompt.md)" \
   --settings "$HOME/claude-home/status/digest-settings.json" \
   --allowedTools "Bash(./notify.sh:*)" \
                  "Bash(.venv-voice/bin/python status/probes/youtube.py:*)" \
-                 "Bash(echo:*)" "Bash(date:*)" \
+                 "Bash(date:*)" \
   --disallowedTools "Write" "Edit" "MultiEdit" "NotebookEdit"

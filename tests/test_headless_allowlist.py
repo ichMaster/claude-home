@@ -75,3 +75,15 @@ def test_settings_deny_read_on_secrets():
     for pattern in ("Read(./.env*)", "Read(./config.local.json)",
                     "Read(~/.claude/.credentials.json)", "Read(~/.claude/.env.oauth)"):
         assert pattern in deny, f"digest-settings.json does not deny {pattern}"
+
+
+@pytest.mark.parametrize("script", SCRIPTS)
+def test_no_write_capable_bash_prefixes(script):
+    """t1220 TC1: a redirection rides inside the allowed command — Bash(echo:*) approves
+    `echo '…' >> CLAUDE.md`, re-opening the persistence channel t1207 closed."""
+    rules = re.findall(r'"Bash\(([^)]*)\)"', _code(script))
+    for rule in rules:
+        prefix = rule.split(":")[0].strip()
+        assert prefix not in ("echo", "printf", "tee", "dd", "sed", "cp", "mv", "touch",
+                              "ln", "install"), \
+            f"{script}: Bash({rule}) can write files via redirection or by design"
