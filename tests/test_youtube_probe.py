@@ -88,3 +88,20 @@ def test_archive_update_is_locked(tmp_path, monkeypatch):
     archive = tmp_path / "youtube-archive.jsonl"
     yt.update_archive(archive, [_entry("L1")])
     assert used == [archive]
+
+
+# --- t1221: the panel's per-channel off switch reaches the polling list -------------------
+
+def test_off_channel_is_not_polled():
+    """TC1/TC2: {"off": true} excludes a channel; false or absent keeps it."""
+    channels = [{"name": "a", "id": "UC1", "off": True},
+                {"name": "b", "id": "UC2", "off": False},
+                {"name": "c", "id": "UC3"}]
+    assert [c["name"] for c in yt.active_channels(channels)] == ["b", "c"]
+
+
+def test_main_routes_channels_through_the_switch():
+    """TC3: the filter must sit on main()'s loading path, or the switch stays decorative."""
+    import inspect
+    src = inspect.getsource(yt.main)
+    assert "active_channels" in src

@@ -135,12 +135,21 @@ def update_archive(archive, fresh):
                                            for r in kept[-20000:]))
 
 
+def active_channels(channels: list) -> list:
+    """The polling list without the channels switched off on the panel's Sources screen:
+    it writes {"off": true} per entry, and until now nothing read it — the UI confirmed a
+    change with no effect anywhere (t1221)."""
+    return [c for c in channels if not c.get("off")]
+
+
 def main():
     channels = conf("probes.youtube.channels", [])
     if not channels:
         out(ok=False, severity="warn", ttl=3600,
             text="YouTube: канали не налаштовані. Додай їх у config.json → "
                  "probes.youtube.channels (назва + id або handle)")
+    # after the not-configured check, so «не налаштовані» keeps meaning exactly that
+    channels = active_channels(channels)
 
     if LAST:
         saved = STATE.parent / "youtube-last-digest.json"
