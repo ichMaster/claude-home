@@ -190,3 +190,35 @@ def test_getfile_failure_wins_over_the_caption(monkeypatch):
     st = {}
     inbox.handle_update("zirka", "t", "42", st, _doc_update(caption="це на завтра"))
     assert sent and "окумент" in sent[0]
+
+
+# --- t1217: the download leg and a not-ok getFile reach the t1213 guard too --------------
+
+def test_download_failure_sends_a_notice(monkeypatch):
+    """TC1: getFile succeeds, the download times out — the loss is said, not swallowed."""
+    sent = []
+
+    def api(token, method, **params):
+        return {"ok": True, "result": {"file_path": "docs/x"}}
+
+    def urlopen(url, timeout=0):
+        raise inbox.urllib.error.URLError("timed out")
+
+    monkeypatch.setattr(inbox, "api", api)
+    monkeypatch.setattr(inbox.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(inbox, "send", lambda bot, text, **k: sent.append(text))
+    monkeypatch.setattr(inbox, "log_dropped", lambda *a, **k: None)
+    monkeypatch.setattr(inbox, "answer", lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("answer() must not run for a lost document")))
+    st = {}
+    got = inbox.handle_update("zirka", "t", "42", st, _doc_update(caption="це на завтра"))
+    assert got == 0
+    assert sent and "окумент" in sent[0]
+
+
+def test_getfile_not_ok_raises(monkeypatch):
+    """TC2: a 200 body with ok:false is a failure, not an empty document."""
+    monkeypatch.setattr(inbox, "api",
+                        lambda token, method, **p: {"ok": False, "description": "bad"})
+    with pytest.raises(Exception):
+        inbox.read_document("t", doc())

@@ -215,13 +215,13 @@ def read_document(token: str, doc: dict) -> str:
         return ""
     info = api(token, "getFile", file_id=doc["file_id"])
     if not info.get("ok"):
-        return ""
+        # a 200 body with ok:false is still a failure: returning "" here bypassed the
+        # t1213 guard and consumed the document silently (t1217)
+        raise RuntimeError(f"getFile відповів не ok: {info.get('description') or info}")
     remote = info["result"]["file_path"]
-    try:
-        with urllib.request.urlopen(f"{API}/file/bot{token}/{remote}", timeout=60) as r:
-            text = as_text(r.read())
-    except Exception:                                 # noqa: BLE001
-        return ""
+    # the download leg raises too — a timeout here used to return "" past the guard (t1217)
+    with urllib.request.urlopen(f"{API}/file/bot{token}/{remote}", timeout=60) as r:
+        text = as_text(r.read())
     # The body travels as ONE argv element (claude -p, mood_feedback.py, astro_learn), and
     # Linux caps a single exec argument at 131072 bytes — a 150KB paste made every call
     # raise E2BIG after the offset was saved, so the message got no reply, ever (t1176).
