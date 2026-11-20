@@ -330,20 +330,24 @@ def zirka_kind(message: str) -> dict:
     would poison the calibration, so this is classified rather than guessed from length."""
     prompt = (PROMPTS / "zirka_intent.md").read_text(encoding="utf-8").replace(
         "{{ПОВІДОМЛЕННЯ}}", message)
+    # a failed classification falls back to chat, never to feedback: with the classifier
+    # down (an expired login, an API 5xx) every message 25+ characters long — including a
+    # forwarded reading — would be recorded as calibration data, which is exactly the
+    # poison this classifier exists to prevent (t1219)
     try:
         raw = call_claude(prompt, str(conf("telegram.inbox.intent_model", "sonnet")), 120)
     except Exception as e:                                               # noqa: BLE001
         print(f"тип повідомлення не визначився: {e}")
-        return {"kind": "feedback"}
+        return {"kind": "chat"}
     m = re.search(r"\{.*\}", raw, re.S)
     if not m:
-        return {"kind": "feedback"}
+        return {"kind": "chat"}
     try:
         d = json.loads(m.group(0))
     except json.JSONDecodeError:
-        return {"kind": "feedback"}
+        return {"kind": "chat"}
     if d.get("kind") not in ("reference", "feedback", "recalc", "chat"):
-        d["kind"] = "feedback"
+        d["kind"] = "chat"
     return d
 
 

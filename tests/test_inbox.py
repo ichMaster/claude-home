@@ -257,3 +257,31 @@ def test_zirka_context_valid_state_renders(monkeypatch, tmp_path):
     ctx = inbox.zirka_context()
     assert "день як день" in ctx["ПРОГНОЗ"]
     assert "Ф+10" in ctx["БІОРИТМИ"]
+
+
+# --- t1219: a failed classification answers as chat, it never records feedback -----------
+
+def test_zirka_kind_model_failure_is_chat(monkeypatch):
+    """TC1: with the classifier down, nothing may reach the calibration log."""
+    def boom(*a, **k):
+        raise RuntimeError("login expired")
+    monkeypatch.setattr(inbox, "call_claude", boom)
+    assert inbox.zirka_kind("☽ Пн 26 жовтня — Місяць у Тельці")["kind"] == "chat"
+
+
+def test_zirka_kind_prose_answer_is_chat(monkeypatch):
+    """TC2: an answer with no JSON is a failed classification, not feedback."""
+    monkeypatch.setattr(inbox, "call_claude", lambda *a, **k: "вибач, не зрозуміла")
+    assert inbox.zirka_kind("якийсь текст у чаті")["kind"] == "chat"
+
+
+def test_zirka_kind_unknown_kind_is_chat(monkeypatch):
+    """TC3: a kind outside the contract is coerced to chat, never to feedback."""
+    monkeypatch.setattr(inbox, "call_claude", lambda *a, **k: '{"kind": "horoscope"}')
+    assert inbox.zirka_kind("щось")["kind"] == "chat"
+
+
+def test_zirka_kind_genuine_feedback_passes(monkeypatch):
+    """TC4: a real classification is untouched."""
+    monkeypatch.setattr(inbox, "call_claude", lambda *a, **k: '{"kind": "feedback"}')
+    assert inbox.zirka_kind("день був спокійніший, ніж ти казала")["kind"] == "feedback"
