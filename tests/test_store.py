@@ -340,3 +340,34 @@ def test_real_dates_still_parse_after_the_guards():
     assert due is not None and (due.day, due.month) == (18, 10)
     due, _ = store.parse_due("звіт до 30.11")
     assert due is not None and (due.day, due.month) == (30, 11)
+
+
+# --- t1216: the decimal guard knows the full measure words and the time units -----------
+
+def test_decimal_before_a_full_measure_word_is_not_a_date():
+    """t1216 TC2: «10.5 тисяч» is money — «тис» with a \\b missed the full word."""
+    due, title = store.parse_due("переказати 10.5 тисяч мамі")
+    assert due is None
+    assert title == "переказати 10.5 тисяч мамі"
+
+
+def test_decimal_before_a_time_unit_is_not_a_date():
+    """t1216 TC1: «1.5 години» is a duration, not the 1st of May."""
+    due, title = store.parse_due("розмова з банком на 1.5 години")
+    assert due is None
+    assert title == "розмова з банком на 1.5 години"
+
+
+def test_decimal_before_a_percent_word_is_not_a_date():
+    """t1216 TC3: «10.5 відсотків» is a rate, not the 10th of May."""
+    due, title = store.parse_due("знизити ставку на 10.5 відсотків")
+    assert due is None
+    assert title == "знизити ставку на 10.5 відсотків"
+
+
+def test_real_dates_survive_the_broadened_guard():
+    """t1216 TC4: genuine dates and the old abbreviation case stay as they were."""
+    due, _ = store.parse_due("оплатити до 20.12")
+    assert due is not None and (due.day, due.month) == (20, 12)
+    due, title = store.parse_due("бюджет 10.5 тис")
+    assert due is None and title == "бюджет 10.5 тис"

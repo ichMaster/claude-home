@@ -124,7 +124,14 @@ def parse_due(text):
         # silent wrong deadline costs more than an unparsed one (the t1048 principle).
         if re.search(r"[a-z][\w.-]*\s*$", low[:m.start()]):
             continue
-        if re.match(r"\s*(?:(?:тис|млн|млрд|грн|кг|км|мм|см)\b|%)", low[m.end():]):
+        # stems with \w*, not bare abbreviations: «тис\b» missed «тисяч», and the time
+        # units («1.5 години») were not listed at all (t1216)
+        if re.match(
+            r"\s*(?:тис\w*|млн|мільйон\w*|млрд|мільярд\w*|грн|грив\w*|кг|кілограм\w*"
+            r"|км|кілометр\w*|мм|см|метр\w*|годин\w*|хвилин\w*|секунд\w*"
+            r"|відсотк\w*|процент\w*|%)",
+            low[m.end():],
+        ):
             continue
         d, mo = int(m.group(1)), int(m.group(2))
         y = int(m.group(3) or today.year)
