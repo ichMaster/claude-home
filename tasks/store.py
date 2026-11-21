@@ -122,13 +122,20 @@ def parse_due(text):
         # became confident wrong deadlines with a mutilated title (t1215). A Latin word
         # before a genuine date now reads as no-date: tasks here are Ukrainian, and a
         # silent wrong deadline costs more than an unparsed one (the t1048 principle).
-        if re.search(r"[a-z][\w.-]*\s*$", low[:m.start()]):
+        # the version words are listed in Cyrillic too: voice arrives transcribed, so
+        # «реліз 3.12» and «до версії 2.5» bypassed the Latin-only guard (t1225). Only
+        # version-naming words — a generic Cyrillic word before a date is the normal
+        # way to date a task («зустріч 20.12»).
+        if re.search(r"(?:[a-z][\w.-]*|верс\w*|реліз\w*|пітон\w*|пайтон\w*)\s*$",
+                     low[:m.start()]):
             continue
         # stems with \w*, not bare abbreviations: «тис\b» missed «тисяч», and the time
-        # units («1.5 години») were not listed at all (t1216)
+        # units («1.5 години») were not listed at all (t1216); the duration units
+        # («1.5 дня», «2.5 тижні») and the short forms год/хв/сек neither (t1224)
         if re.match(
             r"\s*(?:тис\w*|млн|мільйон\w*|млрд|мільярд\w*|грн|грив\w*|кг|кілограм\w*"
-            r"|км|кілометр\w*|мм|см|метр\w*|годин\w*|хвилин\w*|секунд\w*"
+            r"|км|кілометр\w*|мм|см|метр\w*|год\w*|хв\w*|сек\w*"
+            r"|дн\w*|день|тиж\w*|місяц\w*|рок\w*|рік"
             r"|відсотк\w*|процент\w*|%)",
             low[m.end():],
         ):

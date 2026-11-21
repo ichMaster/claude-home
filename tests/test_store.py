@@ -371,3 +371,44 @@ def test_real_dates_survive_the_broadened_guard():
     assert due is not None and (due.day, due.month) == (20, 12)
     due, title = store.parse_due("бюджет 10.5 тис")
     assert due is None and title == "бюджет 10.5 тис"
+
+
+# --- t1224: duration words — days, weeks, months, years, short time units ---------------
+
+def test_decimal_before_a_duration_word_is_not_a_date():
+    """t1224 TC1: «1.5 дня» is a duration, not the 1st of May."""
+    due, title = store.parse_due("відпустка на 1.5 дня")
+    assert due is None
+    assert title == "відпустка на 1.5 дня"
+
+
+def test_decimal_before_every_duration_unit_is_not_a_date():
+    """t1224 TC2: all duration units and short time forms stay numbers."""
+    for text in ("бігти 2.5 год", "перерва 1.5 хв", "пауза 2.5 сек",
+                 "чекати 1.5 місяця", "звіт за 2.5 тижні", "проєкт на 1.5 року"):
+        due, title = store.parse_due(text)
+        assert due is None, text
+        assert title == text
+
+
+# --- t1225: Cyrillic version words — реліз, версія, пітон ------------------------------
+
+def test_version_after_cyrillic_version_word_is_not_a_date():
+    """t1225 TC1: «реліз 3.12» is a version, not the 3rd of December."""
+    due, title = store.parse_due("зробити реліз 3.12")
+    assert due is None
+    assert title == "зробити реліз 3.12"
+
+
+def test_more_cyrillic_version_words_are_not_dates():
+    """t1225 TC2: «до версії 2.5», «пітон 3.12» stay versions."""
+    for text in ("оновити до версії 2.5", "перейти на пітон 3.12"):
+        due, title = store.parse_due(text)
+        assert due is None, text
+        assert title == text
+
+
+def test_ordinary_cyrillic_word_before_a_date_still_parses():
+    """t1225 TC3: «зустріч 20.12» is a date — the guard stays narrow."""
+    due, _ = store.parse_due("зустріч 20.12")
+    assert due is not None and (due.day, due.month) == (20, 12)
