@@ -196,3 +196,74 @@ def test_zirka_still_measures_the_legacy_blocks():
     blocks = {b["name"]: b for b in zirka.reading_blocks(
         "КОРОТКО: " + "я" * 400 + "\nПІДСУМОК: коротко")}
     assert blocks["КОРОТКО"]["over"] is True and blocks["КОРОТКО"]["budget"] == 300
+
+
+# --- t1230: since the v2 cutover the reading lives in astro2's log ----------------------
+
+V1_BIO_ONLY = """\
+===== 2026-11-20 =====
+
+--- біоритми ---
+ПОКАЗНИКИ: фізичний 12%
+"""
+
+V2_LOG = """\
+===== 2026-11-20 =====
+
+--- read ---
+позиції дня
+
+--- pick ---
+голосне
+
+--- wide ---
+період
+
+--- day ---
+ДЕНЬ
+День, який тисне з ранку.
+
+ОСНОВА
+w1 Сатурн.
+"""
+
+V2_RECALCED = V2_LOG + """\
+
+===== 2026-11-20 =====
+
+--- day ---
+ДЕНЬ
+Перечитаний день.
+"""
+
+
+def _with_both(monkeypatch, tmp_path, v1_text, v2_text):
+    v1 = tmp_path / "mood.log"
+    v1.write_text(v1_text, encoding="utf-8")
+    v2 = tmp_path / "mood-v2.log"
+    v2.write_text(v2_text, encoding="utf-8")
+    monkeypatch.setattr(mood, "state_path", lambda key: v1)
+    monkeypatch.setattr(mood, "v2_log_path", lambda: v2)
+
+
+def test_final_reading_finds_the_v2_reading(monkeypatch, tmp_path):
+    """t1230 TC1: a post-cutover day lives in astro2's log — learn and calibrate must
+    see it, not «нашого читання немає»."""
+    _with_both(monkeypatch, tmp_path, V1_BIO_ONLY, V2_LOG)
+    got = mood.final_reading(date(2026, 11, 20))
+    assert "тисне з ранку" in got
+    assert "позиції дня" not in got, "only the day section is the reading"
+
+
+def test_final_reading_still_reads_a_v1_day(monkeypatch, tmp_path):
+    """t1230 TC2: a pre-cutover day stays readable from v1's log."""
+    _with_both(monkeypatch, tmp_path, NEW_LOG, V2_LOG)
+    got = mood.final_reading(date(2026, 11, 2))
+    assert "тяга до теплого" in got
+
+
+def test_final_reading_takes_the_newest_v2_block(monkeypatch, tmp_path):
+    """t1230 TC3: a recalc appends a new block — recency per block, like v1 (t1148)."""
+    _with_both(monkeypatch, tmp_path, V1_BIO_ONLY, V2_RECALCED)
+    got = mood.final_reading(date(2026, 11, 20))
+    assert "Перечитаний день" in got

@@ -254,19 +254,19 @@ _FINAL_SECTIONS = ("письмо (перероблено)", "письмо",
                    "підсумок (перероблено)", "підсумок", "прогноз")
 
 
-def final_reading(day: date) -> str:
-    """That day's reading as it was sent — the one chain every consumer of the log shares.
+def v2_log_path():
+    """The v2 pipeline's log (astro2), or None when v2 is not configured or a named
+    subject is being read — v2 reads the owner only, so a subject's history stays on
+    v1's files."""
+    if astro.SUBJECT or not conf("astro2.log", ""):
+        return None
+    return path("astro2.log")
 
-    The t1126 rename of the sections silently killed calibration, reference learning and
-    yesterday's context, because each parsed the log with its own hardcoded names (t1127).
 
-    Recency is per block, not per name (t1148): a full re-run after a --resume logs a newer
-    «письмо», and the stale «письмо (перероблено)» must not outrank what was actually sent
-    last — calibration would compare against a reading he never received. Within one block
-    the name order still decides, which keeps legacy days readable.
-    """
-    f = state_path("log")
-    if not f.is_file():
+def _final_from(f, day: date, names) -> str:
+    """The newest block of `day` in log `f` that carries one of `names` — recency per
+    block, name order within a block (t1148)."""
+    if f is None or not f.is_file():
         return ""
     text = f.read_text(encoding="utf-8")
     all_marks = list(_LOG_DAY_RE.finditer(text))
@@ -277,10 +277,33 @@ def final_reading(day: date) -> str:
         block = {m.group(1): m.group(2).strip()
                  for m in re.finditer(r"--- (.+?) ---\n(.*?)(?=\n--- |\Z)",
                                       text[all_marks[i].end():end], re.DOTALL)}
-        for name in _FINAL_SECTIONS:
+        for name in names:
             if block.get(name):
                 return block[name]
     return ""
+
+
+def final_reading(day: date) -> str:
+    """That day's reading as it was sent — the one chain every consumer of the log shares.
+
+    The t1126 rename of the sections silently killed calibration, reference learning and
+    yesterday's context, because each parsed the log with its own hardcoded names (t1127).
+
+    Recency is per block, not per name (t1148): a full re-run after a --resume logs a newer
+    «письмо», and the stale «письмо (перероблено)» must not outrank what was actually sent
+    last — calibration would compare against a reading he never received. Within one block
+    the name order still decides, which keeps legacy days readable.
+
+    Since the v2 cutover (2026-11-12) the delivered reading is written by mood2 into
+    astro2's own log while this module's log keeps only biorhythms, so the chain reads v2
+    first and falls back to v1 for the legacy days (t1230) — otherwise learn and calibrate
+    answered «читання немає» for every morning that was actually sent.
+    """
+    stages2 = list(conf("astro2.stages", []) or [])
+    got = _final_from(v2_log_path(), day, tuple(stages2[-1:] or ["day"]))
+    if got:
+        return got
+    return _final_from(state_path("log"), day, _FINAL_SECTIONS)
 
 
 def yesterday_block(day: date) -> str:
