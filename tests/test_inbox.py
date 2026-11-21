@@ -285,3 +285,38 @@ def test_zirka_kind_genuine_feedback_passes(monkeypatch):
     """TC4: a real classification is untouched."""
     monkeypatch.setattr(inbox, "call_claude", lambda *a, **k: '{"kind": "feedback"}')
     assert inbox.zirka_kind("день був спокійніший, ніж ти казала")["kind"] == "feedback"
+
+
+# --- t1227: a failed answering call says the loss in the chat ---------------------------
+
+def test_failed_answer_sends_a_loss_notice(monkeypatch, bot_env):
+    """t1227 TC1+TC2: answer() raising must notify the chat, log the drop and count
+    against the hourly cap — not consume the message silently."""
+    sent, dropped = [], []
+
+    def boom(*a, **k):
+        raise RuntimeError("модель не відповіла")
+
+    monkeypatch.setattr(inbox, "answer", boom)
+    monkeypatch.setattr(inbox, "send", lambda bot, text: sent.append(text))
+    monkeypatch.setattr(inbox, "log_dropped", lambda bot, why, u: dropped.append(why))
+    st = {}
+    n = inbox.handle_update("zirka", "t", "42", st, upd(1, text="як день?"))
+    assert n == 0
+    assert sent, "no loss notice reached the chat"
+    assert dropped, "the lost message was not recorded in dropped.jsonl"
+    assert st.get("answers"), "the notice must count against the hourly cap"
+
+
+def test_failed_answer_respects_the_exhausted_cap(monkeypatch, bot_env):
+    """t1227 TC3: with the hourly cap spent, the failure is logged but nothing is sent."""
+    sent, dropped = [], []
+    monkeypatch.setattr(inbox, "answer",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("впало")))
+    monkeypatch.setattr(inbox, "send", lambda bot, text: sent.append(text))
+    monkeypatch.setattr(inbox, "log_dropped", lambda bot, why, u: dropped.append(why))
+    monkeypatch.setattr(inbox, "within_cap", lambda st, bot: False)
+    st = {}
+    n = inbox.handle_update("zirka", "t", "42", st, upd(1, text="як день?"))
+    assert n == 0
+    assert dropped and not sent

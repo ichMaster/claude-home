@@ -652,7 +652,16 @@ def handle_update(bot: str, token: str, owner: str, st: dict, upd: dict,
     try:
         reply = answer(bot, st.get("history", []), text, search)
     except Exception as e:                                               # noqa: BLE001
+        # a failed model call used to consume the message with no reply and no record:
+        # the offset is already committed, so the bot just looked like it ignored the
+        # owner. Same contract as voice (t1185) and documents (t1213): the loss is said
+        # out loud in that bot's chat, within the hourly cap (t1227).
         print(f"{bot}: відповідь не склалась: {e}")
+        log_dropped(bot, "відповідь не склалась", upd)
+        if not dry_run and within_cap(st, bot):
+            st.setdefault("answers", []).append(
+                datetime.now().astimezone().isoformat(timespec="seconds"))
+            send(bot, "Не вийшло відповісти — спробуй ще раз трохи згодом, будь ласка.")
         return 0
     reply, request = split_handoff(reply)
     if request and bot == "bruno" and search:
