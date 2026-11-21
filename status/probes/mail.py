@@ -69,6 +69,18 @@ def pick_batch(uids, cap=60):
     return chunk, last, len(uids) - len(chunk)
 
 
+def load_state():
+    """State, tolerant of corruption (t1226): a torn or hand-mangled mail.json reads as a
+    fresh install — LOOKBACK_DAYS caps the backlog — instead of killing the probe on
+    every run with a traceback run.sh discards. Same contract as youtube (t1044) and
+    watch (t1046)."""
+    try:
+        state = json.loads(STATE.read_text()) if STATE.exists() else {}
+        return state, int(state.get("last_uid", 0))
+    except (ValueError, OSError):
+        return {}, 0
+
+
 def main():
     cfg = env()
     user, pw = cfg.get("GMAIL_USER"), cfg.get("GMAIL_APP_PASSWORD")
@@ -84,8 +96,7 @@ def main():
         except Exception:
             pass
 
-    state = json.loads(STATE.read_text()) if STATE.exists() else {}
-    last_uid = int(state.get("last_uid", 0))
+    state, last_uid = load_state()
 
     try:
         M = imaplib.IMAP4_SSL("imap.gmail.com", 993, timeout=TIMEOUT)
