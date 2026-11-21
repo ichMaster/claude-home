@@ -43,20 +43,19 @@ def test_split_uses_the_model(monkeypatch):
     assert "Луна в Тельце" in seen["prompt"], "the text has to reach the call"
 
 
-def test_split_falls_back_to_one_block(monkeypatch):
-    """TC2: a failed or unusable call keeps the whole text under the given date."""
+def test_split_raises_on_failure(monkeypatch):
+    """TC2 (reshaped by t1228): a failed or unusable call raises SplitFailed — the
+    keep-whole fallback is the caller's decision, because for a week it is poison."""
     def boom(prompt, model="", timeout=0):
         raise RuntimeError("виклик не вдався")
 
     monkeypatch.setattr(learn, "ask", boom)
-    got = learn.split_days(WEEK, date(2026, 10, 31))
-    assert len(got) == 1
-    assert got[0][0] == date(2026, 10, 31)
-    assert got[0][1] == WEEK
+    with pytest.raises(learn.SplitFailed):
+        learn.split_days(WEEK, date(2026, 10, 31))
 
     monkeypatch.setattr(learn, "ask", lambda *a, **k: "не знаю")
-    got = learn.split_days(WEEK, date(2026, 10, 31))
-    assert got == [(date(2026, 10, 31), WEEK)]
+    with pytest.raises(learn.SplitFailed):
+        learn.split_days(WEEK, date(2026, 10, 31))
 
 
 def test_split_drops_a_malformed_block(monkeypatch):
@@ -237,3 +236,62 @@ def test_weekly_without_split_is_refused(monkeypatch, tmp_path):
         learn.main()
     assert "--split" in str(e.value)
     assert not store.exists(), "nothing may be stored on refusal"
+
+
+# --- t1228: a failed weekly split refuses instead of storing the week as one day --------
+
+def _week_add(monkeypatch, tmp_path, ask):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    store = tmp_path / "ref.jsonl"
+    monkeypatch.setattr(learn, "INBOX", inbox)
+    monkeypatch.setattr(learn, "store", lambda: store)
+    monkeypatch.setattr(learn, "ask", ask)
+    f = inbox / "20261121-050000-2026-11-23.txt"
+    f.write_text(WEEK, encoding="utf-8")
+    monkeypatch.setattr(sys, "argv",
+                        ["astro_learn.py", "add", "--file", str(f),
+                         "--day", "2026-11-23", "--period", "тиждень", "--split"])
+    return store, f
+
+
+def test_failed_weekly_split_is_refused(monkeypatch, tmp_path):
+    """t1228 TC1: a model failure must refuse the week — nothing stored, file kept."""
+    def boom(prompt, model="", timeout=0):
+        raise RuntimeError("виклик не вдався")
+
+    store, f = _week_add(monkeypatch, tmp_path, boom)
+    with pytest.raises(SystemExit) as e:
+        learn.main()
+    assert "не записано" in str(e.value.code)
+    assert not store.exists(), "a week must never be stored as one «день» record"
+    assert f.exists(), "a refused reference must stay in the inbox"
+
+
+def test_prose_answer_to_weekly_split_is_refused(monkeypatch, tmp_path):
+    """t1228 TC2: an unparseable answer is the same failure, said out loud."""
+    store, f = _week_add(monkeypatch, tmp_path, lambda *a, **k: "не знаю, вибач")
+    with pytest.raises(SystemExit):
+        learn.main()
+    assert not store.exists()
+    assert f.exists()
+
+
+def test_failed_daily_split_still_stores_whole(monkeypatch, tmp_path):
+    """t1228 TC3: for a daily reference the old fallback survives — stored whole."""
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    store = tmp_path / "ref.jsonl"
+    monkeypatch.setattr(learn, "INBOX", inbox)
+    monkeypatch.setattr(learn, "store", lambda: store)
+    monkeypatch.setattr(learn, "ask",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("впало")))
+    f = inbox / "20261121-050000-2026-11-23.txt"
+    f.write_text("один день тексту", encoding="utf-8")
+    monkeypatch.setattr(sys, "argv",
+                        ["astro_learn.py", "add", "--file", str(f),
+                         "--day", "2026-11-23", "--split"])
+    assert learn.main() == 0
+    rec = json.loads(store.read_text(encoding="utf-8").splitlines()[0])
+    assert rec["text"] == "один день тексту" and rec["day"] == "2026-11-23"
+    assert not f.exists(), "a stored daily reference is consumed as before"

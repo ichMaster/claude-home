@@ -104,6 +104,13 @@ def ask(prompt: str, model: str = "", timeout: int = 180) -> str:
     return mood.run_claude(prompt, model or str(conf("astro.models.layer", "sonnet")), timeout)
 
 
+class SplitFailed(RuntimeError):
+    """The splitting call failed or answered unusably — no per-day blocks exist. The
+    caller decides what that means: a weekly text is refused outright (stored whole it
+    becomes one «день» record and the morning reads a week as one day's calendar, t1228),
+    a daily one may still be stored in one piece."""
+
+
 def split_days(text: str, first: date) -> list[tuple[date, str]]:
     """Cut a multi-day reference into one block per date — by the model, not by a pattern.
 
@@ -115,8 +122,9 @@ def split_days(text: str, first: date) -> list[tuple[date, str]]:
     the model, never parsed by a script (2026-10-31, said twice).
 
     Python's share is `json.loads` and `date.fromisoformat` — reading the model's structured
-    answer, not the owner's content. A call that fails or answers unusably keeps the text
-    whole under `first`: a reference stored in one piece beats a reference lost.
+    answer, not the owner's content. A call that fails or answers unusably raises
+    SplitFailed and names why (t1228) — the silent keep-whole fallback lives in the caller,
+    where it can tell a day from a week.
     """
     prompt = ((HOME / "status" / "mood" / "split.md").read_text(encoding="utf-8")
               .replace("{{СЬОГОДНІ}}", date.today().isoformat())
@@ -125,8 +133,7 @@ def split_days(text: str, first: date) -> list[tuple[date, str]]:
     try:
         raw = ask(prompt)
     except Exception as e:                                               # noqa: BLE001
-        print(f"різати на дні не вдалось ({e}) — лишаю одним шматком", file=sys.stderr)
-        return [(first, text.strip())]
+        raise SplitFailed(f"виклик моделі впав: {e}") from e
 
     start, end = raw.find("["), raw.rfind("]")
     try:
@@ -134,7 +141,7 @@ def split_days(text: str, first: date) -> list[tuple[date, str]]:
     except json.JSONDecodeError:
         blocks = None
     if not isinstance(blocks, list):
-        return [(first, text.strip())]
+        raise SplitFailed("відповідь моделі не розібралась як список днів")
 
     out: list[tuple[date, str]] = []
     for b in blocks:
@@ -145,7 +152,9 @@ def split_days(text: str, first: date) -> list[tuple[date, str]]:
         except ValueError:
             continue                              # a block we cannot date is not a day
         out.append((when, str(b["text"]).strip()))
-    return out or [(first, text.strip())]
+    if not out:
+        raise SplitFailed("жоден блок не має дати й тексту")
+    return out
 
 
 def for_day(day: date) -> str:
@@ -309,7 +318,21 @@ def main() -> int:
         if not text.strip():
             sys.exit("порожній текст — нічого записувати")
         args.text = text
-        parts = split_days(text, day) if args.split else [(day, text)]
+        if args.split:
+            try:
+                parts = split_days(text, day)
+            except SplitFailed as e:
+                # a week stored whole becomes one «день» record and the morning reads
+                # seven days of windows as one day's calendar (t1228): refused, and the
+                # inbox file stays where it is, so nothing looks done
+                if args.period == "тиждень":
+                    sys.exit(f"не вдалось порізати тиждень на дні ({e}) — "
+                             "нічого не записано, спробуй ще раз")
+                print(f"різати на дні не вдалось ({e}) — лишаю одним шматком",
+                      file=sys.stderr)
+                parts = [(day, text.strip())]
+        else:
+            parts = [(day, text)]
         # a split piece is one day's calendar whatever the source called itself (t1223)
         period = "день" if args.period == "тиждень" else args.period
         for when, body in parts:
