@@ -559,13 +559,18 @@ def part_of_day(frm, to=None) -> str:
     if start is None:
         return ""
     end = _minutes(to)
-    if end is None or end <= start:
+    if end is None or end == start:
         end = start + 1
+    elif end < start:
+        # «23:10 → 03:12» crosses midnight: the window keeps running into the next
+        # day's parts instead of collapsing to one minute at its start (t1229)
+        end += 24 * 60
     best, best_overlap = "", 0
-    for h1, h2, name in PARTS:
-        overlap = min(end, h2 * 60) - max(start, h1 * 60)
-        if overlap > best_overlap:
-            best, best_overlap = name, overlap
+    for day in (0, 1440):
+        for h1, h2, name in PARTS:
+            overlap = min(end, h2 * 60 + day) - max(start, h1 * 60 + day)
+            if overlap > best_overlap:
+                best, best_overlap = name, overlap
     return best
 
 

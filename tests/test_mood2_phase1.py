@@ -414,6 +414,11 @@ def test_a_reading_that_never_passes_still_stops(monkeypatch, tmp_path):
     ("12:00", None, "в обід"),          # a moment takes the part of its start
     ("18:00", "18:00", "ввечері"),      # a boundary does not borrow the next part
     (None, None, ""),
+    # t1229: a window across midnight keeps running — it must not collapse to one minute
+    ("23:10", "03:12", "вночі"),        # 50 min of evening against 192 of night
+    ("22:22", "03:09", "вночі"),        # a live window from the reference store
+    ("19:00", "00:30", "ввечері"),      # most of it is still before midnight
+    ("23:00", "23:50", "ввечері"),      # no wrap when nothing crosses
 ])
 def test_part_of_day(frm, to, expected):
     assert mood2.part_of_day(frm, to) == expected
