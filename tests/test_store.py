@@ -447,3 +447,36 @@ def test_explicit_year_outranks_money_words():
     """t1232 TC3: the year exemption beats every measure word, not only durations."""
     due, _ = store.parse_due("бюджет до 20.12.2026 тис")
     assert due == store.date(2026, 12, 20)
+
+
+# --- t1233: «на вихідних» on a Sunday means the weekend in progress ----------------------
+
+class _Sun22(store.date):
+    @classmethod
+    def today(cls):
+        return store.date(2026, 11, 22)      # a Sunday
+
+
+def test_weekend_on_sunday_is_the_one_in_progress(monkeypatch):
+    """t1233 TC1: said on Sunday, the period contains today, not next weekend."""
+    monkeypatch.setattr(store, "date", _Sun22)
+    period, _ = store.parse_period("перебрати акваріум на вихідних")
+    kind, start, end = period
+    assert kind == "вихідні"
+    assert start == store.date(2026, 11, 21) and end == store.date(2026, 11, 22)
+
+
+def test_weekend_on_other_days_is_unchanged(monkeypatch):
+    """t1233 TC2+TC3: Saturday, Friday and Monday keep their old answers."""
+    for day, sat in ((21, 21),   # Saturday → today..tomorrow
+                     (20, 21),   # Friday → the coming weekend
+                     (16, 21)):  # Monday → five days ahead
+        class _D(store.date):
+            @classmethod
+            def today(cls, _d=day):
+                return store.date(2026, 11, _d)
+        monkeypatch.setattr(store, "date", _D)
+        period, _ = store.parse_period("на вихідних")
+        _, start, end = period
+        assert start == store.date(2026, 11, sat), f"day {day}"
+        assert end == store.date(2026, 11, sat + 1), f"day {day}"

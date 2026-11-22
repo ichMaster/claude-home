@@ -51,7 +51,11 @@ def parse_period(text):
         t = re.sub(pattern, " ", t, count=1, flags=re.I).strip(" ,.-")
 
     if re.search(r"\b(на\s+)?(вихідних|вікенд[іа]?|вихідні)\b", low):
-        sat = today + timedelta(days=(5 - today.weekday()) % 7)
+        # неділя: «на вихідних» — ті, що тривають, не наступні (t1233)
+        if today.weekday() == 6:
+            sat = today - timedelta(days=1)
+        else:
+            sat = today + timedelta(days=(5 - today.weekday()) % 7)
         cut(r"\b(на\s+)?(вихідних|вікенд[іа]?|вихідні)\b")
         return ("вихідні", sat, sat + timedelta(days=1)), t
     if re.search(r"\bнаступного\s+тижня\b", low):
