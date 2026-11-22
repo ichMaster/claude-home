@@ -131,11 +131,14 @@ def parse_due(text):
             continue
         # stems with \w*, not bare abbreviations: «тис\b» missed «тисяч», and the time
         # units («1.5 години») were not listed at all (t1216); the duration units
-        # («1.5 дня», «2.5 тижні») and the short forms год/хв/сек neither (t1224)
-        if re.match(
+        # («1.5 дня», «2.5 тижні») and the short forms год/хв/сек neither (t1224).
+        # a candidate with an explicit year can never be a decimal, and the stems stay
+        # off the nominatives a decimal never governs — «день», «тиждень», «хвіртку»
+        # after a real date are the sentence going on, not a measure (t1232)
+        if not m.group(3) and re.match(
             r"\s*(?:тис\w*|млн|мільйон\w*|млрд|мільярд\w*|грн|грив\w*|кг|кілограм\w*"
-            r"|км|кілометр\w*|мм|см|метр\w*|год\w*|хв\w*|сек\w*"
-            r"|дн\w*|день|тиж\w*|місяц\w*|рок\w*|рік"
+            r"|км|кілометр\w*|мм|см|метр\w*|год\w*|хв\b|хвилин\w*|сек\w*"
+            r"|дн\w*|тижн\w*|місяц\w*|рок\w*|рік"
             r"|відсотк\w*|процент\w*|%)",
             low[m.end():],
         ):

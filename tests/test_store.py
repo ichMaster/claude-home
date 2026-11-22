@@ -412,3 +412,38 @@ def test_ordinary_cyrillic_word_before_a_date_still_parses():
     """t1225 TC3: «зустріч 20.12» is a date — the guard stays narrow."""
     due, _ = store.parse_due("зустріч 20.12")
     assert due is not None and (due.day, due.month) == (20, 12)
+
+
+# --- t1232: the duration guard must not eat genuine deadlines ---------------------------
+
+def test_explicit_year_outranks_duration_words():
+    """t1232 TC1: «до 20.12.2026 року» is a full date — a candidate with an explicit
+    year can never be a decimal."""
+    due, title = store.parse_due("здати звіт до 20.12.2026 року")
+    assert due == store.date(2026, 12, 20)
+    assert "року" in title
+
+
+def test_ordinary_words_after_a_date_do_not_suppress_it():
+    """t1232 TC1: «день», «тиждень», «хвіртку» are not duration measures here."""
+    for text, dm in (("замовити торт на 08.03 день народження", (8, 3)),
+                     ("полагодити до 15.04 хвіртку", (15, 4)),
+                     ("відпустка 20.12 тиждень", (20, 12))):
+        due, _ = store.parse_due(text)
+        assert due is not None and (due.day, due.month) == dm, text
+
+
+def test_t1224_decimals_stay_numbers_after_t1232():
+    """t1232 TC2: every t1224 duration case keeps reading as a number."""
+    for text in ("відпустка на 1.5 дня", "звіт за 2.5 тижні", "перерва 1.5 хв",
+                 "бігти 2.5 год", "чекати 1.5 місяця", "проєкт на 1.5 року",
+                 "пауза 2.5 хвилини"):
+        due, title = store.parse_due(text)
+        assert due is None, text
+        assert title == text
+
+
+def test_explicit_year_outranks_money_words():
+    """t1232 TC3: the year exemption beats every measure word, not only durations."""
+    due, _ = store.parse_due("бюджет до 20.12.2026 тис")
+    assert due == store.date(2026, 12, 20)
