@@ -188,3 +188,38 @@ def test_zirka_page_carries_the_token_in_every_form():
                                own_rules="", ref_rules="", feedback=[], refs=[],
                                parked=[], token="SECRET", message="")
     assert html.count('name="token" value="SECRET"') >= 2
+
+
+# --- t1235: the recalc button runs v2, like inbox's t1214 fix --------------------------
+
+def _capture_run(monkeypatch, calls, rc=0, err=""):
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: (
+        calls.append(cmd),
+        types.SimpleNamespace(returncode=rc, stdout="", stderr=err))[1])
+
+
+def test_panel_recalc_runs_v2_not_v1(monkeypatch, tmp_path):
+    """t1235 TC1+TC2: the button launches mood2.py --send under the fixed unit lock —
+    v1 is stopped since 2026-11-12 and must not be reachable from the panel."""
+    import changelog_write
+    monkeypatch.setattr(changelog_write, "LOG_DIR", tmp_path / "log")
+    calls = []
+    _capture_run(monkeypatch, calls)
+    said = server.zirka_action({"action": ["recalc"], "day": ["2026-11-20"]})
+    cmd = [str(c) for c in calls[-1]]
+    assert any("mood2.py" in c for c in cmd), cmd
+    assert not any(c.endswith("mood.py") for c in cmd), cmd
+    assert "--send" in cmd and "--day" in cmd and "2026-11-20" in cmd
+    assert cmd[0] == "systemd-run" and "--user" in cmd and "--collect" in cmd
+    assert any(c.startswith("--unit=") for c in cmd)
+    assert "запущено" in said.lower()
+
+
+def test_panel_recalc_in_flight_is_named(monkeypatch, tmp_path):
+    """t1235 TC3: a unit-exists failure still reads as «уже йде»."""
+    import changelog_write
+    monkeypatch.setattr(changelog_write, "LOG_DIR", tmp_path / "log")
+    calls = []
+    _capture_run(monkeypatch, calls, rc=1, err="Unit noos-mood-recalc already exists")
+    said = server.zirka_action({"action": ["recalc"], "day": ["2026-11-20"]})
+    assert "уже йде" in said.lower()

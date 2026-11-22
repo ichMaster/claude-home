@@ -556,12 +556,15 @@ def zirka_action(form: dict) -> str:
         changelog_write.record("panel-zirka", what, day)
     if what == "recalc":
         unit = str(conf("astro.recalc_unit", "noos-mood-recalc"))
+        # v2, not v1: since 2026-11-12 the morning reading is mood2.py and v1 is stopped
+        # by the owner's order — the same t1214 fix inbox.py already carries (t1235)
         ok, said = run_script("systemd-run", "--user", f"--unit={unit}", "--collect",
                               "--setenv", f"HOME={HOME.parent}", py,
-                              str(HOME / "status" / "mood.py"), "--day", day, timeout=60)
+                              str(HOME / "status" / "mood2.py"), "--day", day, "--send",
+                              timeout=60)
         if not ok and "exists" in said:
             return "Перерахунок уже йде."
-        return ("Перерахунок запущено — читання прийде в чат Зірки хвилин за вісім."
+        return ("Перерахунок запущено — читання прийде в чат Зірки за кілька хвилин."
                 if ok else f"Не запустилось: {said}")
     if what == "ask":
         ok, said = run_script(py, str(HOME / "status" / "mood_feedback.py"), "ask",
