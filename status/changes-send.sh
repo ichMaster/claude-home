@@ -9,7 +9,16 @@ cd "$HOME/claude-home"
 # for a job that takes a second; the hash check means an unchanged file costs nothing.
 "$HOME/claude-home/.venv-voice/bin/python" tools/versions.py snapshot >/dev/null 2>&1 || true
 
-body=$("$HOME/claude-home/.venv-voice/bin/python" status/probes/changes.py "${1:-}" \
-  | "$HOME/claude-home/.venv-voice/bin/python" -c "import json,sys; print(json.load(sys.stdin)['text'])")
+# a crashed collector is a reported failure, never a quiet day — SUCCESS in systemctl
+# with no message is how a summary disappears without a trace (t1234)
+json=$("$HOME/claude-home/.venv-voice/bin/python" status/probes/changes.py "${1:-}") || {
+  ./notify.sh --quiet "⚠️ Підсумок змін не зібрався: changes.py впав"
+  exit 1
+}
+body=$(printf '%s' "$json" \
+  | "$HOME/claude-home/.venv-voice/bin/python" -c "import json,sys; print(json.load(sys.stdin)['text'])") || {
+  ./notify.sh --quiet "⚠️ Підсумок змін не зібрався: незрозуміла відповідь changes.py"
+  exit 1
+}
 [ -z "$body" ] && exit 0
 ./notify.sh "📝 $body"
