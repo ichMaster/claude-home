@@ -61,7 +61,10 @@ def signature(p):
         # do not twitch on every percent, only on tens
         return f"{(v.get('disk_used_pct') or 0)//10}|{p.get('severity')}"
     if pid == "services":
-        return json.dumps({k: v.get(k) for k in ("tmux", "claude_home", "memory_timer", "exited")},
+        # docker too: without it the t1208 «docker не відповідає» warn was byte-identical
+        # to the healthy state and could never fire (t1236)
+        return json.dumps({k: v.get(k) for k in ("tmux", "claude_home", "memory_timer",
+                                                 "exited", "docker")},
                           ensure_ascii=False)
     if pid.startswith("news:"):
         return str(len((v.get("items") or [])))

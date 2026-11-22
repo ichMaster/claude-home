@@ -143,3 +143,27 @@ def test_alarm_level_change_changes_the_signature():
 def test_alarm_same_level_keeps_the_signature():
     """TC2: no level change, no duplicate alert."""
     assert watch.signature(_alarm("red")) == watch.signature(_alarm("red"))
+
+
+# --- t1236: a dead docker daemon must change the services signature ----------------------
+
+def _services(docker, containers=3):
+    return {"id": "services", "severity": "warn" if not docker else "info",
+            "value": {"tmux": True, "claude_home": True, "memory_timer": True,
+                      "containers": containers if docker else 0,
+                      "exited": "", "docker": docker}}
+
+
+def test_dead_docker_changes_the_signature():
+    """TC1: the t1208 warn must be deliverable — healthy vs docker-dead differ."""
+    assert watch.signature(_services(True)) != watch.signature(_services(False))
+
+
+def test_same_docker_state_keeps_the_signature():
+    """TC2: no re-alert every 15 minutes while docker stays dead."""
+    assert watch.signature(_services(False)) == watch.signature(_services(False))
+
+
+def test_container_count_alone_is_not_a_change():
+    """TC3: the count stays out of the signature on purpose."""
+    assert watch.signature(_services(True, 3)) == watch.signature(_services(True, 7))
