@@ -61,7 +61,8 @@
       "ttl": 300
     },
     "services": {
-      "ttl": 120
+      "ttl": 120,
+      "docker_timeout": 10
     },
     "auth": {
       "_": "Lost Claude login in the always-on session (t1187): the latest event in the tmux pane decides.",

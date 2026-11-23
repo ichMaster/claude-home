@@ -29,6 +29,19 @@ def _healthy_stubs(bindir: Path, docker_body: str, tmux_ok: bool = True):
     _stub(bindir, "systemctl", 'echo active')
 
 
+def test_wedged_docker_still_emits_json(tmp_path):
+    """t1247 TC1: a daemon that hangs (not errors) is bounded and named, not a stalled run."""
+    _healthy_stubs(tmp_path, "sleep 30")
+    env = dict(os.environ, PATH=f"{tmp_path}:/usr/bin:/bin", SERVICES_DOCKER_TIMEOUT="1")
+    out = subprocess.run(["bash", str(SCRIPT)], capture_output=True, text=True,
+                         env=env, timeout=10)
+    assert out.returncode == 0, out.stderr
+    data = json.loads(out.stdout)
+    assert data["severity"] == "warn"
+    assert "docker" in data["text"]
+    assert data["value"]["tmux"] is True
+
+
 def test_dead_docker_still_emits_json(tmp_path):
     """TC1: a stopped daemon must be a named warn, not a dead probe."""
     _healthy_stubs(tmp_path, 'echo "Cannot connect to the Docker daemon" >&2; exit 1')

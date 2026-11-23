@@ -8,8 +8,14 @@ mem_ok=$(systemctl --user is-active claude-memory.timer 2>/dev/null | grep -q ac
 # under errexit+pipefail a failed `docker ps | wc -l` assignment aborted the probe and the
 # generic fallback silenced the repeating tmux alert (t1208). errexit does not apply
 # inside an `if` condition; pipefail still turns a docker failure into the else branch.
-if cnt=$(docker ps -q 2>/dev/null | wc -l) \
-   && down=$(docker ps -a --filter 'status=exited' --format '{{.Names}}' 2>/dev/null | tr '\n' ' '); then
+# A wedged daemon (t1201's hang mode) must not stall the whole watch run: each call is
+# bounded, and a kill lands in the same else branch as an error (t1247). The bound comes
+# from probes.services.docker_timeout; the env override also keeps the test offline.
+dto="${SERVICES_DOCKER_TIMEOUT:-}"
+[ -n "$dto" ] || dto="$(. "$(dirname "$0")/../../config.sh"; conf probes.services.docker_timeout)" || dto=""
+[ -n "$dto" ] || dto=10
+if cnt=$(timeout "$dto" docker ps -q 2>/dev/null | wc -l) \
+   && down=$(timeout "$dto" docker ps -a --filter 'status=exited' --format '{{.Names}}' 2>/dev/null | tr '\n' ' '); then
   docker_ok=1
 else
   docker_ok=0; cnt=0; down=""
