@@ -877,8 +877,16 @@ def run(day: date, dry_run: bool = False, note=lambda *a: None) -> dict:
             previous = out[stage] = json.dumps(chosen, ensure_ascii=False)
         elif stage == "wide":
             # His month and his year (t1195). Read by the model, narrowed by arithmetic, and
-            # the dated ones become positions of this day like any other.
-            wide = wide_relevant(wide_entries(day, note), day)
+            # the dated ones become positions of this day like any other. The stage is
+            # supplementary: an empty extraction is already a tolerated flake (t1197), so a
+            # chattier one — a timeout, an answer with no JSON — reads as no background too,
+            # never as a lost morning (t1251). The daily calendar was present; only the
+            # month and year failed to parse.
+            try:
+                wide = wide_relevant(wide_entries(day, note), day)
+            except (StageFailed, Unfaithful) as e:
+                note(f"ширші горизонти: стадія не вдалася, читаю без них — {e}")
+                wide = {"day": [], "period": [], "dropped": []}
             for dropped in wide["dropped"]:
                 note("ширші горизонти: " + dropped)
             items = items + wide["day"]

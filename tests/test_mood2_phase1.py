@@ -1007,3 +1007,30 @@ def test_the_writing_stage_is_handed_the_loud_ids(monkeypatch, tmp_path):
     assert "{{ГОЛОСНІ}}" not in prompts["day"]
     assert mood2.pressure(ITEMS)["loud"] == ["p6"]
     assert "АКЦЕНТ" in prompts["day"]
+
+
+# --- t1251: the wide stage is supplementary — a flake must not cost the reading --------------
+
+@pytest.mark.parametrize("exc", ["StageFailed", "Unfaithful"])
+def test_a_failed_wide_stage_does_not_cost_the_reading(monkeypatch, tmp_path, exc):
+    """t1251 TC1/TC2: a wide-stage timeout or bracket-less answer reads as no background,
+    the same degradation as an empty extraction (t1197) — never a lost morning."""
+    def fake_call(stage, prompt):
+        if stage == "read":
+            return json.dumps(ITEMS, ensure_ascii=False)
+        if stage == "pick":
+            return json.dumps({"ids": ["p1", "p3", "p6"], "frame": "p1"},
+                              ensure_ascii=False)
+        return READING
+
+    def broken_wide(day, note=lambda *a: None):
+        raise getattr(mood2, exc)("стадія «wide» не вдалася")
+
+    monkeypatch.setattr(mood2, "reference_text", lambda day: SOURCE)
+    monkeypatch.setattr(mood2, "call", fake_call)
+    monkeypatch.setattr(mood2, "state_path", lambda key: tmp_path / f"astro2-{key}")
+    monkeypatch.setattr(mood2, "wide_entries", broken_wide)
+    notes = []
+    out = mood2.run(DAY, note=notes.append)
+    assert "day" in out, "the reading must still be written"
+    assert any("ширші горизонти" in n for n in notes), notes
