@@ -382,9 +382,11 @@ def main():
         # the same two parsers add uses: «на вихідних» is a period, not a date (t1075)
         period, remainder = parse_period(phrase)
         due, _ = parse_due(remainder)
-        if phrase.strip() and not due and not period:
-            # writing due: null here silently wiped an existing deadline (t1048)
-            sys.exit(f"не зрозумів дату «{phrase}» — дедлайн лишається як був")
+        if not due and not period:
+            # writing due: null here silently wiped an existing deadline (t1048);
+            # an empty phrase slipped past the guard and did the same (t1246)
+            what = f"не зрозумів дату «{phrase}»" if phrase.strip() else "defer без дати"
+            sys.exit(f"{what} — дедлайн лишається як був")
         rec = {"op": "defer", "id": tid, "due": due.isoformat() if due else None}
         if period:
             rec["period"] = [period[0], period[1].isoformat(), period[2].isoformat()]

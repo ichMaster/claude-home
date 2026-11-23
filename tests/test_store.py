@@ -45,6 +45,14 @@ def test_defer_unparseable_date_keeps_due(monkeypatch, task_log):
     assert store.state()["t001"]["due"] == "2026-11-05"
 
 
+def test_defer_empty_phrase_keeps_due(monkeypatch, task_log):
+    """t1246 TC1: a forgotten date phrase must refuse, not wipe the deadline."""
+    monkeypatch.setattr(store.sys, "argv", ["store.py", "defer", "t001"])
+    with pytest.raises(SystemExit):
+        store.main()
+    assert store.state()["t001"]["due"] == "2026-11-05"
+
+
 def test_defer_valid_date_still_works(monkeypatch, task_log):
     """TC3: a parseable defer still moves the date."""
     monkeypatch.setattr(store.sys, "argv", ["store.py", "defer", "t001", "завтра"])
