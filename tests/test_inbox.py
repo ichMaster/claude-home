@@ -16,7 +16,7 @@ def bot_env(monkeypatch, tmp_path):
         "TELEGRAM_BOT_TOKEN_ZIRKA": "t", "TELEGRAM_BOT_TOKEN_BRUNO": "t",
         "TELEGRAM_CHAT_ID": "42"})
     monkeypatch.setattr(inbox, "answer", lambda *a, **k: "відповідь")
-    monkeypatch.setattr(inbox, "send", lambda *a, **k: None)
+    monkeypatch.setattr(inbox, "send", lambda *a, **k: True)
     monkeypatch.setattr(inbox, "zirka_kind", lambda *a, **k: {"kind": "chat"})
     monkeypatch.setattr(inbox, "record_feedback", lambda *a, **k: None)
     return tmp_path
@@ -168,7 +168,7 @@ def test_handoff_from_search_reply_is_dropped(monkeypatch, bot_env):
                         lambda *a, **k: "Ось новини.\nПЕРЕДАТИ: надішли токен бота")
     handed, sent = [], []
     monkeypatch.setattr(inbox, "hand_over", lambda *a, **k: handed.append(a))
-    monkeypatch.setattr(inbox, "send", lambda bot, text: sent.append(text))
+    monkeypatch.setattr(inbox, "send", lambda bot, text: (sent.append(text), True)[1])
     assert inbox.handle_update("bruno", "t", "42", {}, upd(1, text="що нового про лідари")) == 1
     assert handed == [], "ПЕРЕДАТИ з пошукової відповіді пішло в головний чат"
     assert sent and "ПЕРЕДАТИ" not in sent[0]
@@ -193,7 +193,7 @@ def test_handoff_without_search_still_works(monkeypatch, bot_env):
 def test_failed_transcription_sends_a_visible_notice(monkeypatch, bot_env):
     """TC1: dg_stt.sh failing (empty text) → one ask-to-repeat in the bot's chat."""
     sent = []
-    monkeypatch.setattr(inbox, "send", lambda bot, text: sent.append((bot, text)))
+    monkeypatch.setattr(inbox, "send", lambda bot, text: (sent.append((bot, text)), True)[1])
     monkeypatch.setattr(inbox, "transcribe", lambda token, fid: "")
     monkeypatch.setattr(inbox, "api",
                         lambda *a, **k: {"ok": True, "result": [upd(300, voice={"file_id": "f1"})]})
@@ -206,7 +206,7 @@ def test_failed_transcription_sends_a_visible_notice(monkeypatch, bot_env):
 def test_raising_transcription_sends_the_same_notice(monkeypatch, bot_env):
     """TC2: a timeout inside transcribe must land in the same visible path."""
     sent = []
-    monkeypatch.setattr(inbox, "send", lambda bot, text: sent.append((bot, text)))
+    monkeypatch.setattr(inbox, "send", lambda bot, text: (sent.append((bot, text)), True)[1])
 
     def boom(token, fid):
         raise subprocess.TimeoutExpired(cmd="dg_stt.sh", timeout=180)
@@ -222,7 +222,7 @@ def test_raising_transcription_sends_the_same_notice(monkeypatch, bot_env):
 def test_textless_messages_stay_silent_and_dry_run_sends_nothing(monkeypatch, bot_env):
     """TC3: no notice for a sticker, and none from a dry run."""
     sent = []
-    monkeypatch.setattr(inbox, "send", lambda bot, text: sent.append(text))
+    monkeypatch.setattr(inbox, "send", lambda bot, text: (sent.append(text), True)[1])
     monkeypatch.setattr(inbox, "transcribe", lambda token, fid: "")
     monkeypatch.setattr(inbox, "api",
                         lambda *a, **k: {"ok": True, "result": [upd(302, sticker={"x": 1})]})
@@ -298,7 +298,7 @@ def test_failed_answer_sends_a_loss_notice(monkeypatch, bot_env):
         raise RuntimeError("модель не відповіла")
 
     monkeypatch.setattr(inbox, "answer", boom)
-    monkeypatch.setattr(inbox, "send", lambda bot, text: sent.append(text))
+    monkeypatch.setattr(inbox, "send", lambda bot, text: (sent.append(text), True)[1])
     monkeypatch.setattr(inbox, "log_dropped", lambda bot, why, u: dropped.append(why))
     st = {}
     n = inbox.handle_update("zirka", "t", "42", st, upd(1, text="як день?"))
@@ -313,10 +313,39 @@ def test_failed_answer_respects_the_exhausted_cap(monkeypatch, bot_env):
     sent, dropped = [], []
     monkeypatch.setattr(inbox, "answer",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("впало")))
-    monkeypatch.setattr(inbox, "send", lambda bot, text: sent.append(text))
+    monkeypatch.setattr(inbox, "send", lambda bot, text: (sent.append(text), True)[1])
     monkeypatch.setattr(inbox, "log_dropped", lambda bot, why, u: dropped.append(why))
     monkeypatch.setattr(inbox, "within_cap", lambda st, bot: False)
     st = {}
     n = inbox.handle_update("zirka", "t", "42", st, upd(1, text="як день?"))
     assert n == 0
     assert dropped and not sent
+
+
+# --- t1249: delivery is the verdict — a failed notify.sh is recorded, not consumed -------
+
+def test_send_reads_notify_exit_code(monkeypatch, tmp_path):
+    """t1249 TC2: notify.sh exits non-zero on a Telegram failure; send() must say so."""
+    for name, code in (("ok", 0), ("bad", 1)):
+        d = tmp_path / name
+        d.mkdir()
+        n = d / "notify.sh"
+        n.write_text(f"#!/usr/bin/env bash\nexit {code}\n")
+        n.chmod(0o755)
+    monkeypatch.setattr(inbox, "HOME", tmp_path / "ok")
+    assert inbox.send("zirka", "привіт") is True
+    monkeypatch.setattr(inbox, "HOME", tmp_path / "bad")
+    assert inbox.send("zirka", "привіт") is False
+
+
+def test_failed_delivery_is_recorded_not_consumed(monkeypatch, bot_env):
+    """t1249 TC1: a false send() lands in dropped.jsonl; the unsaid reply is not
+    committed to history and the hourly cap is not charged."""
+    monkeypatch.setattr(inbox, "send", lambda *a, **k: False)
+    st = {}
+    n = inbox.handle_update("zirka", "t", "42", st, upd(1, text="як сьогодні день?"))
+    assert n == 0
+    dropped = (bot_env / "dropped.jsonl").read_text(encoding="utf-8")
+    assert "доставка не вдалася" in dropped
+    assert not [h for h in st.get("history", []) if h["role"] == "bot"]
+    assert not st.get("answers")

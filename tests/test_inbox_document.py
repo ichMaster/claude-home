@@ -171,7 +171,7 @@ def _broken_telegram(monkeypatch, sent):
     def api(token, method, **params):
         raise inbox.urllib.error.URLError("timed out")
     monkeypatch.setattr(inbox, "api", api)
-    monkeypatch.setattr(inbox, "send", lambda bot, text, **k: sent.append(text))
+    monkeypatch.setattr(inbox, "send", lambda bot, text, **k: (sent.append(text), True)[1])
     monkeypatch.setattr(inbox, "log_dropped", lambda *a, **k: None)
     monkeypatch.setattr(inbox, "answer", lambda *a, **k: (_ for _ in ()).throw(
         AssertionError("answer() must not run for a lost document")))
@@ -210,7 +210,7 @@ def test_download_failure_sends_a_notice(monkeypatch):
 
     monkeypatch.setattr(inbox, "api", api)
     monkeypatch.setattr(inbox.urllib.request, "urlopen", urlopen)
-    monkeypatch.setattr(inbox, "send", lambda bot, text, **k: sent.append(text))
+    monkeypatch.setattr(inbox, "send", lambda bot, text, **k: (sent.append(text), True)[1])
     monkeypatch.setattr(inbox, "log_dropped", lambda *a, **k: None)
     monkeypatch.setattr(inbox, "answer", lambda *a, **k: (_ for _ in ()).throw(
         AssertionError("answer() must not run for a lost document")))
@@ -233,7 +233,7 @@ def test_getfile_not_ok_raises(monkeypatch):
 def test_oversized_document_sends_a_named_notice(monkeypatch, fake_telegram):
     """TC1: the size refusal reaches the chat and the caption is not answered alone."""
     sent, dropped = [], []
-    monkeypatch.setattr(inbox, "send", lambda bot, text, **k: sent.append(text))
+    monkeypatch.setattr(inbox, "send", lambda bot, text, **k: (sent.append(text), True)[1])
     monkeypatch.setattr(inbox, "log_dropped",
                         lambda bot, why, upd: dropped.append(why))
     monkeypatch.setattr(inbox, "answer", lambda *a, **k: (_ for _ in ()).throw(

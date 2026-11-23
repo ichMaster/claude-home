@@ -548,10 +548,14 @@ def record_feedback(text: str) -> None:
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def send(bot: str, text: str) -> None:
+def send(bot: str, text: str) -> bool:
+    """notify.sh's exit code is the delivery verdict (non-zero on a Telegram failure or a
+    rejected argument) — swallowing it consumed the owner's message with no record (t1249)."""
     kind, role, _ = BOTS[bot]
-    subprocess.run([str(HOME / "notify.sh"), "--bot", kind, "--voice-profile", role, text],
-                   check=False, cwd=str(HOME), timeout=300)
+    proc = subprocess.run([str(HOME / "notify.sh"), "--bot", kind,
+                           "--voice-profile", role, text],
+                          check=False, cwd=str(HOME), timeout=300)
+    return proc.returncode == 0
 
 
 def handle_update(bot: str, token: str, owner: str, st: dict, upd: dict,
@@ -674,10 +678,18 @@ def handle_update(bot: str, token: str, owner: str, st: dict, upd: dict,
     if not reply:
         return 0
     st.setdefault("history", []).append({"role": "user", "text": clip_entry(text)})
+    # The owner's words stay in history either way — he did speak. The reply, the cap
+    # charge and the success print are committed only after a true delivery: a failed one
+    # is the same loss class t1185/t1213/t1227 closed on the other legs (t1249). The
+    # offset stays committed — retrying a dead Telegram every two minutes was rejected —
+    # but the loss is written down instead of invisible.
+    if not send(bot, reply):
+        print(f"{bot}: доставка не вдалася")
+        log_dropped(bot, "доставка не вдалася", upd)
+        return 0
     st["history"].append({"role": "bot", "text": clip_entry(reply)})
     st.setdefault("answers", []).append(
         datetime.now().astimezone().isoformat(timespec="seconds"))
-    send(bot, reply)
     print(f"{bot} → {reply[:120]}")
     if request:
         print(f"{bot}: передаю в головний чат: {request}")
