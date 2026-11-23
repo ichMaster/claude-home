@@ -537,3 +537,21 @@ def test_an_explicitly_emptied_variable_reads_as_empty(tmp_path, line, is_set):
     (tmp_path / ".env.voice").write_text(line + "\n", encoding="utf-8")
     r = rules_screen.key_rows([{"file": ".env.voice", "what": "голос"}], tmp_path)[0]
     assert r["vars"][0]["set"] is is_set
+
+
+# --- t1248: path-valued keys that name secret files, the audit dir or the interpreter ----
+
+def test_secret_and_audit_path_keys_are_not_editable():
+    """t1248 TC1: retargeting where tokens are read or audit is written is a terminal act."""
+    for key in ("telegram.env", "voice.env", "changelog.dir", "paths.python",
+                "probes.auth.credentials", "probes.auth.fallback_file",
+                "probes.youtube.oauth_env"):
+        written, said = rules_screen.set_setting(key, "/tmp/x")
+        assert written is False, key
+        assert "термінала" in said, key
+
+
+def test_an_ordinary_scalar_key_is_still_editable():
+    """t1248 TC2: the new prefixes must not over-match ordinary settings."""
+    assert rules_screen._edit_refusal("digest.news_memory_days") == ""
+    assert rules_screen._edit_refusal("probes.youtube.per_run") == ""

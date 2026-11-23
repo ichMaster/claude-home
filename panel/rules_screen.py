@@ -39,6 +39,12 @@ NO_EDIT_PREFIXES = (
     # shrink ratio that stands between a truncated paste and persona.md.
     "panel.auth", "panel.journal_scope", "panel.host", "panel.port",
     "panel.edit_min_ratio", "panel.max_post_bytes", "versions",
+    # Nor weaken what protects the system (t1248): a key whose value names a file secrets
+    # are read from, the directory the append-only change log is written to, or the
+    # interpreter every timer runs. Retargeting any of them is a terminal act, like
+    # permissions — one authenticated form post must not move where tokens come from.
+    "paths", "telegram.env", "voice.env", "changelog.dir",
+    "probes.auth.credentials", "probes.auth.fallback_file", "probes.youtube.oauth_env",
 )
 
 
@@ -232,8 +238,9 @@ def _edit_refusal(key: str) -> str:
         return ("Дозволи змінюються лише з термінала: "
                 "tools/permissions.py set <ключ> <рівень>.")
     if any(key == p or key.startswith(p + ".") for p in NO_EDIT_PREFIXES):
-        return ("Це налаштування захищає саму панель — змінюється лише з термінала "
-                "(config.json / config.local.json).")
+        # «захищає саму панель» would be false for telegram.env or changelog.dir (t1248)
+        return ("Це налаштування захищає панель або систему — змінюється лише з "
+                "термінала (config.json / config.local.json).")
     return ""
 
 
