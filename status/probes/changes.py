@@ -13,7 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from noosconf import conf, path
 
 DIR = str(path("changelog.dir"))
-day = sys.argv[1] if len(sys.argv) > 1 else datetime.now().strftime("%Y-%m-%d")
+# an empty argv[1] (changes-send.sh passes "${1:-}") means today, same as no argument (t1245)
+day = (sys.argv[1] if len(sys.argv) > 1 else "").strip() or datetime.now().strftime("%Y-%m-%d")
 path = os.path.join(DIR, f"{day}.jsonl")
 
 
