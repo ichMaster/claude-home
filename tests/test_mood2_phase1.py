@@ -107,6 +107,24 @@ def test_malformed_position_is_caught(broken, needle):
     assert any(needle in p for p in mood2.check_items(items, SOURCE))
 
 
+def test_null_content_fields_are_flagged_like_empty():
+    """t1253 — read.md says «якщо чогось немає — null», so null is emptiness, not "None"."""
+    items = [dict(i) for i in ITEMS]
+    items[4]["meaning"] = None
+    assert any("порожнє трактування" in p for p in mood2.check_items(items, SOURCE))
+    items = [dict(i) for i in ITEMS]
+    items[6]["natal"] = None
+    assert any("без планети" in p for p in mood2.check_items(items, SOURCE))
+
+
+def test_null_flag_and_weight_do_not_abort():
+    """t1253 — a prompt-compliant null flag/weight must not cost the morning."""
+    items = [dict(i) for i in ITEMS]
+    items[4]["flag"] = None
+    items[3]["weight"] = None
+    assert mood2.check_items(items, SOURCE) == []
+
+
 def test_duplicate_ids_are_caught():
     items = [dict(i) for i in ITEMS]
     items[1]["id"] = items[0]["id"]

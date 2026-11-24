@@ -245,13 +245,14 @@ def check_items(items, source: str) -> list[str]:
             # «на мой <планета>(+):▲» followed by one interpretation (seen 15 November). So an
             # empty meaning is legitimate here; what must never be empty is which planet was
             # hit, because that is the claim.
-            if not str(item.get("natal", "")).strip():
+            # read.md: «якщо чогось немає — null», so null is emptiness here, not "None" (t1253)
+            if not str(item.get("natal") or "").strip():
                 problems.append(f"{item.get('id')}: натальна позиція без планети")
-        elif not str(item.get("meaning", "")).strip():
+        elif not str(item.get("meaning") or "").strip():
             problems.append(f"{item.get('id')}: порожнє трактування")
-        if str(item.get("flag", "")) not in ("", "▲", "▼"):
+        if str(item.get("flag") or "") not in ("", "▲", "▼"):
             problems.append(f"{item.get('id')}: невідомий знак «{item.get('flag')}»")
-        weight = item.get("weight", 0)
+        weight = item.get("weight") or 0
         if not isinstance(weight, int) or not 0 <= weight <= 5:
             problems.append(f"{item.get('id')}: вага «{weight}» поза межами")
 
