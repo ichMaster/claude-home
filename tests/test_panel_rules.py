@@ -545,7 +545,10 @@ def test_secret_and_audit_path_keys_are_not_editable():
     """t1248 TC1: retargeting where tokens are read or audit is written is a terminal act."""
     for key in ("telegram.env", "voice.env", "changelog.dir", "paths.python",
                 "probes.auth.credentials", "probes.auth.fallback_file",
-                "probes.youtube.oauth_env"):
+                "probes.youtube.oauth_env",
+                # t1255: the URLs secrets are sent to, and the safety-data sources
+                "usage.elevenlabs.api_url", "usage.deepgram.api_url",
+                "probes.alarm.url", "probes.loe.url"):
         written, said = rules_screen.set_setting(key, "/tmp/x")
         assert written is False, key
         assert "термінала" in said, key

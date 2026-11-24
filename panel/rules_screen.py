@@ -45,6 +45,11 @@ NO_EDIT_PREFIXES = (
     # permissions — one authenticated form post must not move where tokens come from.
     "paths", "telegram.env", "voice.env", "changelog.dir",
     "probes.auth.credentials", "probes.auth.fallback_file", "probes.youtube.oauth_env",
+    # Same rule for the URLs secrets are *sent to* (t1255): voice_api.py posts the live
+    # ElevenLabs and Deepgram keys to these endpoints, and the alarm/loe sources are
+    # presented as real safety data — retargeting any of them is a terminal act too.
+    "usage.elevenlabs.api_url", "usage.deepgram.api_url",
+    "probes.alarm.url", "probes.loe.url",
 )
 
 
