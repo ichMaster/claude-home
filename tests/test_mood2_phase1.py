@@ -1052,3 +1052,27 @@ def test_a_failed_wide_stage_does_not_cost_the_reading(monkeypatch, tmp_path, ex
     out = mood2.run(DAY, note=notes.append)
     assert "day" in out, "the reading must still be written"
     assert any("ширші горизонти" in n for n in notes), notes
+
+
+# --- t1254: pick is supplementary too — a flake must not cost the reading --------------------
+
+@pytest.mark.parametrize("mode", ["timeout", "not-json"])
+def test_a_failed_pick_stage_does_not_cost_the_reading(monkeypatch, tmp_path, mode):
+    """t1254 TC1/TC2: the day stage is built from `items`, not from the pick — so a pick
+    timeout or a non-JSON answer reads as an empty selection, never a lost morning."""
+    def fake_call(stage, prompt):
+        if stage == "read":
+            return json.dumps(ITEMS, ensure_ascii=False)
+        if stage == "pick":
+            if mode == "timeout":
+                raise mood2.StageFailed("стадія «pick» не відповіла")
+            return "вибираю пе один і пе шість"          # json_answer → Unfaithful
+        return READING
+
+    monkeypatch.setattr(mood2, "reference_text", lambda day: SOURCE)
+    monkeypatch.setattr(mood2, "call", fake_call)
+    monkeypatch.setattr(mood2, "state_path", lambda key: tmp_path / f"astro2-{key}")
+    notes = []
+    out = mood2.run(DAY, note=notes.append)
+    assert "day" in out, "the reading must still be written"
+    assert any("стадія вибору не вдалася" in n for n in notes), notes

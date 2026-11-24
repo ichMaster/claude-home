@@ -865,10 +865,17 @@ def run(day: date, dry_run: bool = False, note=lambda *a: None) -> dict:
                 raise Unfaithful("розбір не збігається з еталоном: " + "; ".join(problems))
             previous = out[stage] = items_text(items)
         elif stage == "pick":
-            chosen = selection(json_answer(call(stage, fill(
-                stage, ДАТА=day.isoformat(), ПОЗИЦІЇ=items_text(items),
-                МАКСИМУМ=str(conf2("items_max", 5)),
-                ГОЛОСНЕ=str(conf2("loud_min", 3))))), items)
+            # The pick survives as emphasis only (t1156): the day stage is built from `items`,
+            # so a pick flake reads as an empty selection — the same degradation the wide
+            # stage got in t1251 — never a lost morning (t1254).
+            try:
+                chosen = selection(json_answer(call(stage, fill(
+                    stage, ДАТА=day.isoformat(), ПОЗИЦІЇ=items_text(items),
+                    МАКСИМУМ=str(conf2("items_max", 5)),
+                    ГОЛОСНЕ=str(conf2("loud_min", 3))))), items)
+            except (StageFailed, Unfaithful) as e:
+                note(f"стадія вибору не вдалася, читаю без неї — {e}")
+                chosen = selection({}, items)
             if chosen["unknown"]:
                 note("стадія вибору назвала позиції, яких немає: "
                      + ", ".join(chosen["unknown"]))
