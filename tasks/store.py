@@ -130,7 +130,10 @@ def parse_due(text):
         # «реліз 3.12» and «до версії 2.5» bypassed the Latin-only guard (t1225). Only
         # version-naming words — a generic Cyrillic word before a date is the normal
         # way to date a task («зустріч 20.12»).
-        if re.search(r"(?:[a-z][\w.-]*|верс\w*|реліз\w*|пітон\w*|пайтон\w*)\s*$",
+        # and a pair after the time preposition «о/об» is a clock time («о 9.05»), which
+        # otherwise lands as a confident date next year with the time cut from the title;
+        # word-bounded, so «кіно 20.12» stays a dated task (t1258)
+        if re.search(r"(?:[a-z][\w.-]*|верс\w*|реліз\w*|пітон\w*|пайтон\w*|\bоб?)\s*$",
                      low[:m.start()]):
             continue
         # stems with \w*, not bare abbreviations: «тис\b» missed «тисяч», and the time

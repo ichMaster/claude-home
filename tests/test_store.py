@@ -488,3 +488,28 @@ def test_weekend_on_other_days_is_unchanged(monkeypatch):
         _, start, end = period
         assert start == store.date(2026, 11, sat), f"day {day}"
         assert end == store.date(2026, 11, sat + 1), f"day {day}"
+
+
+# --- t1258: a clock time written with a dot is a time, not a date ---------------------------
+
+def test_clock_time_after_o_is_not_a_date():
+    """t1258 TC1: «о 9.05» is five past nine, not the ninth of May next year."""
+    due, title = store.parse_due("подзвонити лікарю о 9.05")
+    assert due is None
+    assert title == "подзвонити лікарю о 9.05"
+
+
+def test_clock_time_after_ob_is_not_a_date():
+    """t1258 TC2: «об 11.10» is the same preposition before a vowel."""
+    due, title = store.parse_due("зустріч об 11.10 з Олегом")
+    assert due is None
+    assert title == "зустріч об 11.10 з Олегом"
+
+
+def test_plain_dotted_date_still_parses_after_an_ordinary_word():
+    """t1258 TC3: a generic word before a date is the normal way to date a task, and a
+    word merely ending in «о» must not trip the single-letter guard."""
+    due, _ = store.parse_due("зустріч 20.12")
+    assert due is not None and (due.month, due.day) == (12, 20)
+    due, _ = store.parse_due("кіно 20.12")
+    assert due is not None and (due.month, due.day) == (12, 20)
