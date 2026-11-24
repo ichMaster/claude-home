@@ -16,7 +16,7 @@ export NOOS_SENT_KIND="social-headless.sh"
 exec claude -p "$(cat status/social-prompt.md)" \
   --settings "$HOME/claude-home/status/digest-settings.json" \
   --allowedTools "Bash(./notify.sh:*)" "Bash(./status/run.sh:*)" \
-                 "Bash(.venv-voice/bin/python status/probes/youtube.py:*)" \
+                 "Bash(.venv-voice/bin/python status/probes/youtube.py)" \
                  "Bash(date:*)" \
                  "mcp__claude_ai_Gmail__search_threads" \
   --disallowedTools "Write" "Edit" "MultiEdit" "NotebookEdit"

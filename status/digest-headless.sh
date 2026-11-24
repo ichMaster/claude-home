@@ -32,7 +32,7 @@ exec claude -p "$(cat status/digest-prompt.md | sed "s/{{ЧАСТИНА}}/$part/
   --allowedTools "Bash(./status/run.sh:*)" "Bash(./notify.sh:*)" \
                  "Bash(.venv-voice/bin/python status/candidates.py:*)" \
                  "Bash(.venv-voice/bin/python status/tools/news_seen.py:*)" \
-                 "Bash(.venv-voice/bin/python tasks/store.py:*)" \
+                 "Bash(.venv-voice/bin/python tasks/store.py list:*)" \
                  "Bash(date:*)" \
                  "mcp__claude_ai_Gmail__search_threads" \
                  "mcp__claude_ai_Google_Calendar__list_events" \

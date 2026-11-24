@@ -87,3 +87,35 @@ def test_no_write_capable_bash_prefixes(script):
         assert prefix not in ("echo", "printf", "tee", "dd", "sed", "cp", "mv", "touch",
                               "ln", "install"), \
             f"{script}: Bash({rule}) can write files via redirection or by design"
+
+
+# --- t1257: a mutating subcommand must not ride a read-only need ----------------------------
+
+@pytest.mark.parametrize("script", SCRIPTS)
+def test_store_py_rules_are_pinned_to_list(script):
+    """t1257 TC1: the digest needs `store.py list --all` only; a `store.py:*` prefix
+    auto-approves cancel/done/defer for a session that reads foreign mail text."""
+    rules = re.findall(r'"Bash\(([^)]*)\)"', _code(script))
+    for rule in rules:
+        if "tasks/store.py" in rule:
+            assert "tasks/store.py list" in rule, \
+                f"{script}: Bash({rule}) allows mutating store.py subcommands"
+
+
+def test_social_youtube_rule_is_exact():
+    """t1257 TC2: social-prompt.md never invokes youtube.py (polling has its own unit),
+    so the rule must be exact — a wildcard would auto-approve --drain and blank the
+    18:05 video digest on a successful injection."""
+    rules = re.findall(r'"Bash\(([^)]*)\)"', _code("status/social-headless.sh"))
+    for rule in rules:
+        if "probes/youtube.py" in rule:
+            assert not rule.endswith(":*"), \
+                f"social-headless.sh: Bash({rule}) auto-approves youtube.py flags"
+
+
+def test_digest_prompt_call_still_matches_the_narrowed_rule():
+    """t1257 TC3: the prescribed call must still be covered by the pinned prefix."""
+    rules = re.findall(r'"Bash\(([^)]*)\)"', _code("status/digest-headless.sh"))
+    store_rules = [r.rsplit(":", 1)[0] for r in rules if "tasks/store.py" in r]
+    prescribed = ".venv-voice/bin/python tasks/store.py list --all"
+    assert any(prescribed.startswith(p) for p in store_rules), store_rules
